@@ -55,7 +55,10 @@ final class ProtectedKey {
         String directory = keys.optString("directory", "moli");
         if (!directory.equals("moli") && !directory.matches("restored-[a-f0-9-]{36}"))
             throw new IllegalStateException("Invalid data generation");
-        return new File(context.getFilesDir(), directory);
+        File data = new File(context.getFilesDir(), directory);
+        if (!directory.equals("moli") && (!data.isDirectory() || !new File(data, "moli.toml").isFile()))
+            throw new IllegalStateException("Recovered data generation is missing");
+        return data;
     }
     /** Commit point: an atomic wrapped record selects both the data generation and its key. */
     static synchronized void install(Context context, JSONObject credentials) throws Exception {

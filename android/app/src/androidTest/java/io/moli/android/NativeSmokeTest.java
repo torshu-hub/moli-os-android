@@ -119,6 +119,11 @@ public final class NativeSmokeTest {
         assertTrue(port > 0); NativeServer.stop();
         try { BackupStorage.restoreFresh(destination,new java.io.ByteArrayInputStream(archive),password); fail("Existing installation"); }
         catch (java.io.IOException expected) { assertTrue("Existing key must remain unchanged",original.getString("master").equals(ProtectedKey.open(destination).getString("master"))); }
+        File restoredConfig=new File(restored,"moli.toml"), parkedConfig=new File(restored,"moli.toml.parked");
+        assertTrue(restoredConfig.renameTo(parkedConfig));
+        try { ProtectedKey.dataDirectory(destination,recovered); fail("A missing recovered configuration must not create a blank instance"); }
+        catch (IllegalStateException expected) { /* Fail closed, key remains protected. */ }
+        finally { assertTrue(parkedConfig.renameTo(restoredConfig)); }
         assertFalse(destination.getSharedPreferences("host",Context.MODE_PRIVATE).getBoolean("wanted",true));
         // A failed wrapped-key commit must leave no active or staged data.
         Context badBase=sandbox(base,"unwritable-wrapper"); File obstruction=new File(badBase.getFilesDir(),"not-a-directory");
