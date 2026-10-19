@@ -90,8 +90,12 @@ jobs:
             ./gradlew --no-daemon :app:installDebug :app:installDebugAndroidTest -PmoliAbis=x86_64
             adb shell pm grant io.moli.android.recovery android.permission.POST_NOTIFICATIONS
             ./gradlew --no-daemon :app:connectedDebugAndroidTest -PmoliAbis=x86_64 -Pandroid.testInstrumentationRunnerArguments.class=io.moli.android.NativeSmokeTest
-            sh ../scripts/test-android-lifecycle.sh
+            # connectedDebugAndroidTest removes its installed packages during cleanup.
+            # Install a fresh source, then export/import synthetic data before lifecycle checks.
+            ./gradlew --no-daemon :app:installDebug :app:installDebugAndroidTest -PmoliAbis=x86_64
+            adb shell pm grant io.moli.android.recovery android.permission.POST_NOTIFICATIONS
             sh ../scripts/test-android-recovery-transfer.sh
+            sh ../scripts/test-android-lifecycle.sh
       - name: Retain APK and verification reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
