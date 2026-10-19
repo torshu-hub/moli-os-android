@@ -19,6 +19,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".BackupActivity" android:exported="false" />
+        <activity android:name=".AppInfoActivity" android:exported="false" />
         <service android:name=".MoliService" android:exported="false"
             android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

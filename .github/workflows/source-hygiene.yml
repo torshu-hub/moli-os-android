@@ -1,0 +1,16 @@
+name: Source hygiene
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  source-hygiene:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: sh scripts/leak-check.sh

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Disposable emulator only, after instrumentation has created synthetic app data.
 set -eu
-app=io.moli.android.recovery
+app=io.moli.android.app.preview
 activity=$app/io.moli.android.MainActivity
 adb shell am start -W -n "$activity"
 sleep 3

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Moli OS Récupération</string>
+    <string name="app_name">Moli OS</string>
     <string name="start">Démarrer</string>
     <string name="stop">Arrêter</string>
     <string name="starting">Démarrage de Moli…</string>
@@ -27,4 +27,16 @@
     <string name="backup_done">Opération terminée. Conservez le fichier et le mot de passe séparément. Après restauration, démarrez Moli manuellement.</string>
     <string name="backup_failed">Opération refusée ou interrompue : vérifiez le mot de passe, le fichier, l’espace disponible et sa compatibilité. Aucune donnée active n’a été remplacée. Un export interrompu doit être recréé.</string>
     <string name="app_name_receiver">Moli OS Restauration</string>
+    <string name="app_name_preview">Moli OS Aperçu</string>
+    <string name="app_info">Application / Mises à jour</string>
+    <string name="back">Retour</string>
+    <string name="app_settings">Réglages Android de cette application</string>
+    <string name="app_identity">Version %1$s (%2$d)\nApplication : %3$s\nCertificat public SHA-256 :\n%4$s</string>
+    <string name="app_identity_unavailable">Identité de cette installation indisponible.</string>
+    <string name="update_help">Avant une mise à jour : arrêtez Moli, exportez une sauvegarde chiffrée et gardez son mot de passe séparément. Installez ensuite le nouvel APK par-dessus cette application, puis rouvrez Moli et démarrez le serveur. Android conserve les données si le nom de paquet et la signature restent compatibles et si la version augmente. Si Android refuse, ne désinstallez rien et ne supprimez pas les données. Les APK de démonstration ne garantissent cette continuité que dans une même livraison. Le passage vers une future version durable utilisera une restauration dans une nouvelle installation.</string>
+    <string name="background_status">\nNotifications : %1$s\nBatterie Android : %2$s\nCes états ne prouvent pas le fonctionnement en veille prolongée. Les restrictions Samsung peuvent être supplémentaires. Après redémarrage système ou arrêt forcé, rouvrez Moli manuellement.</string>
+    <string name="notifications_allowed">autorisées</string>
+    <string name="notifications_blocked">bloquées</string>
+    <string name="battery_exempt">exemption Android active</string>
+    <string name="battery_optimized">optimisation Android active</string>
 </resources>

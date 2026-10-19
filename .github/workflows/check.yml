@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
   pull_request:
+    paths-ignore:
+      - 'android/**'
+      - 'docs/**'
+      - 'scripts/test-android-*.sh'
+      - '.github/workflows/android-*.yml'
 
 permissions:
   contents: read
