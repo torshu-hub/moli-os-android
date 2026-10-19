@@ -64,9 +64,132 @@ public final class NativeSmokeTest {
         assertFalse(new File(context.getFilesDir(), "moli/master.key").exists());
     }
 
+    private static Context sandbox(Context base, String name) {
+        File root = new File(base.getCacheDir(), name + "-" + System.nanoTime());
+        File files = new File(root, "files"), protectedFiles = new File(root, "protected");
+        assertTrue(files.mkdirs()); assertTrue(protectedFiles.mkdirs());
+        return new android.content.ContextWrapper(base) {
+            @Override public File getFilesDir() { return files; }
+            @Override public File getNoBackupFilesDir() { return protectedFiles; }
+            @Override public Context getApplicationContext() { return this; }
+        };
+    }
+    @Test public void c_backupRestoresKeySqliteAndVaultIntoAnIndependentSandbox() throws Exception {
+        Context base = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        Context source = sandbox(base, "export"), destination = sandbox(base, "import");
+        ProtectedKey.create(source, "4826");
+        org.json.JSONObject original = ProtectedKey.open(source);
+        File data = ProtectedKey.dataDirectory(source, original);
+        String sourceToken = ProtectedKey.randomHex();
+        int sourcePort = NativeServer.start(data.getAbsolutePath(), original.getString("master"), sourceToken, "4826");
+        try {
+            HttpURLConnection login = get(sourcePort,"/api/session",sourceToken);
+            login.setRequestMethod("POST"); login.setDoOutput(true); login.setRequestProperty("Content-Type","application/json");
+            try (java.io.OutputStream body = login.getOutputStream()) { body.write("{\"pin\":\"4826\"}".getBytes(StandardCharsets.UTF_8)); }
+            assertEquals(200,login.getResponseCode()); login.disconnect();
+        } finally { NativeServer.stop(); }
+        assertTrue(new File(data, "secrets.enc").isFile());
+        File recordings = new File(data,"recordings");
+        if (!recordings.exists()) assertTrue(recordings.mkdir());
+        assertTrue(recordings.isDirectory());
+        java.nio.file.Files.write(new File(recordings,"synthetic.txt").toPath(), new byte[]{17,42});
+        java.nio.file.Files.write(new File(data,"settings.json").toPath(), "{}".getBytes(StandardCharsets.UTF_8));
+        try (android.database.sqlite.SQLiteDatabase db = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(new File(data,"synthetic.db"),null)) {
+            db.execSQL("CREATE TABLE sample (value INTEGER)"); db.execSQL("INSERT INTO sample VALUES (42)");
+        }
+        char[] password = "synthetic recovery words only".toCharArray();
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(); BackupStorage.exportTo(source,password,out);
+        byte[] archive = out.toByteArray();
+        byte[] truncated = java.util.Arrays.copyOf(archive, archive.length-20);
+        try { BackupStorage.restoreFresh(destination,new java.io.ByteArrayInputStream(truncated),password); fail("Incomplete archive"); }
+        catch (java.io.IOException expected) { assertFalse(ProtectedKey.exists(destination)); }
+        assertEquals(0, destination.getFilesDir().list().length);
+        BackupStorage.restoreFresh(destination,new java.io.ByteArrayInputStream(archive),password);
+        org.json.JSONObject recovered = ProtectedKey.open(destination);
+        assertTrue("Recovered key must match",original.getString("master").equals(recovered.getString("master")));
+        File restored = ProtectedKey.dataDirectory(destination,recovered);
+        assertArrayEquals(new byte[]{17,42},java.nio.file.Files.readAllBytes(new File(restored,"recordings/synthetic.txt").toPath()));
+        assertTrue(new File(restored,"settings.json").isFile());
+        assertFalse(new File(restored,"master.key").exists());
+        try (android.database.sqlite.SQLiteDatabase db = android.database.sqlite.SQLiteDatabase.openDatabase(new File(restored,"synthetic.db").getPath(),null,android.database.sqlite.SQLiteDatabase.OPEN_READONLY);
+             android.database.Cursor cursor = db.rawQuery("SELECT value FROM sample",null)) {
+            assertTrue(cursor.moveToFirst()); assertEquals(42,cursor.getInt(0));
+        }
+        int port = NativeServer.start(restored.getAbsolutePath(),recovered.getString("master"),ProtectedKey.randomHex(),recovered.getString("pin"));
+        assertTrue(port > 0); NativeServer.stop();
+        try { BackupStorage.restoreFresh(destination,new java.io.ByteArrayInputStream(archive),password); fail("Existing installation"); }
+        catch (java.io.IOException expected) { assertTrue("Existing key must remain unchanged",original.getString("master").equals(ProtectedKey.open(destination).getString("master"))); }
+        File restoredConfig=new File(restored,"moli.toml"), parkedConfig=new File(restored,"moli.toml.parked");
+        assertTrue(restoredConfig.renameTo(parkedConfig));
+        try { ProtectedKey.dataDirectory(destination,recovered); fail("A missing recovered configuration must not create a blank instance"); }
+        catch (IllegalStateException expected) { /* Fail closed, key remains protected. */ }
+        finally { assertTrue(parkedConfig.renameTo(restoredConfig)); }
+        assertFalse(destination.getSharedPreferences("host",Context.MODE_PRIVATE).getBoolean("wanted",true));
+        // A failed wrapped-key commit must leave no active or staged data.
+        Context badBase=sandbox(base,"unwritable-wrapper"); File obstruction=new File(badBase.getFilesDir(),"not-a-directory");
+        assertTrue(obstruction.createNewFile());
+        Context bad = new android.content.ContextWrapper(badBase) {
+            @Override public File getNoBackupFilesDir() { return obstruction; }
+        };
+        try { BackupStorage.restoreFresh(bad,new java.io.ByteArrayInputStream(archive),password); fail("Cannot commit wrapper"); }
+        catch (java.io.IOException expected) { assertFalse(ProtectedKey.exists(bad)); }
+        assertEquals(1,bad.getFilesDir().list().length); // only the synthetic obstruction, no restored generation
+        Context orphan=sandbox(base,"orphan-generation");
+        File lostVault=new File(orphan.getFilesDir(),"restored-"+java.util.UUID.randomUUID()+"/secrets.enc");
+        assertTrue(lostVault.getParentFile().mkdir()); java.nio.file.Files.write(lostVault.toPath(),new byte[]{1});
+        try { ProtectedKey.create(orphan,"4826"); fail("Must not silently replace a recovered vault key"); }
+        catch (IllegalStateException expected) { assertFalse(ProtectedKey.exists(orphan)); assertTrue(lostVault.exists()); }
+        java.util.Arrays.fill(password,'\0');
+    }
+    private static void awaitState(EngineHost.State expected) throws Exception {
+        long until = System.nanoTime()+TimeUnit.SECONDS.toNanos(30);
+        while (EngineHost.state()!=expected && System.nanoTime()<until) Thread.sleep(100);
+        assertEquals(expected,EngineHost.state());
+    }
+    @Test public void d_serviceSerializesRapidCyclesAndActivityRecreation() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        if (!ProtectedKey.exists(context)) ProtectedKey.create(context,"4826");
+        Context missingKey=sandbox(context,"missing-key");
+        long failedLease=EngineHost.start(missingKey); awaitState(EngineHost.State.ERROR);
+        assertFalse(ProtectedKey.exists(missingKey)); EngineHost.stop(failedLease); awaitState(EngineHost.State.STOPPED);
+        context.getSharedPreferences("host",Context.MODE_PRIVATE).edit().putBoolean("wanted",false).commit();
+        long previousLease = -1;
+        for (int cycle=0;cycle<3;cycle++) {
+            try (ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+                // A visible user Activity grants the normal Android foreground-start context.
+                scenario.onActivity(activity -> context.startForegroundService(new android.content.Intent(context,MoliService.class)));
+                awaitState(EngineHost.State.RUNNING);
+                if (previousLease >= 0) { EngineHost.stop(previousLease); assertEquals(EngineHost.State.RUNNING,EngineHost.state()); }
+                previousLease=EngineHost.currentLease();
+                assertTrue(context.getSystemService(android.app.NotificationManager.class).getActiveNotifications().length>0);
+                if (cycle==0) { scenario.recreate(); awaitState(EngineHost.State.RUNNING); }
+            }
+            assertEquals(EngineHost.State.RUNNING,EngineHost.state());
+            context.startService(new android.content.Intent(context,MoliService.class).setAction(MoliService.STOP));
+            awaitState(EngineHost.State.STOPPED);
+            long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+            while (context.getSystemService(android.app.NotificationManager.class).getActiveNotifications().length!=0 && System.nanoTime()<until) Thread.sleep(100);
+            assertEquals(0,context.getSystemService(android.app.NotificationManager.class).getActiveNotifications().length);
+        }
+        // Persistence of an explicit stop across Activity recreation: reopening must not start it.
+        try (ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+            scenario.recreate(); assertEquals(EngineHost.State.STOPPED,EngineHost.state());
+        }
+        // A start followed immediately by stop must drain in order, never overlap JNI calls.
+        long lease = EngineHost.start(context); EngineHost.stop(lease); awaitState(EngineHost.State.STOPPED);
+        assertNull(EngineHost.origin());
+        // Restore starts from stopped state only; maintenance excludes a simultaneous start.
+        java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.Future<Void> maintenance = EngineHost.maintain(() -> { entered.countDown(); assertTrue(release.await(5,TimeUnit.SECONDS)); return null; });
+        assertTrue(entered.await(5,TimeUnit.SECONDS)); assertEquals(-1,EngineHost.start(context));
+        release.countDown(); maintenance.get(5,TimeUnit.SECONDS); awaitState(EngineHost.State.STOPPED);
+    }
+
     @Test public void z_foregroundHostRendersTheOriginalDashboardInWebView() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         if (!ProtectedKey.exists(context)) ProtectedKey.create(context, "4826");
+        context.getSharedPreferences("host",Context.MODE_PRIVATE).edit().putBoolean("wanted",true).commit();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             AtomicBoolean rendered = new AtomicBoolean(false);
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
@@ -81,7 +204,9 @@ public final class NativeSmokeTest {
             assertTrue("The real dashboard must render through the authenticated local WebView", rendered.get());
         } finally {
             context.stopService(new android.content.Intent(context, MoliService.class));
-            NativeServer.stop();
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(30);
+            while (EngineHost.state()!=EngineHost.State.STOPPED && System.nanoTime()<deadline) Thread.sleep(100);
+            assertEquals(EngineHost.State.STOPPED,EngineHost.state());
         }
     }
 }

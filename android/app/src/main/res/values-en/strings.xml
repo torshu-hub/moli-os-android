@@ -1,15 +1,30 @@
 <resources>
-    <string name="app_name">Moli OS</string>
+    <string name="app_name">Moli OS Recovery</string>
     <string name="start">Start</string>
     <string name="stop">Stop</string>
     <string name="starting">Starting Moli…</string>
     <string name="stopped">Moli is stopped.</string>
     <string name="failed">Moli could not start. Your data is preserved.</string>
     <string name="pin_title">Choose your dashboard code</string>
-    <string name="preview_warning">Test build: backup and recovery-key export are still to be implemented. Do not keep irreplaceable data here.</string>
+    <string name="preview_warning">Test build. Encrypted backup is available while stopped. Restore requires a fresh installation; keep the file and password separately. Do not use irreplaceable data yet.</string>
     <string name="pin_hint">4 to 32 digits — keep this code safe</string>
     <string name="pin_invalid">Enter between 4 and 32 digits.</string>
     <string name="service_channel">Moli server</string>
     <string name="service_running">The Moli server is running on this tablet.</string>
     <string name="key_unavailable">The protected key cannot be opened. A new key will not be generated.</string>
+    <string name="stopping">Stopping Moli and saving data…</string>
+    <string name="backup_title">Backup / Restore</string>
+    <string name="backup_export">Export encrypted backup</string>
+    <string name="backup_import">Restore into this fresh installation</string>
+    <string name="backup_info">Stop Moli before backup. The encrypted file includes data, configuration, vault key and dashboard code. Choose a long unique password and keep it separately: recovery requires it. Restore never replaces a configured installation and does not start the server. Limit: 512 MiB, 10,000 internal files. External files referenced by paths are not included. Future Linux compatibility has not been tested. This test app is independent of the earlier prototype and cannot automatically access its data.</string>
+    <string name="backup_stop_first">Stop the server and wait for shutdown to finish before continuing.</string>
+    <string name="backup_fresh_only">Restore refused: this installation already has a key. Use a fresh test installation; do not uninstall your prototype for this test.</string>
+    <string name="backup_password">Recovery password</string>
+    <string name="backup_confirm">Confirm password</string>
+    <string name="backup_password_help">Use at least 16 characters, preferably several random words. This password also protects the vault key. A lost password cannot be recovered.</string>
+    <string name="backup_password_invalid">16 to 1,024 characters; both entries must match.</string>
+    <string name="backup_working">Backup / restore in progress… Keep this window open.</string>
+    <string name="backup_done">Operation complete. Keep the file and password separately. After restore, start Moli manually.</string>
+    <string name="backup_failed">Operation refused or interrupted: check the password, file, free space and compatibility. No active data was replaced. An interrupted export must be recreated.</string>
+    <string name="app_name_receiver">Moli OS Restore Test</string>
 </resources>

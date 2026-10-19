@@ -1,15 +1,30 @@
 <resources>
-    <string name="app_name">Moli OS</string>
+    <string name="app_name">Moli OS Récupération</string>
     <string name="start">Démarrer</string>
     <string name="stop">Arrêter</string>
     <string name="starting">Démarrage de Moli…</string>
     <string name="stopped">Moli est arrêté.</string>
     <string name="failed">Moli ne peut pas démarrer. Vos données sont conservées.</string>
     <string name="pin_title">Choisir le code du tableau de bord</string>
-    <string name="preview_warning">Version de test : l’export de sauvegarde et de la clé de récupération reste à réaliser. N’y conservez pas de données irremplaçables.</string>
+    <string name="preview_warning">Version de test. Sauvegarde chiffrée disponible serveur arrêté. Restauration limitée à une installation vierge ; conservez le fichier et son mot de passe séparément. N’utilisez pas encore de données irremplaçables.</string>
     <string name="pin_hint">4 à 32 chiffres — conservez ce code</string>
     <string name="pin_invalid">Saisissez entre 4 et 32 chiffres.</string>
     <string name="service_channel">Serveur Moli</string>
     <string name="service_running">Le serveur Moli fonctionne sur cette tablette.</string>
     <string name="key_unavailable">La clé protégée ne peut pas être ouverte. Aucune nouvelle clé ne sera créée.</string>
+    <string name="stopping">Arrêt de Moli et enregistrement des données…</string>
+    <string name="backup_title">Sauvegarde / Restauration</string>
+    <string name="backup_export">Exporter une sauvegarde chiffrée</string>
+    <string name="backup_import">Restaurer dans cette installation vierge</string>
+    <string name="backup_info">Arrêtez Moli avant toute sauvegarde. Le fichier chiffré contient les données, la configuration, la clé du coffre et le code du tableau de bord. Choisissez un mot de passe long et unique, conservé séparément : il est indispensable à la récupération. La restauration ne remplace jamais une installation configurée et ne démarre pas le serveur. Limite : 512 Mio, 10 000 fichiers internes. Les fichiers externes référencés par des chemins ne sont pas inclus. Compatibilité future avec Linux non encore testée. Cette application de test est indépendante du prototype précédent et ne récupère pas ses données automatiquement.</string>
+    <string name="backup_stop_first">Arrêtez le serveur et attendez la fin de son arrêt avant de continuer.</string>
+    <string name="backup_fresh_only">Restauration refusée : cette installation possède déjà une clé. Utilisez une installation de test vierge ; ne désinstallez pas votre prototype pour cet essai.</string>
+    <string name="backup_password">Mot de passe de récupération</string>
+    <string name="backup_confirm">Confirmer le mot de passe</string>
+    <string name="backup_password_help">Utilisez au moins 16 caractères, idéalement plusieurs mots aléatoires. Ce mot de passe protège aussi la clé du coffre. Aucun mot de passe perdu ne peut être récupéré.</string>
+    <string name="backup_password_invalid">16 à 1 024 caractères ; les deux saisies doivent être identiques.</string>
+    <string name="backup_working">Sauvegarde / restauration en cours… Gardez cette fenêtre ouverte.</string>
+    <string name="backup_done">Opération terminée. Conservez le fichier et le mot de passe séparément. Après restauration, démarrez Moli manuellement.</string>
+    <string name="backup_failed">Opération refusée ou interrompue : vérifiez le mot de passe, le fichier, l’espace disponible et sa compatibilité. Aucune donnée active n’a été remplacée. Un export interrompu doit être recréé.</string>
+    <string name="app_name_receiver">Moli OS Restauration</string>
 </resources>

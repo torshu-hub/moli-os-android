@@ -2,7 +2,7 @@ name: Standalone Android APK
 
 on:
   push:
-    branches: [android/standalone-apk]
+    branches: [android/standalone-apk, android/recovery-lifecycle]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: standalone-apk-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false # Finish active verification instead of cancelling an already launched build.
 
 jobs:
   apk:
@@ -36,7 +36,16 @@ jobs:
       - name: Build the real embedded dashboard
         working-directory: web
         run: npm ci --no-audit --no-fund && npm run build
+      - name: Restore native libraries only when all native inputs match
+        id: native-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            android/app/src/main/jniLibs/arm64-v8a/libmoli_android.so
+            android/app/src/main/jniLibs/x86_64/libmoli_android.so
+          key: moli-jni-v1-${{ runner.os }}-${{ runner.arch }}-rust1.99.1-ndk28.2.13676358-api28-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.cargo/**', 'crates/**', 'integrations/**', 'locales/**', 'moli.example.toml', 'web/dist/**', 'scripts/build-android.sh') }}
       - name: Build ARM64 JNI
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: sh scripts/build-android.sh arm64-v8a
       - name: Build and inspect the installable ARM64 debug APK
         working-directory: android
@@ -44,15 +53,29 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon :app:assembleDebug :app:lintDebug
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
           python3 ../scripts/verify-android-apk.py app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/debug/app-debug.apk
           mkdir -p ../android-artifacts
           cp app/build/outputs/apk/debug/app-debug.apk ../android-artifacts/moli-arm64-debug.apk
-          sha256sum ../android-artifacts/moli-arm64-debug.apk > ../android-artifacts/SHA256SUMS
+          ./gradlew --no-daemon :app:assembleDebug -PmoliAppSuffix=.recovery.receiver
+          python3 ../scripts/verify-android-apk.py app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../android-artifacts/moli-recovery-receiver-arm64-debug.apk
+          sha256sum ../android-artifacts/*-debug.apk > ../android-artifacts/SHA256SUMS
       - name: Build a separate emulator JNI library
+        if: steps.native-cache.outputs.cache-hit != 'true'
         run: sh scripts/build-android.sh x86_64
+      - name: Save only public-code JNI libraries before emulator tests
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            android/app/src/main/jniLibs/arm64-v8a/libmoli_android.so
+            android/app/src/main/jniLibs/x86_64/libmoli_android.so
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - name: Enable KVM for the disposable CI emulator
         run: sudo chmod a+rw /dev/kvm
       - name: Test the real native server and WebView in an isolated emulator
@@ -65,8 +88,14 @@ jobs:
           working-directory: android
           script: |
             ./gradlew --no-daemon :app:installDebug :app:installDebugAndroidTest -PmoliAbis=x86_64
-            adb shell pm grant io.moli.android android.permission.POST_NOTIFICATIONS
-            ./gradlew --no-daemon :app:connectedDebugAndroidTest -PmoliAbis=x86_64
+            adb shell pm grant io.moli.android.recovery android.permission.POST_NOTIFICATIONS
+            ./gradlew --no-daemon :app:connectedDebugAndroidTest -PmoliAbis=x86_64 -Pandroid.testInstrumentationRunnerArguments.class=io.moli.android.NativeSmokeTest
+            # connectedDebugAndroidTest removes its installed packages during cleanup.
+            # Install a fresh source, then export/import synthetic data before lifecycle checks.
+            ./gradlew --no-daemon :app:installDebug :app:installDebugAndroidTest -PmoliAbis=x86_64
+            adb shell pm grant io.moli.android.recovery android.permission.POST_NOTIFICATIONS
+            sh ../scripts/test-android-recovery-transfer.sh
+            sh ../scripts/test-android-lifecycle.sh
       - name: Retain APK and verification reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -76,5 +105,6 @@ jobs:
             android-artifacts/
             android/app/build/reports/
             android/app/build/outputs/androidTest-results/
+            android/app/build/test-results/
           if-no-files-found: warn
           retention-days: 14

@@ -21,7 +21,10 @@ final class ProtectedKey {
     private static final String ALIAS = "moli.master.wrap.v1";
     private ProtectedKey() {}
 
-    static boolean exists(Context context) { return file(context).getBaseFile().exists(); }
+    static boolean exists(Context context) {
+        File base = file(context).getBaseFile();
+        return base.exists() || new File(base.getPath() + ".bak").exists();
+    }
     private static AtomicFile file(Context context) {
         return new AtomicFile(new File(context.getNoBackupFilesDir(), "moli-key.wrap"));
     }
@@ -42,6 +45,25 @@ final class ProtectedKey {
         File data = new File(context.getFilesDir(), "moli");
         // Missing wrapping material beside an existing vault must never rekey it.
         if (new File(data, "secrets.enc").exists()) throw new IllegalStateException("Existing vault");
+        File[] generations = context.getFilesDir().listFiles((dir, name) -> name.startsWith("restored-"));
+        if (generations == null) throw new IllegalStateException("Cannot inspect existing data");
+        for (File generation : generations)
+            if (new File(generation, "secrets.enc").exists()) throw new IllegalStateException("Existing recovered vault");
+        install(context, new JSONObject().put("master", randomHex()).put("pin", pin));
+    }
+    static File dataDirectory(Context context, JSONObject keys) throws Exception {
+        String directory = keys.optString("directory", "moli");
+        if (!directory.equals("moli") && !directory.matches("restored-[a-f0-9-]{36}"))
+            throw new IllegalStateException("Invalid data generation");
+        File data = new File(context.getFilesDir(), directory);
+        if (!directory.equals("moli") && (!data.isDirectory() || !new File(data, "moli.toml").isFile()))
+            throw new IllegalStateException("Recovered data generation is missing");
+        return data;
+    }
+    /** Commit point: an atomic wrapped record selects both the data generation and its key. */
+    static synchronized void install(Context context, JSONObject credentials) throws Exception {
+        if (exists(context)) throw new IllegalStateException("Existing installation");
+        validate(credentials);
         KeyStore store = store();
         if (!store.containsAlias(ALIAS)) {
             KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
@@ -52,7 +74,6 @@ final class ProtectedKey {
             generator.generateKey();
         }
         SecretKey wrapper = (SecretKey) store.getKey(ALIAS, null);
-        JSONObject credentials = new JSONObject().put("master", randomHex()).put("pin", pin);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.ENCRYPT_MODE, wrapper);
         cipher.updateAAD(ALIAS.getBytes(StandardCharsets.UTF_8));
@@ -64,6 +85,11 @@ final class ProtectedKey {
         FileOutputStream output = target.startWrite();
         try { output.write(record.array()); target.finishWrite(output); }
         catch (Exception failure) { target.failWrite(output); throw failure; }
+    }
+    static void validate(JSONObject credentials) throws Exception {
+        if (!credentials.getString("master").matches("[a-f0-9]{64}") ||
+                !credentials.getString("pin").matches("[0-9]{4,32}"))
+            throw new IllegalStateException("Invalid recovery credentials");
     }
     static synchronized JSONObject open(Context context) throws Exception {
         byte[] bytes = file(context).readFully();
@@ -78,6 +104,8 @@ final class ProtectedKey {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, wrapper, new GCMParameterSpec(128, iv));
         cipher.updateAAD(ALIAS.getBytes(StandardCharsets.UTF_8));
-        return new JSONObject(new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8));
+        JSONObject credentials = new JSONObject(new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8));
+        validate(credentials);
+        return credentials;
     }
 }
