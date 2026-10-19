@@ -30,7 +30,10 @@ public final class MainActivity extends Activity {
             stop.setEnabled(state == EngineHost.State.RUNNING || state == EngineHost.State.STARTING || state == EngineHost.State.ERROR);
             backup.setEnabled(state == EngineHost.State.STOPPED);
             if (state != EngineHost.State.RUNNING) {
-                loaded = null; web.setVisibility(View.GONE); status.setVisibility(View.VISIBLE);
+                if (loaded != null) {
+                    loaded = null; web.stopLoading(); web.loadUrl("about:blank");
+                }
+                web.setVisibility(View.GONE); status.setVisibility(View.VISIBLE);
                 status.setText(state == EngineHost.State.STARTING ? R.string.starting : state == EngineHost.State.STOPPING ? R.string.stopping :
                         state == EngineHost.State.ERROR ? R.string.failed : state == EngineHost.State.MAINTENANCE ? R.string.backup_working : R.string.stopped);
                 if (state == EngineHost.State.STOPPED || state == EngineHost.State.ERROR) {

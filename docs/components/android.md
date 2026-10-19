@@ -118,3 +118,8 @@ The CI additionally transfers **only an encrypted synthetic archive** between tw
 installed applications with distinct Android UIDs, verifies the receiver initially
 has no wrapping-key alias, restores SQLite/files/the vault, and starts the real
 engine with the recovered key. No runtime archive is retained in CI artifacts.
+
+CI reuses only the two public-code JNI libraries when Rust sources/dependencies,
+embedded assets/catalogues/locales, build script, ABI/toolchain/API settings match.
+Android shell changes still rebuild and verify both APKs and run emulator tests.
+The cache never contains runtime data, keys or backup files.
