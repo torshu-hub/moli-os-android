@@ -25,7 +25,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      RUST_VERSION: 1.88.0
+      # The server uses match if-let guards, stabilized after its declared MSRV.
+      RUST_VERSION: 1.99.1
       NODE_VERSION: 24.19.0
       NDK_VERSION: 28.2.13676358
       # Build probe only; the device API and the APK minimum remain unverified.
