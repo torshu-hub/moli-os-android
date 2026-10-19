@@ -20,7 +20,5 @@ trap 'rm -f "$transfer"' EXIT
 adb exec-out run-as "$sender" cat files/transfer.molibak > "$transfer"
 ./gradlew --no-daemon :app:installDebug :app:installDebugAndroidTest -PmoliAbis=x86_64 -PmoliAppSuffix=.recovery.receiver
 adb shell run-as "$receiver" mkdir -p files
-adb push "$transfer" /data/local/tmp/moli-synthetic-transfer.molibak
-adb shell run-as "$receiver" cp /data/local/tmp/moli-synthetic-transfer.molibak files/transfer.molibak
+adb shell -T run-as "$receiver" tee files/transfer.molibak < "$transfer" > /dev/null
 run_test "$receiver" importFreshIntoIndependentUid ../android-artifacts/recovery-import-test.txt
-adb shell rm /data/local/tmp/moli-synthetic-transfer.molibak
