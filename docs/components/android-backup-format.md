@@ -18,7 +18,9 @@ The magic fixes all algorithms/parameters; reject unknown versions. Each record:
 
 A mandatory authenticated record with `L=0` ends the stream. Missing/reordered,
 corrupted or trailing records/bytes must fail. Bound cumulative decrypted bytes
-before allocation (520 MiB); indices cannot wrap under this cap. Chunking bounds
+before allocation (520 MiB), and reject more than 8,321 records including the final
+record. The exporter uses full 65,536-byte records except its last data record;
+the count cap also bounds overhead from malicious tiny records. Indices cannot wrap. Chunking bounds
 AEAD memory use, without relying on provider buffering an entire archive.
 
 Record plaintext concatenates to a UTF-8-named ZIP. First entry `manifest.json`

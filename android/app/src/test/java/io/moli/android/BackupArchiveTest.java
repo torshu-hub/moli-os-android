@@ -65,7 +65,8 @@ public final class BackupArchiveTest {
         rejected(seal(manifest),PASSWORD);
         manifest.put("engine","0.1.0"); rejected(seal(manifest),PASSWORD); // missing payload
         rejected(seal(manifest,"data/moli.toml"),PASSWORD); // wrong hash
-        rejected(seal(manifest,"data/moli.toml","data/extra"),PASSWORD); // undeclared payload
+        manifest.getJSONObject("files").getJSONObject("moli.toml").put("sha256","e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        rejected(seal(manifest,"data/moli.toml","data/extra"),PASSWORD); // undeclared payload after a valid file
         manifest.getJSONObject("files").getJSONObject("moli.toml").put("size",BackupArchive.MAX_BYTES+1);
         rejected(seal(manifest),PASSWORD);
     }

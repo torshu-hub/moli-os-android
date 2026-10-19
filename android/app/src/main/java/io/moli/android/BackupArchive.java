@@ -192,6 +192,7 @@ final class BackupArchive {
             if (len == 0) return 0;
             if (pos == plain.length) {
                 if (ended) return -1;
+                if (seq >= 8321) throw new IOException("Too many encrypted records");
                 int length = in.readInt();
                 if (length < 0 || length > CHUNK) throw new IOException("Invalid record length");
                 total += length; if (total > MAX_BYTES + 8 * 1024 * 1024) throw new IOException("Archive too large");
