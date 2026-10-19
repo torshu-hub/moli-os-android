@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Moli OS</string>
+    <string name="start">Démarrer</string>
+    <string name="stop">Arrêter</string>
+    <string name="starting">Démarrage de Moli…</string>
+    <string name="stopped">Moli est arrêté.</string>
+    <string name="failed">Moli ne peut pas démarrer. Vos données sont conservées.</string>
+    <string name="pin_title">Choisir le code du tableau de bord</string>
+    <string name="preview_warning">Version de test : l’export de sauvegarde et de la clé de récupération reste à réaliser. N’y conservez pas de données irremplaçables.</string>
+    <string name="pin_hint">4 à 32 chiffres — conservez ce code</string>
+    <string name="pin_invalid">Saisissez entre 4 et 32 chiffres.</string>
+    <string name="service_channel">Serveur Moli</string>
+    <string name="service_running">Le serveur Moli fonctionne sur cette tablette.</string>
+    <string name="key_unavailable">La clé protégée ne peut pas être ouverte. Aucune nouvelle clé ne sera créée.</string>
+</resources>

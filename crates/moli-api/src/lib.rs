@@ -90,6 +90,12 @@ impl Household {
 }
 
 /// Surface settings.
+/// Marker supplied only after the embedding host authenticates its client.
+/// It removes CLI trust and never grants a human/PIN session.
+#[derive(Clone, Copy, Debug)]
+pub struct EmbeddedClient;
+
+/// Surface settings.
 #[derive(Clone, Debug, Default)]
 pub struct Options {
     /// Host names (or IPs) this instance is reached by, besides localhost.

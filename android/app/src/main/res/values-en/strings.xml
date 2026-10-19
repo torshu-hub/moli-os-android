@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Moli OS</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="starting">Starting Moli…</string>
+    <string name="stopped">Moli is stopped.</string>
+    <string name="failed">Moli could not start. Your data is preserved.</string>
+    <string name="pin_title">Choose your dashboard code</string>
+    <string name="preview_warning">Test build: backup and recovery-key export are still to be implemented. Do not keep irreplaceable data here.</string>
+    <string name="pin_hint">4 to 32 digits — keep this code safe</string>
+    <string name="pin_invalid">Enter between 4 and 32 digits.</string>
+    <string name="service_channel">Moli server</string>
+    <string name="service_running">The Moli server is running on this tablet.</string>
+    <string name="key_unavailable">The protected key cannot be opened. A new key will not be generated.</string>
+</resources>
