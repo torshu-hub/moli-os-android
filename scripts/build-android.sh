@@ -6,7 +6,14 @@ rust_version=${MOLI_RUST_VERSION:-1.99.1}
 ndk_version=${MOLI_NDK_VERSION:-28.2.13676358}
 android_api=${MOLI_ANDROID_API:-28}
 abi=${1:-arm64-v8a}
-ndk=${ANDROID_NDK_HOME:-${ANDROID_HOME:?Set ANDROID_HOME}/ndk/$ndk_version}
+# Hosted runners may predefine ANDROID_NDK_HOME to a different installed NDK.
+# Select our pinned package explicitly, not the runner's default.
+ndk=${MOLI_ANDROID_NDK_HOME:-${ANDROID_HOME:?Set ANDROID_HOME}/ndk/$ndk_version}
+grep -q "Pkg.Revision = $ndk_version" "$ndk/source.properties"
+export ANDROID_NDK_HOME="$ndk"
+export ANDROID_NDK_ROOT="$ndk"
+# Make ELF alignment explicit even when Rust's linker defaults differ.
+export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,max-page-size=16384"
 bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
 case "$abi" in
   arm64-v8a)
