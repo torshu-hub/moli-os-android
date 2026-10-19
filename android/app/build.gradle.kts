@@ -13,8 +13,8 @@ android {
         applicationId = "io.moli.android"
         minSdk = 28 // Provisional until the target device is inspected.
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-dev"
+        versionCode = 2
+        versionName = "0.2.0-recovery-preview"
         ndk { abiFilters += (findProperty("moliAbis") as String? ?: "arm64-v8a").split(",") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -23,7 +23,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildTypes {
-        getByName("debug") { isJniDebuggable = true }
+        getByName("debug") {
+            isJniDebuggable = true
+            applicationIdSuffix = ".recovery" // Coexists with earlier APKs; ephemeral CI debug signatures cannot update them.
+        }
         getByName("release") { isMinifyEnabled = false }
     }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/notices"))
@@ -32,6 +35,8 @@ android {
 tasks.named("preBuild") { dependsOn(embedNotices) }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250107")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

@@ -3,86 +3,59 @@ package io.moli.android;
 import android.app.*;
 import android.content.Intent;
 import android.os.*;
-import org.json.JSONObject;
-import java.io.File;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
-/** The service, not the WebView, owns the native server's lifetime. */
+/** Android foreground lifetime around a process-wide, serialized native host. */
 public final class MoliService extends Service {
     static final String STOP = "io.moli.android.STOP";
-    private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final LocalBinder binder = new LocalBinder();
-    private volatile String origin;
-    private volatile String token;
-    private volatile boolean starting;
-    private volatile boolean failed;
-    private volatile boolean stopping;
-
-    final class LocalBinder extends Binder {
-        MoliService service() { return MoliService.this; }
-    }
-    String origin() { return origin; }
-    String token() { return token; }
-    boolean failed() { return failed; }
-    boolean stopped() { return stopping && origin == null && !starting; }
-
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private long lease = -1;
+    private EngineHost.State notified;
+    final class LocalBinder extends Binder { MoliService service() { return MoliService.this; } }
+    String origin() { return EngineHost.state() == EngineHost.State.RUNNING ? EngineHost.origin() : null; }
+    String token() { return EngineHost.token(); }
+    boolean failed() { return EngineHost.state() == EngineHost.State.ERROR; }
+    boolean stopped() { return EngineHost.state() == EngineHost.State.STOPPED; }
+    private final Runnable monitor = new Runnable() {
+        @Override public void run() {
+            EngineHost.State state = EngineHost.state();
+            if (state == EngineHost.State.STOPPED || state == EngineHost.State.ERROR) {
+                stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return;
+            }
+            if (state != notified) { startForeground(1, notification(state)); notified = state; }
+            if (state != EngineHost.State.RUNNING) handler.postDelayed(this, 250);
+        }
+    };
     @Override public void onCreate() {
         super.onCreate();
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        manager.createNotificationChannel(new NotificationChannel("moli", getString(R.string.service_channel), NotificationManager.IMPORTANCE_LOW));
+        getSystemService(NotificationManager.class).createNotificationChannel(new NotificationChannel(
+                "moli", getString(R.string.service_channel), NotificationManager.IMPORTANCE_LOW));
+    }
+    private Notification notification(EngineHost.State state) {
+        PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent stop = PendingIntent.getService(this, 1, new Intent(this, MoliService.class).setAction(STOP), PendingIntent.FLAG_IMMUTABLE);
+        int text = state == EngineHost.State.STARTING ? R.string.starting :
+                state == EngineHost.State.STOPPING ? R.string.stopping : R.string.service_running;
+        return new Notification.Builder(this, "moli").setSmallIcon(android.R.drawable.ic_menu_myplaces)
+                .setContentTitle(getString(R.string.app_name)).setContentText(getString(text))
+                .setContentIntent(open).setOngoing(true)
+                .addAction(new Notification.Action.Builder(null, getString(R.string.stop), stop).build()).build();
     }
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && STOP.equals(intent.getAction())) {
-            stopEngine();
-            return START_NOT_STICKY;
+            getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", false).apply();
+            EngineHost.stop(lease);
+        } else {
+            // Required immediately even when a duplicate start is being rejected.
+            startForeground(1, notification(EngineHost.State.STARTING));
+            lease = EngineHost.start(this);
+            if (lease < 0) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return START_NOT_STICKY; }
         }
-        PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
-        PendingIntent stop = PendingIntent.getService(this, 1, new Intent(this, MoliService.class).setAction(STOP), PendingIntent.FLAG_IMMUTABLE);
-        Notification notification = new Notification.Builder(this, "moli")
-                .setSmallIcon(android.R.drawable.ic_menu_myplaces)
-                .setContentTitle(getString(R.string.app_name)).setContentText(getString(R.string.service_running))
-                .setContentIntent(open).setOngoing(true)
-                .addAction(new Notification.Action.Builder(null, getString(R.string.stop), stop).build()).build();
-        startForeground(1, notification);
-        if (!starting && origin == null && !stopping) {
-            starting = true;
-            worker.execute(() -> {
-                try {
-                    JSONObject keys = ProtectedKey.open(this);
-                    String session = ProtectedKey.randomHex();
-                    int port = NativeServer.start(new File(getFilesDir(), "moli").getAbsolutePath(),
-                            keys.getString("master"), session, keys.getString("pin"));
-                    token = session;
-                    origin = "http://127.0.0.1:" + port;
-                } catch (Exception | LinkageError failure) {
-                    // Never include key material or native panic text in logs/UI.
-                    failed = true;
-                    new Handler(Looper.getMainLooper()).post(() -> { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); });
-                } finally { starting = false; }
-            });
-        }
+        notified = null; handler.removeCallbacks(monitor); handler.post(monitor);
         return START_NOT_STICKY;
-    }
-    private void stopEngine() {
-        if (stopping) return;
-        stopping = true;
-        worker.execute(() -> {
-            try { NativeServer.stop(); }
-            catch (Exception | LinkageError failure) { failed = true; }
-            finally {
-                origin = null; token = null;
-                new Handler(Looper.getMainLooper()).post(() -> { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); });
-            }
-        });
     }
     @Override public IBinder onBind(Intent intent) { return binder; }
     @Override public void onDestroy() {
-        if (!stopping) worker.execute(() -> {
-            try { NativeServer.stop(); }
-            catch (Exception | LinkageError failure) { failed = true; }
-        });
-        worker.shutdown();
-        super.onDestroy();
+        handler.removeCallbacks(monitor); EngineHost.stop(lease); super.onDestroy();
     }
 }

@@ -14,27 +14,31 @@ import android.widget.*;
 public final class MainActivity extends Activity {
     WebView web; // Package-visible to the isolated instrumentation smoke test.
     private TextView status;
+    private Button start, stop, backup;
     private MoliService server;
     private boolean bound;
     private String loaded;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
-            if (server != null && (server.failed() || server.stopped())) {
-                boolean failed = server.failed();
-                if (bound) { unbindService(connection); bound = false; }
-                server = null; loaded = null;
-                web.loadUrl("about:blank"); web.setVisibility(View.GONE);
-                status.setText(failed ? R.string.failed : R.string.stopped);
-                status.setVisibility(View.VISIBLE);
-                return;
+            EngineHost.State state = EngineHost.state();
+            start.setEnabled(state == EngineHost.State.STOPPED);
+            stop.setEnabled(state == EngineHost.State.RUNNING || state == EngineHost.State.STARTING || state == EngineHost.State.ERROR);
+            backup.setEnabled(state == EngineHost.State.STOPPED);
+            if (state != EngineHost.State.RUNNING) {
+                loaded = null; web.setVisibility(View.GONE); status.setVisibility(View.VISIBLE);
+                status.setText(state == EngineHost.State.STARTING ? R.string.starting : state == EngineHost.State.STOPPING ? R.string.stopping :
+                        state == EngineHost.State.ERROR ? R.string.failed : state == EngineHost.State.MAINTENANCE ? R.string.backup_working : R.string.stopped);
+                if (state == EngineHost.State.STOPPED || state == EngineHost.State.ERROR) {
+                    if (bound) { unbindService(connection); bound = false; } server = null;
+                }
             }
             if (server != null && server.origin() != null && !server.origin().equals(loaded)) {
                 String origin = server.origin();
                 String token = server.token();
                 CookieManager.getInstance().setCookie(origin,
                         "moli_android=" + token + "; Path=/; HttpOnly; SameSite=Strict", accepted -> {
-                    if (!isDestroyed() && Boolean.TRUE.equals(accepted)) {
+                    if (!isDestroyed() && EngineHost.state() == EngineHost.State.RUNNING && origin.equals(EngineHost.origin()) && Boolean.TRUE.equals(accepted)) {
                         loaded = origin;
                         web.loadUrl(origin + "/");
                         web.setVisibility(View.VISIBLE);
@@ -58,9 +62,11 @@ public final class MainActivity extends Activity {
         super.onCreate(saved);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         LinearLayout controls = new LinearLayout(this);
-        Button start = new Button(this); start.setText(R.string.start); start.setOnClickListener(v -> prepare());
-        Button stop = new Button(this); stop.setText(R.string.stop); stop.setOnClickListener(v -> stopServer());
+        start = new Button(this); start.setText(R.string.start); start.setOnClickListener(v -> prepare());
+        stop = new Button(this); stop.setText(R.string.stop); stop.setOnClickListener(v -> stopServer());
         controls.addView(start); controls.addView(stop); root.addView(controls);
+        backup = new Button(this); backup.setText(R.string.backup_title);
+        backup.setOnClickListener(v -> startActivity(new Intent(this, BackupActivity.class))); root.addView(backup);
         status = new TextView(this); status.setText(R.string.stopped); root.addView(status);
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);
@@ -87,9 +93,11 @@ public final class MainActivity extends Activity {
         root.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
-        prepare();
+        handler.post(refresh);
+        if (getSharedPreferences("host", MODE_PRIVATE).getBoolean("wanted", true) && ProtectedKey.exists(this)) startServer();
     }
     private void prepare() {
+        if (EngineHost.state() != EngineHost.State.STOPPED) return;
         if (ProtectedKey.exists(this)) { startServer(); return; }
         EditText pin = new EditText(this);
         pin.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
@@ -99,6 +107,7 @@ public final class MainActivity extends Activity {
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String code = pin.getText().toString();
             if (!code.matches("[0-9]{4,32}")) { pin.setError(getString(R.string.pin_invalid)); return; }
+            if (EngineHost.state() != EngineHost.State.STOPPED) { dialog.dismiss(); return; }
             try { ProtectedKey.create(this, code); dialog.dismiss(); startServer(); }
             catch (Exception failure) { status.setText(R.string.key_unavailable); dialog.dismiss(); }
         }));
@@ -106,19 +115,24 @@ public final class MainActivity extends Activity {
     }
     private void startServer() {
         if (bound) return;
+        getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", true).apply();
         status.setText(R.string.starting); status.setVisibility(View.VISIBLE);
         Intent intent = new Intent(this, MoliService.class);
         startForegroundService(intent);
         bound = bindService(intent, connection, BIND_AUTO_CREATE);
-        handler.post(refresh);
     }
     private void stopServer() {
-        handler.removeCallbacks(refresh);
-        if (bound) { unbindService(connection); bound = false; }
-        server = null; loaded = null;
+        getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", false).apply();
+        // Keep the binding until the worker confirms that persistence/shutdown finished.
         startService(new Intent(this, MoliService.class).setAction(MoliService.STOP));
         web.loadUrl("about:blank"); web.setVisibility(View.GONE);
-        status.setText(R.string.stopped); status.setVisibility(View.VISIBLE);
+        status.setText(R.string.stopping); status.setVisibility(View.VISIBLE);
+    }
+    @Override public void onStart() {
+        super.onStart(); web.onResume(); handler.removeCallbacks(refresh); handler.post(refresh);
+    }
+    @Override public void onStop() {
+        handler.removeCallbacks(refresh); web.onPause(); super.onStop();
     }
     @Override public void onDestroy() {
         handler.removeCallbacks(refresh);
