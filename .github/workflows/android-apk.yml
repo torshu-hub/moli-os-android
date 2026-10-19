@@ -50,7 +50,12 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/debug/app-debug.apk
           mkdir -p ../android-artifacts
           cp app/build/outputs/apk/debug/app-debug.apk ../android-artifacts/moli-arm64-debug.apk
-          sha256sum ../android-artifacts/moli-arm64-debug.apk > ../android-artifacts/SHA256SUMS
+          ./gradlew --no-daemon :app:assembleDebug -PmoliAppSuffix=.recovery.receiver
+          python3 ../scripts/verify-android-apk.py app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../android-artifacts/moli-recovery-receiver-arm64-debug.apk
+          sha256sum ../android-artifacts/*-debug.apk > ../android-artifacts/SHA256SUMS
       - name: Build a separate emulator JNI library
         run: sh scripts/build-android.sh x86_64
       - name: Enable KVM for the disposable CI emulator
@@ -66,8 +71,9 @@ jobs:
           script: |
             ./gradlew --no-daemon :app:installDebug :app:installDebugAndroidTest -PmoliAbis=x86_64
             adb shell pm grant io.moli.android.recovery android.permission.POST_NOTIFICATIONS
-            ./gradlew --no-daemon :app:connectedDebugAndroidTest -PmoliAbis=x86_64
+            ./gradlew --no-daemon :app:connectedDebugAndroidTest -PmoliAbis=x86_64 -Pandroid.testInstrumentationRunnerArguments.class=io.moli.android.NativeSmokeTest
             sh ../scripts/test-android-lifecycle.sh
+            sh ../scripts/test-android-recovery-transfer.sh
       - name: Retain APK and verification reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

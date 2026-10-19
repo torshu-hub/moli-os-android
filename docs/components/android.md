@@ -32,7 +32,11 @@ is for testing and not a long-term production update identity. This recovery pre
 uses application ID `io.moli.android.recovery` and appears as **Moli OS Recovery**
 (localized). It coexists with the previous `io.moli.android` prototype; it cannot
 access that application’s private data. Never uninstall the earlier prototype to
-resolve a signature mismatch. Signing continuity for future updates is still open.
+resolve a signature mismatch. Signing continuity for future updates is still open. The same CI artifact also contains
+`moli-recovery-receiver-arm64-debug.apk` (`io.moli.android.recovery.receiver`,
+**Moli OS Restore Test**). It starts empty and permits a file-picker restore without
+uninstalling either other app. Do not press Start or create a PIN in this receiver
+before importing. The two APKs are independent installations with separate Keystores.
 
 The CI also builds an x86_64 library and a separate emulator-only APK using
 `-PmoliAbis=x86_64`. It tests JNI, local authentication, embedded assets,
@@ -109,3 +113,8 @@ disabled while stopping. Closing/recreating the Activity does not stop the servi
 an explicit stop is remembered on reopening. The WebView/UI polling pauses when
 hidden and service polling stops once ready. No wake lock, battery exemption,
 reboot receiver or automatic recovery from Android force-stop is added.
+
+The CI additionally transfers **only an encrypted synthetic archive** between two
+installed applications with distinct Android UIDs, verifies the receiver initially
+has no wrapping-key alias, restores SQLite/files/the vault, and starts the real
+engine with the recovered key. No runtime archive is retained in CI artifacts.

@@ -26,4 +26,5 @@
     <string name="backup_working">Backup / restore in progress… Keep this window open.</string>
     <string name="backup_done">Operation complete. Keep the file and password separately. After restore, start Moli manually.</string>
     <string name="backup_failed">Operation refused or interrupted: check the password, file, free space and compatibility. No active data was replaced. An interrupted export must be recreated.</string>
+    <string name="app_name_receiver">Moli OS Restore Test</string>
 </resources>

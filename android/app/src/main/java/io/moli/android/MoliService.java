@@ -10,6 +10,8 @@ public final class MoliService extends Service {
     private final LocalBinder binder = new LocalBinder();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private long lease = -1;
+    private boolean commandReceived;
+    boolean hasCommand() { return commandReceived; }
     private EngineHost.State notified;
     final class LocalBinder extends Binder { MoliService service() { return MoliService.this; } }
     String origin() { return EngineHost.state() == EngineHost.State.RUNNING ? EngineHost.origin() : null; }
@@ -42,6 +44,7 @@ public final class MoliService extends Service {
                 .addAction(new Notification.Action.Builder(null, getString(R.string.stop), stop).build()).build();
     }
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        commandReceived = true;
         if (intent != null && STOP.equals(intent.getAction())) {
             getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", false).apply();
             lease = EngineHost.currentLease();

@@ -17,11 +17,15 @@ public final class MainActivity extends Activity {
     private Button start, stop, backup;
     private MoliService server;
     private boolean bound;
-    private String loaded;
+    private volatile String loaded;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
             EngineHost.State state = EngineHost.state();
+            // Binding can complete after the first UI refresh. Do not unbind a start
+            // request before Android has delivered its command to the service.
+            if (state == EngineHost.State.STOPPED && bound && (server == null || !server.hasCommand()))
+                state = EngineHost.State.STARTING;
             start.setEnabled(state == EngineHost.State.STOPPED);
             stop.setEnabled(state == EngineHost.State.RUNNING || state == EngineHost.State.STARTING || state == EngineHost.State.ERROR);
             backup.setEnabled(state == EngineHost.State.STOPPED);

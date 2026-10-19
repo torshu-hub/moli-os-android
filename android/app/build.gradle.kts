@@ -13,6 +13,7 @@ android {
         applicationId = "io.moli.android"
         minSdk = 28 // Provisional until the target device is inspected.
         targetSdk = 35
+        manifestPlaceholders["moliAppLabel"] = "@string/app_name"
         versionCode = 2
         versionName = "0.2.0-recovery-preview"
         ndk { abiFilters += (findProperty("moliAbis") as String? ?: "arm64-v8a").split(",") }
@@ -25,7 +26,9 @@ android {
     buildTypes {
         getByName("debug") {
             isJniDebuggable = true
-            applicationIdSuffix = ".recovery" // Coexists with earlier APKs; ephemeral CI debug signatures cannot update them.
+            val suffix = findProperty("moliAppSuffix") as String? ?: ".recovery"
+            applicationIdSuffix = suffix // Independent recovery preview and disposable receiver.
+            if (suffix == ".recovery.receiver") manifestPlaceholders["moliAppLabel"] = "@string/app_name_receiver"
         }
         getByName("release") { isMinifyEnabled = false }
     }

@@ -26,4 +26,5 @@
     <string name="backup_working">Sauvegarde / restauration en cours… Gardez cette fenêtre ouverte.</string>
     <string name="backup_done">Opération terminée. Conservez le fichier et le mot de passe séparément. Après restauration, démarrez Moli manuellement.</string>
     <string name="backup_failed">Opération refusée ou interrompue : vérifiez le mot de passe, le fichier, l’espace disponible et sa compatibilité. Aucune donnée active n’a été remplacée. Un export interrompu doit être recréé.</string>
+    <string name="app_name_receiver">Moli OS Restauration</string>
 </resources>
