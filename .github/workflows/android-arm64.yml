@@ -1,0 +1,115 @@
+name: Android ARM64 build probe
+
+on:
+  push:
+    branches: [build/android-arm64-check]
+    paths:
+      - .github/workflows/android-arm64.yml
+      - Cargo.toml
+      - Cargo.lock
+      - crates/**
+      - web/**
+      - locales/**
+      - integrations/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      RUST_VERSION: 1.88.0
+      NODE_VERSION: 24.19.0
+      NDK_VERSION: 28.2.13676358
+      # Build probe only; the device API and the APK minimum remain unverified.
+      ANDROID_API: 28
+      CARGO_TERM_COLOR: never
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build the embedded dashboard
+        working-directory: web
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run build
+          test -s dist/index.html
+
+      - name: Install the Rust toolchain
+        run: |
+          set -euo pipefail
+          rustup toolchain install "$RUST_VERSION" --profile minimal --target aarch64-linux-android
+
+      - name: Install and configure the Android NDK
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:?The runner must provide the Android SDK}"
+          sdk_manager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$sdk_manager"
+          "$sdk_manager" --install "ndk;$NDK_VERSION"
+          ndk_root="$sdk_root/ndk/$NDK_VERSION"
+          ndk_bin="$ndk_root/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          android_cc="$ndk_bin/aarch64-linux-android${ANDROID_API}-clang"
+          test -x "$android_cc"
+          test -x "$ndk_bin/llvm-ar"
+          {
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$android_cc"
+            echo "CC_aarch64_linux_android=$android_cc"
+            echo "CXX_aarch64_linux_android=$ndk_bin/aarch64-linux-android${ANDROID_API}-clang++"
+            echo "AR_aarch64_linux_android=$ndk_bin/llvm-ar"
+            echo "ANDROID_NDK_HOME=$ndk_root"
+            echo "ANDROID_NDK_ROOT=$ndk_root"
+          } >> "$GITHUB_ENV"
+          mkdir -p build-evidence
+          {
+            git rev-parse HEAD
+            rustc +"$RUST_VERSION" -Vv
+            cargo +"$RUST_VERSION" -V
+            node --version
+            npm --version
+            cat "$ndk_root/source.properties"
+            "$android_cc" --version
+          } > build-evidence/toolchain.txt
+
+      - name: Cross-compile the real Moli OS server
+        run: |
+          set -euo pipefail
+          cargo +"$RUST_VERSION" build --release --locked -p moli-os --target aarch64-linux-android 2>&1 | tee build-evidence/cargo-build.log
+
+      - name: Inspect the resulting Android ELF
+        run: |
+          set -euo pipefail
+          binary=target/aarch64-linux-android/release/moli-os
+          test -s "$binary"
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf" --file-header --program-headers --dynamic "$binary" > build-evidence/elf.txt
+          sha256sum "$binary" > build-evidence/SHA256SUMS
+          cp "$binary" build-evidence/moli-os
+          {
+            echo 'Android ARM64 server linked successfully.'
+            echo 'This is a native executable build probe, not an APK or an on-device test.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain build evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android-arm64-build-evidence
+          path: build-evidence/
+          if-no-files-found: warn
+          retention-days: 7
