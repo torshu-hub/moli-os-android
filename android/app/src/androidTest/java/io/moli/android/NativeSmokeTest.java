@@ -89,7 +89,9 @@ public final class NativeSmokeTest {
             assertEquals(200,login.getResponseCode()); login.disconnect();
         } finally { NativeServer.stop(); }
         assertTrue(new File(data, "secrets.enc").isFile());
-        File recordings = new File(data,"recordings"); assertTrue(recordings.mkdir());
+        File recordings = new File(data,"recordings");
+        if (!recordings.exists()) assertTrue(recordings.mkdir());
+        assertTrue(recordings.isDirectory());
         java.nio.file.Files.write(new File(recordings,"synthetic.txt").toPath(), new byte[]{17,42});
         java.nio.file.Files.write(new File(data,"settings.json").toPath(), "{}".getBytes(StandardCharsets.UTF_8));
         try (android.database.sqlite.SQLiteDatabase db = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(new File(data,"synthetic.db"),null)) {
