@@ -23,6 +23,9 @@ final class BackupStorage {
         try {
             JSONObject keys = BackupArchive.importTo(input, password, staging);
             keys.put("directory", staging.getName());
+            // Reopening the Activity after recovery must not silently activate drivers.
+            if (!context.getSharedPreferences("host", Context.MODE_PRIVATE).edit().putBoolean("wanted", false).commit())
+                throw new IOException("Cannot persist stopped state");
             ProtectedKey.install(context, keys);
             committed = true;
         } finally {

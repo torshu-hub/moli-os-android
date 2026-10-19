@@ -21,7 +21,10 @@ final class ProtectedKey {
     private static final String ALIAS = "moli.master.wrap.v1";
     private ProtectedKey() {}
 
-    static boolean exists(Context context) { return file(context).getBaseFile().exists(); }
+    static boolean exists(Context context) {
+        File base = file(context).getBaseFile();
+        return base.exists() || new File(base.getPath() + ".bak").exists();
+    }
     private static AtomicFile file(Context context) {
         return new AtomicFile(new File(context.getNoBackupFilesDir(), "moli-key.wrap"));
     }
@@ -42,6 +45,10 @@ final class ProtectedKey {
         File data = new File(context.getFilesDir(), "moli");
         // Missing wrapping material beside an existing vault must never rekey it.
         if (new File(data, "secrets.enc").exists()) throw new IllegalStateException("Existing vault");
+        File[] generations = context.getFilesDir().listFiles((dir, name) -> name.startsWith("restored-"));
+        if (generations == null) throw new IllegalStateException("Cannot inspect existing data");
+        for (File generation : generations)
+            if (new File(generation, "secrets.enc").exists()) throw new IllegalStateException("Existing recovered vault");
         install(context, new JSONObject().put("master", randomHex()).put("pin", pin));
     }
     static File dataDirectory(Context context, JSONObject keys) throws Exception {

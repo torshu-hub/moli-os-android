@@ -15,6 +15,7 @@ final class EngineHost {
     static State state() { return state; }
     static String origin() { return origin; }
     static String token() { return token; }
+    static synchronized long currentLease() { return lease; }
     static synchronized long start(Context context) {
         if (state == State.RUNNING || state == State.STARTING) return lease;
         if (state != State.STOPPED) return -1;

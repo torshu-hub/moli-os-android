@@ -94,7 +94,8 @@ public final class MainActivity extends Activity {
         setContentView(root);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
         handler.post(refresh);
-        if (getSharedPreferences("host", MODE_PRIVATE).getBoolean("wanted", true) && ProtectedKey.exists(this)) startServer();
+        if (EngineHost.state() == EngineHost.State.RUNNING || EngineHost.state() == EngineHost.State.STARTING ||
+                (getSharedPreferences("host", MODE_PRIVATE).getBoolean("wanted", true) && ProtectedKey.exists(this))) startServer();
     }
     private void prepare() {
         if (EngineHost.state() != EngineHost.State.STOPPED) return;

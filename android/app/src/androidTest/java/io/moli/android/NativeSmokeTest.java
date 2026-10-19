@@ -71,6 +71,7 @@ public final class NativeSmokeTest {
         return new android.content.ContextWrapper(base) {
             @Override public File getFilesDir() { return files; }
             @Override public File getNoBackupFilesDir() { return protectedFiles; }
+            @Override public Context getApplicationContext() { return this; }
         };
     }
     @Test public void c_backupRestoresKeySqliteAndVaultIntoAnIndependentSandbox() throws Exception {
@@ -116,6 +117,21 @@ public final class NativeSmokeTest {
         assertTrue(port > 0); NativeServer.stop();
         try { BackupStorage.restoreFresh(destination,new java.io.ByteArrayInputStream(archive),password); fail("Existing installation"); }
         catch (java.io.IOException expected) { assertTrue("Existing key must remain unchanged",original.getString("master").equals(ProtectedKey.open(destination).getString("master"))); }
+        assertFalse(destination.getSharedPreferences("host",Context.MODE_PRIVATE).getBoolean("wanted",true));
+        // A failed wrapped-key commit must leave no active or staged data.
+        Context badBase=sandbox(base,"unwritable-wrapper"); File obstruction=new File(badBase.getFilesDir(),"not-a-directory");
+        assertTrue(obstruction.createNewFile());
+        Context bad = new android.content.ContextWrapper(badBase) {
+            @Override public File getNoBackupFilesDir() { return obstruction; }
+        };
+        try { BackupStorage.restoreFresh(bad,new java.io.ByteArrayInputStream(archive),password); fail("Cannot commit wrapper"); }
+        catch (java.io.IOException expected) { assertFalse(ProtectedKey.exists(bad)); }
+        assertEquals(1,bad.getFilesDir().list().length); // only the synthetic obstruction, no restored generation
+        Context orphan=sandbox(base,"orphan-generation");
+        File lostVault=new File(orphan.getFilesDir(),"restored-"+java.util.UUID.randomUUID()+"/secrets.enc");
+        assertTrue(lostVault.getParentFile().mkdir()); java.nio.file.Files.write(lostVault.toPath(),new byte[]{1});
+        try { ProtectedKey.create(orphan,"4826"); fail("Must not silently replace a recovered vault key"); }
+        catch (IllegalStateException expected) { assertFalse(ProtectedKey.exists(orphan)); assertTrue(lostVault.exists()); }
         java.util.Arrays.fill(password,'\0');
     }
     private static void awaitState(EngineHost.State expected) throws Exception {
@@ -126,16 +142,22 @@ public final class NativeSmokeTest {
     @Test public void d_serviceSerializesRapidCyclesAndActivityRecreation() throws Exception {
         Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
         if (!ProtectedKey.exists(context)) ProtectedKey.create(context,"4826");
+        Context missingKey=sandbox(context,"missing-key");
+        long failedLease=EngineHost.start(missingKey); awaitState(EngineHost.State.ERROR);
+        assertFalse(ProtectedKey.exists(missingKey)); EngineHost.stop(failedLease); awaitState(EngineHost.State.STOPPED);
+        context.getSharedPreferences("host",Context.MODE_PRIVATE).edit().putBoolean("wanted",false).commit();
+        long previousLease = -1;
         for (int cycle=0;cycle<3;cycle++) {
-            context.startForegroundService(new android.content.Intent(context,MoliService.class));
-            awaitState(EngineHost.State.RUNNING);
-            assertTrue(context.getSystemService(android.app.NotificationManager.class).getActiveNotifications().length>0);
-            if (cycle==0) {
-                try (ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
-                    scenario.recreate(); awaitState(EngineHost.State.RUNNING);
-                }
-                assertEquals(EngineHost.State.RUNNING,EngineHost.state());
+            try (ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)) {
+                // A visible user Activity grants the normal Android foreground-start context.
+                scenario.onActivity(activity -> context.startForegroundService(new android.content.Intent(context,MoliService.class)));
+                awaitState(EngineHost.State.RUNNING);
+                if (previousLease >= 0) { EngineHost.stop(previousLease); assertEquals(EngineHost.State.RUNNING,EngineHost.state()); }
+                previousLease=EngineHost.currentLease();
+                assertTrue(context.getSystemService(android.app.NotificationManager.class).getActiveNotifications().length>0);
+                if (cycle==0) { scenario.recreate(); awaitState(EngineHost.State.RUNNING); }
             }
+            assertEquals(EngineHost.State.RUNNING,EngineHost.state());
             context.startService(new android.content.Intent(context,MoliService.class).setAction(MoliService.STOP));
             awaitState(EngineHost.State.STOPPED);
             long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);

@@ -51,6 +51,7 @@ public final class BackupActivity extends Activity {
             try { startActivityForResult(intent, operation); }
             catch (ActivityNotFoundException failure) { wipe(); status.setText(R.string.backup_failed); }
         }));
+        dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         dialog.show();
     }
     @Override public void onActivityResult(int request, int result, Intent intent) {

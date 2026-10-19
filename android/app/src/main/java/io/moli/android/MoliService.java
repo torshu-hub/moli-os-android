@@ -19,7 +19,7 @@ public final class MoliService extends Service {
     private final Runnable monitor = new Runnable() {
         @Override public void run() {
             EngineHost.State state = EngineHost.state();
-            if (state == EngineHost.State.STOPPED || state == EngineHost.State.ERROR) {
+            if (state == EngineHost.State.STOPPED || state == EngineHost.State.ERROR || state == EngineHost.State.MAINTENANCE) {
                 stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return;
             }
             if (state != notified) { startForeground(1, notification(state)); notified = state; }
@@ -44,6 +44,7 @@ public final class MoliService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && STOP.equals(intent.getAction())) {
             getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", false).apply();
+            lease = EngineHost.currentLease();
             EngineHost.stop(lease);
         } else {
             // Required immediately even when a duplicate start is being rejected.
@@ -56,6 +57,8 @@ public final class MoliService extends Service {
     }
     @Override public IBinder onBind(Intent intent) { return binder; }
     @Override public void onDestroy() {
-        handler.removeCallbacks(monitor); EngineHost.stop(lease); super.onDestroy();
+        handler.removeCallbacks(monitor);
+        if (EngineHost.state() != EngineHost.State.ERROR) EngineHost.stop(lease);
+        super.onDestroy();
     }
 }

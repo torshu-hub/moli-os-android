@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   group: standalone-apk-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false # Finish active verification instead of cancelling an already launched build.
 
 jobs:
   apk:
