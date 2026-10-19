@@ -11,7 +11,7 @@ run_test() {
     adb shell am instrument -w -r -e class "io.moli.android.RecoveryTransferTest#$method" \
         "$package.test/androidx.test.runner.AndroidJUnitRunner" > "$log"
     cat "$log"
-    rg -q 'OK \(1 test\)' "$log"
+    grep -Fq 'OK (1 test)' "$log"
 }
 run_test "$sender" exportSynthetic ../android-artifacts/recovery-export-test.txt
 transfer=$(mktemp)
