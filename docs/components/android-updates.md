@@ -88,7 +88,10 @@ It installs version 4 with `adb install -r` (no clearing/uninstall), requires an
 ordinary downgrade to be refused, checks unchanged files/preferences/wrapped key,
 opens that key with Android Keystore, then starts the actual server and dashboard.
 Finally it restores the pre-update archive in a separate UID/Keystore and checks
-SQLite, recordings and vault startup. Neither plaintext keys nor runtime archives
+SQLite, recordings and vault startup. PR synchronization compares the previous and new head for actual APK/test inputs;
+documentation or source-hygiene-only updates preserve existing results. A workflow-only
+change needing an APK job can be verified through explicit workflow dispatch.
+Neither plaintext keys nor runtime archives
 are retained in CI artifacts. No claim of crash/power-loss atomicity or real-device
 upgrade validation follows from this emulator test.
 

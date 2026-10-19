@@ -8,3 +8,6 @@ web/dist
 /android/**/build/
 /android/app/src/main/jniLibs/
 /scripts/__pycache__/
+
+# Generated APK deliveries and CI reports (never source files).
+/android-artifacts/

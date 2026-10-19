@@ -17,7 +17,37 @@ concurrency:
   cancel-in-progress: false # Finish active verification instead of cancelling an already launched build.
 
 jobs:
+  changed-inputs:
+    runs-on: ubuntu-24.04
+    outputs:
+      rebuild: ${{ steps.inputs.outputs.rebuild }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: inputs
+        shell: bash
+        env:
+          EVENT_ACTION: ${{ github.event.action }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          # Synchronization is compared with the preceding head, not the whole PR:
+          # a source-hygiene/docs-only fix must not rebuild already verified APKs.
+          if [ "$EVENT_ACTION" != synchronize ]; then
+            echo 'rebuild=true' >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BEFORE" "$AFTER" -- android crates integrations locales web .cargo Cargo.toml Cargo.lock moli.example.toml LICENSE NOTICE scripts/build-android.sh scripts/verify-android-apk.py scripts/test-android-update.sh; then
+            echo 'rebuild=false' >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            [ "$status" = 1 ] || exit "$status"
+            echo 'rebuild=true' >> "$GITHUB_OUTPUT"
+          fi
   apk:
+    needs: changed-inputs
+    if: needs.changed-inputs.outputs.rebuild == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
