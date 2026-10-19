@@ -74,6 +74,8 @@ public final class MainActivity extends Activity {
         controls.addView(start); controls.addView(stop); root.addView(controls);
         backup = new Button(this); backup.setText(R.string.backup_title);
         backup.setOnClickListener(v -> startActivity(new Intent(this, BackupActivity.class))); root.addView(backup);
+        Button info = new Button(this); info.setText(R.string.app_info);
+        info.setOnClickListener(v -> startActivity(new Intent(this, AppInfoActivity.class))); root.addView(info);
         status = new TextView(this); status.setText(R.string.stopped); root.addView(status);
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);

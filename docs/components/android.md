@@ -25,18 +25,12 @@ cd ..
 python3 scripts/verify-android-apk.py android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The debug APK contains only arm64-v8a by default. API 28 is provisional, not a
-claim about an uninspected device. Packaging, signing and emulator tests do not
-prove compatibility with any particular physical tablet. The debug signature
-is for testing and not a long-term production update identity. This recovery preview
-uses application ID `io.moli.android.recovery` and appears as **Moli OS Recovery**
-(localized). It coexists with the previous `io.moli.android` prototype; it cannot
-access that application’s private data. Never uninstall the earlier prototype to
-resolve a signature mismatch. Signing continuity for future updates is still open. The same CI artifact also contains
-`moli-recovery-receiver-arm64-debug.apk` (`io.moli.android.recovery.receiver`,
-**Moli OS Restore Test**). It starts empty and permits a file-picker restore without
-uninstalling either other app. Do not press Start or create a PIN in this receiver
-before importing. The two APKs are independent installations with separate Keystores.
+The default debug APK now uses `io.moli.android.app.preview` (**Moli OS Preview**,
+localized), independent of earlier prototypes. The proposed durable identity is
+`io.moli.android.app`; release builds remain unsigned pending an owner decision.
+See [identity, paired updates, signing proposal and sleep preparation](android-updates.md).
+The debug APK contains only ARM64 by default, with provisional API 28 minimum.
+Packaging and emulator results do not substitute for physical device validation.
 
 The CI also builds an x86_64 library and a separate emulator-only APK using
 `-PmoliAbis=x86_64`. It tests JNI, local authentication, embedded assets,
@@ -105,7 +99,7 @@ of Android Keystore. Original data formats and stable device IDs are preserved.
 
 Use synthetic settings only until recovery has also been exercised through the
 file picker on the target tablet. Do not remove the earlier app or enter real
-credentials for this test. Debug update signing remains a separate issue.
+credentials for this test. Durable signing remains a separate owner decision; the paired demo verifies one delivery only.
 
 The process-wide native queue excludes backup/restore from start/stop, displays
 starting/stopping states, and changes notification text after readiness. Start is

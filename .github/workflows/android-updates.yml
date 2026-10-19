@@ -1,0 +1,104 @@
+name: Android update continuity
+
+on:
+  pull_request:
+    branches: [android/recovery-lifecycle]
+    paths:
+      - 'android/**'
+      - 'scripts/test-android-update.sh'
+      - '.github/workflows/android-updates.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-update-${{ github.ref }}
+  cancel-in-progress: false # Finish active verification instead of cancelling an already launched build.
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install pinned native toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.1 --profile minimal --target aarch64-linux-android,x86_64-linux-android
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.2.13676358" "platforms;android-35" "build-tools;35.0.0"
+      - name: Build the real embedded dashboard
+        working-directory: web
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: Restore native libraries only when all native inputs match
+        id: native-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            android/app/src/main/jniLibs/arm64-v8a/libmoli_android.so
+            android/app/src/main/jniLibs/x86_64/libmoli_android.so
+          key: moli-jni-v1-${{ runner.os }}-${{ runner.arch }}-rust1.99.1-ndk28.2.13676358-api28-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.cargo/**', 'crates/**', 'integrations/**', 'locales/**', 'moli.example.toml', 'web/dist/**', 'scripts/build-android.sh') }}
+      - name: Build ARM64 JNI
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: sh scripts/build-android.sh arm64-v8a
+      - name: Build the two ARM64 versions with one disposable debug signer
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          mkdir -p ../android-artifacts
+          ./gradlew --no-daemon :app:assembleDebug -PmoliVersionCode=3 -PmoliVersionName=0.3.0-preview
+          cp app/build/outputs/apk/debug/app-debug.apk ../android-artifacts/moli-preview-0.3.0-arm64.apk
+          ./gradlew --no-daemon :app:assembleDebug :app:lintDebug
+          cp app/build/outputs/apk/debug/app-debug.apk ../android-artifacts/moli-preview-0.3.1-arm64.apk
+          for apk in ../android-artifacts/*.apk; do
+            python3 ../scripts/verify-android-apk.py "$apk"
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" > "$apk.certificate.txt"
+            "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$apk"
+          done
+          sha256sum ../android-artifacts/*.apk > ../android-artifacts/SHA256SUMS
+      - name: Build the emulator JNI library only on a native cache miss
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: sh scripts/build-android.sh x86_64
+      - name: Save only public-code native libraries
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            android/app/src/main/jniLibs/arm64-v8a/libmoli_android.so
+            android/app/src/main/jniLibs/x86_64/libmoli_android.so
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+      - name: Enable KVM for the disposable CI emulator
+        run: sudo chmod a+rw /dev/kvm
+      - name: Upgrade in place and recover the pre-update encrypted archive
+        uses: ReactiveCircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          working-directory: android
+          script: sh ../scripts/test-android-update.sh
+      - name: Check public-source hygiene
+        run: sh scripts/leak-check.sh
+      - name: Retain paired APKs and targeted verification reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: moli-android-update-preview
+          path: |
+            android-artifacts/
+            android/app/build/reports/lint-results-debug.html
+          if-no-files-found: warn
+          retention-days: 14

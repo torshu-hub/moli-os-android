@@ -22,7 +22,7 @@ public final class RecoveryTransferTest {
     }
     @Test public void exportSynthetic() throws Exception {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertEquals("io.moli.android.recovery",context.getPackageName());
+        assertEquals("io.moli.android.app.preview",context.getPackageName());
         assertEquals(EngineHost.State.STOPPED,EngineHost.state());
         if (!ProtectedKey.exists(context)) ProtectedKey.create(context,"4826");
         org.json.JSONObject keys=ProtectedKey.open(context); File data=ProtectedKey.dataDirectory(context,keys);
@@ -48,7 +48,7 @@ public final class RecoveryTransferTest {
     }
     @Test public void importFreshIntoIndependentUid() throws Exception {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertEquals("io.moli.android.recovery.receiver",context.getPackageName());
+        assertEquals("io.moli.android.app.preview.receiver",context.getPackageName());
         // A separate Android UID cannot open the sender's Keystore or private files.
         assertFalse(ProtectedKey.exists(context));
         java.security.KeyStore store=java.security.KeyStore.getInstance("AndroidKeyStore"); store.load(null);

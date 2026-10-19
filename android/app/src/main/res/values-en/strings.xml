@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Moli OS Recovery</string>
+    <string name="app_name">Moli OS</string>
     <string name="start">Start</string>
     <string name="stop">Stop</string>
     <string name="starting">Starting Moli…</string>
@@ -27,4 +27,16 @@
     <string name="backup_done">Operation complete. Keep the file and password separately. After restore, start Moli manually.</string>
     <string name="backup_failed">Operation refused or interrupted: check the password, file, free space and compatibility. No active data was replaced. An interrupted export must be recreated.</string>
     <string name="app_name_receiver">Moli OS Restore Test</string>
+    <string name="app_name_preview">Moli OS Preview</string>
+    <string name="app_info">App / Updates</string>
+    <string name="back">Back</string>
+    <string name="app_settings">Android settings for this app</string>
+    <string name="app_identity">Version %1$s (%2$d)\nApplication: %3$s\nPublic certificate SHA-256:\n%4$s</string>
+    <string name="app_identity_unavailable">Installation identity unavailable.</string>
+    <string name="update_help">Before updating: stop Moli, export an encrypted backup and keep its password separately. Install the new APK over this app, then reopen Moli and start the server. Android preserves data when the package name and signature remain compatible and the version increases. If Android refuses, do not uninstall or clear data. Demo APKs guarantee signing continuity only within one delivery. Moving to a future durable release will use restoration into a new installation.</string>
+    <string name="background_status">\nNotifications: %1$s\nAndroid battery: %2$s\nThese states do not prove extended sleep reliability. Samsung may apply additional restrictions. After reboot or force-stop, reopen Moli manually.</string>
+    <string name="notifications_allowed">allowed</string>
+    <string name="notifications_blocked">blocked</string>
+    <string name="battery_exempt">Android exemption active</string>
+    <string name="battery_optimized">Android optimization active</string>
 </resources>

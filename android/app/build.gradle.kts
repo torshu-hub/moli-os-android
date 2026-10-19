@@ -10,12 +10,14 @@ android {
     compileSdk = 35
     ndkVersion = "28.2.13676358"
     defaultConfig {
-        applicationId = "io.moli.android"
+        applicationId = "io.moli.android.app"
         minSdk = 28 // Provisional until the target device is inspected.
         targetSdk = 35
         manifestPlaceholders["moliAppLabel"] = "@string/app_name"
-        versionCode = 2
-        versionName = "0.2.0-recovery-preview"
+        versionCode = (findProperty("moliVersionCode") as String? ?: "4").toInt().also {
+            require(it >= 3) { "Version codes before 3 belong to earlier prototypes" }
+        }
+        versionName = findProperty("moliVersionName") as String? ?: "0.3.1-preview"
         ndk { abiFilters += (findProperty("moliAbis") as String? ?: "arm64-v8a").split(",") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -26,10 +28,12 @@ android {
     buildTypes {
         getByName("debug") {
             isJniDebuggable = true
-            val suffix = findProperty("moliAppSuffix") as String? ?: ".recovery"
-            applicationIdSuffix = suffix // Independent recovery preview and disposable receiver.
-            if (suffix == ".recovery.receiver") manifestPlaceholders["moliAppLabel"] = "@string/app_name_receiver"
+            val suffix = findProperty("moliAppSuffix") as String? ?: ".preview"
+            require(suffix in setOf(".preview", ".preview.receiver")) { "Use an isolated preview identity" }
+            applicationIdSuffix = suffix
+            manifestPlaceholders["moliAppLabel"] = if (suffix == ".preview.receiver") "@string/app_name_receiver" else "@string/app_name_preview"
         }
+        // Intentionally unsigned. A durable signing key requires a separate owner decision.
         getByName("release") { isMinifyEnabled = false }
     }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/notices"))

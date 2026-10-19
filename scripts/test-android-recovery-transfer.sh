@@ -1,8 +1,8 @@
 #!/bin/sh
 # Only disposable synthetic emulator data. Never run against an existing household app.
 set -eu
-sender=io.moli.android.recovery
-receiver=io.moli.android.recovery.receiver
+sender=io.moli.android.app.preview
+receiver=io.moli.android.app.preview.receiver
 mkdir -p ../android-artifacts
 run_test() {
     package=$1
@@ -18,7 +18,7 @@ transfer=$(mktemp)
 trap 'rm -f "$transfer"' EXIT
 # Only the encrypted archive crosses UIDs. Never transfer a wrapped key or plaintext data.
 adb exec-out run-as "$sender" cat files/transfer.molibak > "$transfer"
-./gradlew --no-daemon :app:installDebug :app:installDebugAndroidTest -PmoliAbis=x86_64 -PmoliAppSuffix=.recovery.receiver
+./gradlew --no-daemon :app:installDebug :app:installDebugAndroidTest -PmoliAbis=x86_64 -PmoliAppSuffix=.preview.receiver
 adb shell run-as "$receiver" mkdir -p files
 adb shell -T run-as "$receiver" tee files/transfer.molibak < "$transfer" > /dev/null
 run_test "$receiver" importFreshIntoIndependentUid ../android-artifacts/recovery-import-test.txt
