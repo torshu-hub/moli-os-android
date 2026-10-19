@@ -1,0 +1,24 @@
+[package]
+name = "moli-android"
+description = "Narrow JNI lifetime adapter for the embedded Moli OS server."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version = "1.95"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+moli-os = { path = "../moli-os" }
+moli-runtime.workspace = true
+jni = "0.21.1"
+
+# This boundary deliberately does not inherit unsafe_code=forbid: Rust 2024
+# marks exported symbols as unsafe attributes. No raw-pointer operations are
+# performed here, and all engine crates retain the workspace prohibition.
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
