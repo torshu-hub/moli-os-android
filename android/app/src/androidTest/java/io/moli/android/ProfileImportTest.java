@@ -42,7 +42,9 @@ public final class ProfileImportTest {
         app.getSharedPreferences("host",Context.MODE_PRIVATE).edit().putBoolean("wanted",false).commit();
         String example=ProfileStore.bounded(app.getAssets().open("synthetic-temperature.toml"),ProfileStore.LIMIT);
         Uri uri=Uri.parse("content://io.moli.synthetic.documents/profile");
-        Instrumentation.ActivityMonitor picker=instrumentation.addMonitor(new IntentFilter(Intent.ACTION_OPEN_DOCUMENT),
+        IntentFilter filter=new IntentFilter(Intent.ACTION_OPEN_DOCUMENT);
+        filter.addCategory(Intent.CATEGORY_OPENABLE); filter.addDataType("*/*");
+        Instrumentation.ActivityMonitor picker=instrumentation.addMonitor(filter,
                 new Instrumentation.ActivityResult(Activity.RESULT_OK,new Intent().setData(uri)),true);
         try (ActivityScenario<IntegrationsActivity> ui=ActivityScenario.launch(IntegrationsActivity.class)) {
             ui.onActivity(a -> a.choose.performClick());

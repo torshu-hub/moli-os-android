@@ -25,7 +25,7 @@ public final class WeatherObservationTest {
         try (ActivityScenario<MainActivity> ui=ActivityScenario.launch(MainActivity.class)) {
             ui.onActivity(a -> app.startForegroundService(new Intent(app,MoliService.class)));
             long until=android.os.SystemClock.elapsedRealtime()+30000;
-            while (EngineHost.state()==EngineHost.State.STARTING && android.os.SystemClock.elapsedRealtime()<until) Thread.sleep(100);
+            while (EngineHost.state()!=EngineHost.State.RUNNING && EngineHost.state()!=EngineHost.State.ERROR && android.os.SystemClock.elapsedRealtime()<until) Thread.sleep(100);
             assertEquals(EngineHost.State.RUNNING,EngineHost.state());
             do {
                 HttpURLConnection c=(HttpURLConnection)new URL(EngineHost.origin()+"/api/devices").openConnection();
