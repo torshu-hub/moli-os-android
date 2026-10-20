@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+exclude = ["vendor/rumqttc"]
 
 [workspace.package]
 version = "0.1.0"
@@ -81,7 +82,7 @@ tokio-util = "0.7"
 toml = "1"
 tower-http = { version = "0.7", features = ["compression-gzip", "compression-br", "trace"] }
 tracing = "0.1"
-webpki-roots = "1"
+webpki-roots = "1.0.10"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
 
 [workspace.lints.rust]
@@ -106,3 +107,7 @@ codegen-units = 1
 # Symbols stay (a backtrace from a frozen process is worth ~1 MB); debug info goes.
 strip = "debuginfo"
 # panic = "unwind" volontaire : le superviseur capture les panics des pilotes.
+
+# Minimal upstream 0.25.1 compatibility patch: drop the old webpki error-type dependency.
+[patch.crates-io]
+rumqttc = { path = "vendor/rumqttc" }
