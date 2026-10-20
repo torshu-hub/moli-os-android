@@ -82,4 +82,8 @@
     <string name="engine_gap_help">Un grand intervalle signifie absence de contrôle, pas panne HTTP prouvée. Les échecs comptent seulement des requêtes réellement tentées. Le compteur de démarrages indique une nouvelle instance du moteur, pas une simple réouverture de l’interface.</string>
     <string name="integration_data_heading">Valeurs et état</string>
     <string name="integration_engine_running">Moteur interrogé : données ci-dessous.</string>
+    <string name="integration_refresh">Relire les données du moteur</string>
+    <string name="integration_read_status">Dernière lecture réussie du moteur : %1$s (%2$d lectures). Écran actualisé toutes les 5 secondes tant que cette page reste ouverte.</string>
+    <string name="integration_no_read">Pas de lecture du moteur confirmée pour ce contrôle. Démarrez le moteur ou réessayez.</string>
+    <string name="integration_weather_cadence">Open-Meteo : nouvelle requête météo toutes les 15 minutes. Relire l’écran ne force pas une requête Internet ; les valeurs peuvent rester identiques.</string>
 </resources>

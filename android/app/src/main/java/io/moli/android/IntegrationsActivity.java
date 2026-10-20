@@ -17,7 +17,8 @@ public final class IntegrationsActivity extends Activity {
     static final ExecutorService IO = Executors.newSingleThreadExecutor();
     Button choose, approve;
     AlertDialog confirmationDialog;
-    TextView review, values, message;
+    TextView review, values, message, refreshStatus;
+    int successfulReads;
     private ScrollView scroll;
     private JSONObject pending;
     private String source = "";
@@ -32,6 +33,8 @@ public final class IntegrationsActivity extends Activity {
         LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
         int pad = (int)(16 * getResources().getDisplayMetrics().density); body.setPadding(pad,pad,pad,pad); scroll.addView(body);
         TextView heading = new TextView(this); heading.setText(R.string.integration_data_heading); heading.setTextSize(22); body.addView(heading);
+        refreshStatus = new TextView(this); refreshStatus.setText(R.string.integration_no_read); body.addView(refreshStatus);
+        button(body,R.string.integration_refresh, this::loadValues);
         values = new TextView(this); values.setTextIsSelectable(true); body.addView(values);
         message = new TextView(this); message.setText(R.string.integration_help); body.addView(message);
         button(body, R.string.stop, () -> startService(new Intent(this,MoliService.class).setAction(MoliService.STOP)));
@@ -125,8 +128,12 @@ public final class IntegrationsActivity extends Activity {
         reading = true;
         IO.execute(() -> {
             StringBuilder text = new StringBuilder();
+            long queriedAt = 0;
             try {
                 JSONObject installed = ProfileStore.state(this);
+                if (installed.has("weather") || (installed.optJSONObject("import") != null
+                        && "weather".equals(installed.getJSONObject("import").optString("mode"))))
+                    text.append(getString(R.string.integration_weather_cadence)).append('\n');
                 text.append(getString(R.string.integration_selected,
                         installed.optBoolean("demo") ? "Demo" : "—",
                         installed.has("weather") ? "Open-Meteo" : "—",
@@ -144,10 +151,21 @@ public final class IntegrationsActivity extends Activity {
                     if (EngineHost.state()!=EngineHost.State.RUNNING || lease!=EngineHost.currentLease()) throw new java.io.IOException();
                     text.append(getString(R.string.integration_engine_running)).append('\n');
                     text.append(renderValues(installed,snapshot));
+                    queriedAt = System.currentTimeMillis();
                 }
             } catch (Exception failure) { text.append(getString(R.string.integration_unavailable)); }
-            String result = text.toString();
-            runOnUiThread(() -> { reading = false; if (!isDestroyed()) values.setText(result); });
+            String result = text.toString(); final long observedAt = queriedAt;
+            runOnUiThread(() -> {
+                reading = false;
+                if (!isDestroyed()) {
+                    values.setText(result);
+                    if (observedAt > 0) {
+                        successfulReads++;
+                        refreshStatus.setText(getString(R.string.integration_read_status,
+                                java.text.DateFormat.getTimeInstance().format(new java.util.Date(observedAt)), successfulReads));
+                    } else refreshStatus.setText(R.string.integration_no_read);
+                }
+            });
         });
     }
     private String renderValues(JSONObject installed, JSONObject snapshot) throws Exception {
@@ -169,7 +187,7 @@ public final class IntegrationsActivity extends Activity {
             for (int j=0;j<points.length();j++) {
                 JSONObject point = points.getJSONObject(j), sample = state.optJSONObject(point.getString("key"));
                 if (sample == null) continue;
-                long stamp = sample.optLong("ts"), age = System.currentTimeMillis()-stamp;
+                long stamp = sample.optLong("ts");
                 boolean fresh = DataFreshness.recent(running && transportAvailable, device.optBoolean("online"), !sample.isNull("value"), stamp, System.currentTimeMillis(), threshold);
                 out.append(point.optString("label")).append(": ").append(sample.opt("value")).append(' ').append(point.optString("unit"))
                         .append(" — ").append(getString(fresh ? R.string.integration_fresh : R.string.integration_stale))
@@ -178,6 +196,6 @@ public final class IntegrationsActivity extends Activity {
         }
         return out.length()==0 ? getString(R.string.integration_waiting) : out.toString();
     }
-    @Override public void onResume() { super.onResume(); timer.post(refresh); }
+    @Override public void onResume() { super.onResume(); timer.removeCallbacks(refresh); timer.post(refresh); }
     @Override public void onPause() { timer.removeCallbacks(refresh); super.onPause(); }
 }

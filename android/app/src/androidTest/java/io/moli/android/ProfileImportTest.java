@@ -65,6 +65,16 @@ public final class ProfileImportTest {
             until(() -> EngineHost.state()==EngineHost.State.STOPPED);
             ui.onActivity(a -> click(a,R.string.start)); until(() -> EngineHost.state()==EngineHost.State.RUNNING);
             uiContains(ui,"42.5",false); uiContains(ui,"Demo / Simulation",false);
+            // Stay on the same Activity: prove that the 5-second timer completes
+            // more authenticated native HTTP reads without navigation or manual reload.
+            java.util.concurrent.atomic.AtomicInteger firstReads=new java.util.concurrent.atomic.AtomicInteger();
+            ui.onActivity(a -> firstReads.set(a.successfulReads));
+            long sameLease=EngineHost.currentLease();
+            until(() -> { AtomicBoolean advanced=new AtomicBoolean(); ui.onActivity(a -> advanced.set(a.successfulReads>=firstReads.get()+2)); return advanced.get(); });
+            assertEquals(sameLease,EngineHost.currentLease());
+            java.util.concurrent.atomic.AtomicInteger manualReads=new java.util.concurrent.atomic.AtomicInteger();
+            ui.onActivity(a -> { manualReads.set(a.successfulReads); click(a,R.string.integration_refresh); });
+            until(() -> { AtomicBoolean advanced=new AtomicBoolean(); ui.onActivity(a -> advanced.set(a.successfulReads>manualReads.get())); return advanced.get(); });
             long generation=EngineHost.currentLease(); ui.recreate();
             uiContains(ui,"42.5",false); assertEquals(generation,EngineHost.currentLease());
             ui.onActivity(a -> click(a,R.string.stop)); until(() -> EngineHost.state()==EngineHost.State.STOPPED);

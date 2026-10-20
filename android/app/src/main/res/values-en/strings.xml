@@ -82,4 +82,8 @@
     <string name="engine_gap_help">A large gap means no check, not a proven HTTP failure. Failures count actual attempted requests. The start counter identifies a new engine instance, not simply reopening the UI.</string>
     <string name="integration_data_heading">Values and status</string>
     <string name="integration_engine_running">Engine queried: received data below.</string>
+    <string name="integration_refresh">Read engine data again</string>
+    <string name="integration_read_status">Last successful engine read: %1$s (%2$d reads). Display refreshed every 5 seconds while this page remains open.</string>
+    <string name="integration_no_read">No confirmed engine read for this check. Start the engine or try again.</string>
+    <string name="integration_weather_cadence">Open-Meteo: new weather request every 15 minutes. Reading the display does not force an Internet request; values may remain unchanged.</string>
 </resources>
