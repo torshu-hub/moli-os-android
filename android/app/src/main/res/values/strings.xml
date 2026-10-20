@@ -39,4 +39,11 @@
     <string name="notifications_blocked">bloquées</string>
     <string name="battery_exempt">exemption Android active</string>
     <string name="battery_optimized">optimisation Android active</string>
+    <string name="app_name_diagnostics">Moli OS Diagnostic</string>
+    <string name="engine_confirmed">Moteur : réponse récente confirmée</string>
+    <string name="engine_unconfirmed">Moteur : réponse non confirmée</string>
+    <string name="engine_never">jamais</string>
+    <string name="engine_check">Vérifier le moteur maintenant</string>
+    <string name="engine_diagnostic">\n%1$s\nDernier succès : %2$s s\nSuccès / échecs cette session : %3$d / %4$d\nPlus grand intervalle sans vérification : %5$d s\nDémarrages réussis de cette installation : %6$d</string>
+    <string name="engine_help">Chaque succès provient d’une requête HTTP locale authentifiée au moteur Rust. La notification seule ne prouve rien. Les contrôles sont espacés de 30 s lorsque Android le permet. Un intervalle long peut indiquer une suspension ; un succès au réveil ne prouve pas une activité continue pendant la veille. Notez les compteurs avant et après. Aucun réveil forcé ni changement de batterie.</string>
 </resources>

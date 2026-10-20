@@ -30,7 +30,11 @@ final class EngineHost {
                         keys.getString("master"), session, keys.getString("pin"));
                 synchronized (EngineHost.class) {
                     token = session; origin = "http://127.0.0.1:" + port;
-                    if (state == State.STARTING) state = State.RUNNING;
+                    if (state == State.STARTING) {
+                        state = State.RUNNING;
+                        android.content.SharedPreferences history = app.getSharedPreferences("diagnostics", Context.MODE_PRIVATE);
+                        history.edit().putLong("starts", history.getLong("starts", 0) + 1).apply();
+                    }
                 }
             } catch (Exception | LinkageError failure) {
                 synchronized (EngineHost.class) { state = State.ERROR; }

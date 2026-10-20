@@ -14,10 +14,10 @@ android {
         minSdk = 28 // Provisional until the target device is inspected.
         targetSdk = 35
         manifestPlaceholders["moliAppLabel"] = "@string/app_name"
-        versionCode = (findProperty("moliVersionCode") as String? ?: "4").toInt().also {
+        versionCode = (findProperty("moliVersionCode") as String? ?: "5").toInt().also {
             require(it >= 3) { "Version codes before 3 belong to earlier prototypes" }
         }
-        versionName = findProperty("moliVersionName") as String? ?: "0.3.1-preview"
+        versionName = findProperty("moliVersionName") as String? ?: "0.4.0-preview"
         ndk { abiFilters += (findProperty("moliAbis") as String? ?: "arm64-v8a").split(",") }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -29,9 +29,9 @@ android {
         getByName("debug") {
             isJniDebuggable = true
             val suffix = findProperty("moliAppSuffix") as String? ?: ".preview"
-            require(suffix in setOf(".preview", ".preview.receiver")) { "Use an isolated preview identity" }
+            require(suffix in setOf(".preview", ".preview.receiver", ".preview.diagnostics")) { "Use an isolated preview identity" }
             applicationIdSuffix = suffix
-            manifestPlaceholders["moliAppLabel"] = if (suffix == ".preview.receiver") "@string/app_name_receiver" else "@string/app_name_preview"
+            manifestPlaceholders["moliAppLabel"] = if (suffix == ".preview.receiver") "@string/app_name_receiver" else if (suffix == ".preview.diagnostics") "@string/app_name_diagnostics" else "@string/app_name_preview"
         }
         // Intentionally unsigned. A durable signing key requires a separate owner decision.
         getByName("release") { isMinifyEnabled = false }
