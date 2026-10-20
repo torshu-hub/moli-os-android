@@ -13,12 +13,16 @@ import java.net.*;
 
 /** User-controlled read-only onboarding. The document is staged, never executed from its URI. */
 public final class IntegrationsActivity extends Activity {
-    static final int PICK = 71;
+    static final int PICK = 71, EXPORT_TRIAL = 72;
     static final ExecutorService IO = Executors.newSingleThreadExecutor();
     Button choose, approve;
     AlertDialog confirmationDialog;
     TextView review, values, message, refreshStatus;
     int successfulReads;
+    TextView guide, probeResult, trialStatus;
+    Button probe;
+    JSONObject probeObservation;
+    String probeOutcome = "none";
     private ScrollView scroll;
     private JSONObject pending;
     private String source = "";
@@ -28,14 +32,24 @@ public final class IntegrationsActivity extends Activity {
         @Override public void run() { loadValues(); timer.postDelayed(this, 5000); }
     };
     @Override public void onCreate(Bundle saved) {
-        super.onCreate(saved);
+        super.onCreate(saved); TrialLog.attach(this);
         scroll = new ScrollView(this);
         LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
         int pad = (int)(16 * getResources().getDisplayMetrics().density); body.setPadding(pad,pad,pad,pad); scroll.addView(body);
         TextView heading = new TextView(this); heading.setText(R.string.integration_data_heading); heading.setTextSize(22); body.addView(heading);
+        button(body,R.string.trial_view_values, () -> scroll.smoothScrollTo(0,values.getTop()));
+        guide = new TextView(this); body.addView(guide);
+        trialStatus = new TextView(this); body.addView(trialStatus); updateTrialStatus();
+        button(body,R.string.trial_begin, () -> IO.execute(() -> { TrialLog.begin(this); runOnUiThread(this::updateTrialStatus); loadValuesOnUi(); }));
+        button(body,R.string.trial_end, () -> IO.execute(() -> { TrialLog.end(this); runOnUiThread(this::updateTrialStatus); }));
+        button(body,R.string.trial_export, () -> startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"moli-os-essai-0.5.1.txt"),EXPORT_TRIAL));
+        probe = button(body,R.string.trial_probe, this::weatherProbe);
+        probeResult = new TextView(this); probeResult.setText(R.string.trial_probe_none); body.addView(probeResult);
         refreshStatus = new TextView(this); refreshStatus.setText(R.string.integration_no_read); body.addView(refreshStatus);
         button(body,R.string.integration_refresh, this::loadValues);
         values = new TextView(this); values.setTextIsSelectable(true); body.addView(values);
+        button(body,R.string.trial_view_guide, () -> scroll.smoothScrollTo(0,0));
         message = new TextView(this); message.setText(R.string.integration_help); body.addView(message);
         button(body, R.string.stop, () -> startService(new Intent(this,MoliService.class).setAction(MoliService.STOP)));
         button(body,R.string.start, () -> {
@@ -61,6 +75,7 @@ public final class IntegrationsActivity extends Activity {
         button(body,R.string.integration_remove_weather, () -> change(() -> { ProfileStore.remove(this,"weather"); return null; }));
         button(body,R.string.integration_rollback, () -> change(() -> { ProfileStore.rollback(this); return null; }));
         button(body,R.string.back, this::finish); setContentView(scroll);
+        renderGuide(new JSONObject(),new TrialEvidence());
     }
     private Button button(LinearLayout parent, int label, Runnable action) {
         Button b = new Button(this); b.setText(label); b.setOnClickListener(v -> action.run()); parent.addView(b); return b;
@@ -90,6 +105,19 @@ public final class IntegrationsActivity extends Activity {
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request,result,data);
+        if (request == EXPORT_TRIAL && result == RESULT_OK && data != null && data.getData() != null) {
+            Uri destination=data.getData();
+            IO.execute(() -> {
+                try {
+                    if(!"content".equals(destination.getScheme())) throw new java.io.IOException();
+                    String journal=TrialLog.export(this);
+                    try(java.io.OutputStream out=getContentResolver().openOutputStream(destination,"wt")) {
+                        if(out==null) throw new java.io.IOException(); out.write(journal.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    }
+                    runOnUiThread(() -> { if(!isDestroyed()) message.setText(R.string.trial_exported); });
+                } catch(Exception ignored) { runOnUiThread(() -> { if(!isDestroyed()) message.setText(R.string.trial_export_failed); }); }
+            });
+        }
         if (request == PICK && result == RESULT_OK && data != null && data.getData() != null) stage(data.getData());
     }
     void stage(Uri uri) {
@@ -118,19 +146,46 @@ public final class IntegrationsActivity extends Activity {
         });
     }
     private void error(Throwable failure) {
+        TrialLog.record(TrialJournal.Event.PROFILE_REJECTED,0,0);
         runOnUiThread(() -> { if (!isDestroyed()) {
             int id = failure instanceof ProfileStore.Rejected && "changed".equals(failure.getMessage()) ? R.string.integration_changed : R.string.integration_rejected;
             message.setText(id); pending = null; approve.setEnabled(false);
         }});
+    }
+    private void loadValuesOnUi() { runOnUiThread(this::loadValues); }
+    private void updateTrialStatus() {
+        trialStatus.setText(getString(TrialLog.active()?R.string.trial_active:R.string.trial_inactive,TrialLog.count()));
+    }
+    private void weatherProbe() {
+        probe.setEnabled(false); probeObservation=null; probeOutcome="pending"; probeResult.setText(R.string.trial_probe_pending);
+        IO.execute(() -> {
+            try {
+                JSONObject result=ProfileStore.weatherProbe(this);
+                runOnUiThread(() -> { if(!isDestroyed()) { probeObservation=result; probeOutcome="ok"; probeResult.setText(getString(R.string.trial_probe_ok,
+                        result.optDouble("temperature"),result.optDouble("humidity"),
+                        java.text.DateFormat.getDateTimeInstance().format(new java.util.Date(result.optLong("received_ms"))))); } });
+            } catch(Exception failure) {
+                int code=failure instanceof ProfileStore.Rejected && "rate".equals(failure.getMessage())?R.string.trial_probe_limited:
+                        failure instanceof ProfileStore.Rejected && "approval".equals(failure.getMessage())?R.string.trial_probe_approval:R.string.trial_probe_failed;
+                runOnUiThread(() -> { if(!isDestroyed()) { probeOutcome=code==R.string.trial_probe_limited?"limited":"unavailable"; probeResult.setText(code); } });
+            } finally { runOnUiThread(() -> { if(!isDestroyed()) { probe.setEnabled(true); updateTrialStatus(); } }); }
+        });
+    }
+    private String yes(boolean value) { return getString(value?R.string.trial_seen:R.string.trial_not_seen); }
+    private void renderGuide(JSONObject selected,TrialEvidence evidence) {
+        guide.setText(getString(R.string.trial_guide,
+                getString(EngineHost.state()==EngineHost.State.STOPPED?R.string.stopped:EngineHost.state()==EngineHost.State.RUNNING?R.string.trial_running:R.string.trial_transition),
+                yes(selected.has("import")),yes(evidence.synthetic),yes(evidence.demo),yes(selected.has("weather") || (selected.optJSONObject("import")!=null && "weather".equals(selected.optJSONObject("import").optString("mode")))),yes(evidence.weather)));
     }
     void loadValues() {
         if (reading || values == null) return;
         reading = true;
         IO.execute(() -> {
             StringBuilder text = new StringBuilder();
-            long queriedAt = 0;
+            long queriedAt = 0; boolean attemptedRead = false;
+            JSONObject installed = new JSONObject(); TrialEvidence evidence = new TrialEvidence();
             try {
-                JSONObject installed = ProfileStore.state(this);
+                installed = ProfileStore.state(this);
                 if (installed.has("weather") || (installed.optJSONObject("import") != null
                         && "weather".equals(installed.getJSONObject("import").optString("mode"))))
                     text.append(getString(R.string.integration_weather_cadence)).append('\n');
@@ -146,19 +201,29 @@ public final class IntegrationsActivity extends Activity {
                     c.setConnectTimeout(2000); c.setReadTimeout(2000); c.setUseCaches(false); c.setInstanceFollowRedirects(false);
                     c.setRequestProperty("Cookie","moli_android=" + token);
                     JSONObject snapshot;
-                    try { if (c.getResponseCode()!=200) throw new java.io.IOException(); snapshot = new JSONObject(ProfileStore.bounded(c.getInputStream(),262144)); }
+                    try { attemptedRead = true; if (c.getResponseCode()!=200) throw new java.io.IOException(); snapshot = new JSONObject(ProfileStore.bounded(c.getInputStream(),262144)); }
                     finally { c.disconnect(); }
                     if (EngineHost.state()!=EngineHost.State.RUNNING || lease!=EngineHost.currentLease()) throw new java.io.IOException();
                     text.append(getString(R.string.integration_engine_running)).append('\n');
                     text.append(renderValues(installed,snapshot));
                     queriedAt = System.currentTimeMillis();
+                    android.net.ConnectivityManager net=getSystemService(android.net.ConnectivityManager.class);
+                    evidence=TrialEvidence.observe(installed,snapshot,queriedAt,net.getActiveNetwork()!=null);
+                    TrialLog.record(TrialJournal.Event.ENGINE_READ_OK,successfulReads+1,evidence.weatherReceipt);
+                    TrialLog.record(TrialJournal.Event.SYNTHETIC_RECEIVED,evidence.synthetic?1:0,0);
+                    TrialLog.record(TrialJournal.Event.DEMO_RECEIVED,evidence.demo?1:0,0);
+                    TrialLog.record(TrialJournal.Event.WEATHER_RECEIVED,evidence.weather?1:0,0);
                 }
-            } catch (Exception failure) { text.append(getString(R.string.integration_unavailable)); }
+            } catch (Exception failure) {
+                text.append(getString(R.string.integration_unavailable));
+                if(attemptedRead) TrialLog.record(TrialJournal.Event.ENGINE_READ_FAILED,0,0);
+            }
             String result = text.toString(); final long observedAt = queriedAt;
+            final JSONObject selected=installed; final TrialEvidence observed=evidence;
             runOnUiThread(() -> {
                 reading = false;
                 if (!isDestroyed()) {
-                    values.setText(result);
+                    values.setText(result); renderGuide(selected,observed); updateTrialStatus();
                     if (observedAt > 0) {
                         successfulReads++;
                         refreshStatus.setText(getString(R.string.integration_read_status,

@@ -24,6 +24,7 @@ final class EngineHost {
         long current = ++lease;
         state = State.STARTING; profileFailure = false;
         Context app = context.getApplicationContext();
+        TrialLog.attach(app);
         WORK.execute(() -> {
             try {
                 JSONObject keys = ProtectedKey.open(app);
@@ -35,6 +36,7 @@ final class EngineHost {
                     token = session; origin = "http://127.0.0.1:" + port;
                     if (state == State.STARTING) {
                         state = State.RUNNING;
+                        TrialLog.record(TrialJournal.Event.ENGINE_STARTED,current,0);
                         android.content.SharedPreferences history = app.getSharedPreferences("diagnostics", Context.MODE_PRIVATE);
                         history.edit().putLong("starts", history.getLong("starts", 0) + 1).apply();
                     }
@@ -42,6 +44,7 @@ final class EngineHost {
             } catch (Exception | LinkageError failure) {
                 if (synthetic != null) { synthetic.close(); synthetic = null; }
                 profileFailure = failure instanceof ProfileStore.Rejected;
+                TrialLog.record(TrialJournal.Event.ENGINE_FAILED,0,0);
                 synchronized (EngineHost.class) { state = State.ERROR; }
             }
         });
@@ -58,6 +61,7 @@ final class EngineHost {
                 synchronized (EngineHost.class) {
                     if (synthetic != null) { synthetic.close(); synthetic = null; }
                     origin = null; token = null; state = success ? State.STOPPED : State.ERROR;
+                    TrialLog.record(success?TrialJournal.Event.ENGINE_STOPPED:TrialJournal.Event.ENGINE_FAILED,0,0);
                 }
             }
         });

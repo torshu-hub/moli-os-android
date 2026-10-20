@@ -35,7 +35,7 @@ pub use profile::{
     Answer, BUILTIN, Call, Compiled, CompiledWrite, Format, Profile, ProfileError, Source, builtin,
     parse_every,
 };
-pub use trust::{ProfileFile, Recorded, TRUST_FILE, record as trust, sha256};
+pub use trust::{ProfileFile, Recorded, TRUST_FILE, is_trusted, record as trust, sha256};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 /// Consecutive failed polls before the device is shown offline.
@@ -135,6 +135,36 @@ pub fn open(profile: &str) -> Result<(Compiled, Option<ProfileFile>), ProfileErr
         sha256: sha256(&text),
     };
     Ok((Profile::parse(&text)?.compile(Source::File)?, Some(file)))
+}
+
+/// One explicit read through the normal transport and point conversions.
+/// The caller must approve the exact compiled bytes and restrict destinations.
+/// No driver schedule, hub state, secret, discovery or write is involved.
+pub async fn read_only_once(
+    profile: &Compiled,
+    config: &Config,
+) -> anyhow::Result<std::collections::BTreeMap<String, Value>> {
+    anyhow::ensure!(
+        profile.writes.is_empty() && profile.meta.secret.is_none(),
+        "read only"
+    );
+    anyhow::ensure!(profile.requests.len() == 1, "one request required");
+    let request = &profile.requests[0];
+    anyhow::ensure!(
+        matches!(request.call, Call::Get) && request.headers.is_empty(),
+        "GET only"
+    );
+    let target = Target::of(config, profile)?;
+    let answer = fetch(&target, request, None).await?;
+    Ok(profile
+        .points
+        .iter()
+        .filter_map(|point| {
+            point
+                .read(&answer)
+                .map(|value| (point.spec.key.to_string(), value))
+        })
+        .collect())
 }
 
 #[derive(Debug)]
@@ -1187,6 +1217,47 @@ mod tests {
     use super::*;
     use md5::{Digest as _, Md5};
     use moli_core::DriverStatus;
+
+    #[tokio::test]
+    async fn one_shot_uses_normal_transport_and_point_conversion() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = server.local_addr().unwrap().port();
+        let task = tokio::spawn(async move {
+            let (mut socket, _) = server.accept().await.unwrap();
+            let mut request = [0_u8; 2048];
+            let n = socket.read(&mut request).await.unwrap();
+            assert!(
+                std::str::from_utf8(&request[..n])
+                    .unwrap()
+                    .starts_with("GET /status HTTP/1.1")
+            );
+            let body = r#"{"temperature":42.5,"humidity":67}"#;
+            socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+        });
+        let text = "[profile]\nid='test'\nname='test'\n[[request]]\nid='r'\npath='/status'\nformat='json'\nevery='15m'\n[[point]]\nkey='temperature'\nlabel='temperature'\nfrom='r.temperature'\nkind='numeric'\n";
+        let mut compiled = Profile::parse(text).unwrap().compile(Source::File).unwrap();
+        let config = Config {
+            profile: "test".into(),
+            host: Some("127.0.0.1".into()),
+            port: Some(port),
+            vars: std::collections::BTreeMap::new(),
+        };
+        let result = read_only_once(&compiled, &config).await.unwrap();
+        assert_eq!(result["temperature"].as_f64(), Some(42.5));
+        task.await.unwrap();
+        compiled.meta.secret = Some("not-a-real-secret".into());
+        assert!(read_only_once(&compiled, &config).await.is_err());
+    }
 
     /// `get_control_info` of a real BRP069, switched off in auto mode.
     /// Each mode remembers its set point (`dt<mode>`), humidity (`dh<mode>`)

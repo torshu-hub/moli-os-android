@@ -75,7 +75,7 @@
     <string name="integration_fresh">recently received</string>
     <string name="integration_stale">stale or unavailable</string>
     <string name="integration_waiting">Integration selected; waiting for data. Fresh values cannot be guaranteed during a network failure.</string>
-    <string name="app_name_integrations">Moli OS Integrations</string>
+    <string name="app_name_integrations">Moli OS Integrations 0.5.1</string>
     <string name="engine_not_observed">No recent check: monitor not scheduled or still pending</string>
     <string name="engine_observed_failure">Last executed check: engine did not respond correctly</string>
     <string name="engine_no_sample">No completed check this session</string>
@@ -86,4 +86,25 @@
     <string name="integration_read_status">Last successful engine read: %1$s (%2$d reads). Display refreshed every 5 seconds while this page remains open.</string>
     <string name="integration_no_read">No confirmed engine read for this check. Start the engine or try again.</string>
     <string name="integration_weather_cadence">Open-Meteo: new weather request every 15 minutes. Reading the display does not force an Internet request; values may remain unchanged.</string>
+    <string name="trial_begin">Start a trial (new journal)</string>
+    <string name="trial_end">End trial</string>
+    <string name="trial_export">Export text journal…</string>
+    <string name="trial_active">Trial journal recording: %1$d events. Export only when you request it.</string>
+    <string name="trial_inactive">Journal stopped: %1$d events. Starting a trial replaces only the previous journal.</string>
+    <string name="trial_probe">Check weather now (HTTPS)</string>
+    <string name="trial_probe_none">One-time weather check: not performed yet. Its result will appear here, separately from engine values.</string>
+    <string name="trial_probe_pending">One-time HTTPS check in progress, up to about 12 seconds…</string>
+    <string name="trial_probe_ok">Real HTTPS check succeeded: %1$.1f °C, humidity %2$.0f %%, received %3$s. Public Paris test coordinates. One-time result, separate from the engine stream (15 min).</string>
+    <string name="trial_probe_limited">Check not started: wait at least one minute between attempts; at most ten per hour. Normal weather polling continues.</string>
+    <string name="trial_probe_approval">Add and approve Open-Meteo with the engine stopped before this check. No request was sent.</string>
+    <string name="trial_probe_failed">No valid check result: verify Internet and approval. No new weather data confirmed; normal engine operation is unchanged.</string>
+    <string name="trial_exported">Journal saved to the selected file. No automatic transmission.</string>
+    <string name="trial_export_failed">Export not completed. Verify the destination and try again; no automatic transmission.</string>
+    <string name="trial_seen">confirmed</string>
+    <string name="trial_not_seen">not yet confirmed</string>
+    <string name="trial_running">engine started</string>
+    <string name="trial_transition">starting, stopping or maintenance</string>
+    <string name="trial_guide">GUIDED TRIAL — states below are observed evidence, not automatic validation.\n1. Start a trial, then Stop before changing integrations. Expected: engine stopped. Observed: %1$s.\n2. Choose synthetic-temperature.toml (or Synthetic example), review and Approve. Expected: saved profile. Observed: %2$s.\n3. Optionally add Demo, then Start. Expected: 42.5 °C received with a timestamp under Values. Observed: synthetic read %3$s; Demo %4$s.\n4. Stop, Add Open-Meteo and approve. Expected: weather saved. Observed: %5$s. Check weather now for an immediate HTTPS result here; Start for the normal stream under Values. Engine observation: %6$s.\n5. End trial, then Export text journal to keep it or voluntarily share the results.</string>
+    <string name="trial_view_values">View received values</string>
+    <string name="trial_view_guide">Return to guide</string>
 </resources>

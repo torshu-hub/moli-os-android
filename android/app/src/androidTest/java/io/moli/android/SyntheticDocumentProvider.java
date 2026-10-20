@@ -15,6 +15,9 @@ public final class SyntheticDocumentProvider extends ContentProvider {
         c.addRow(new Object[]{"synthetic-temperature.toml"}); return c;
     }
     @Override public ParcelFileDescriptor openFile(Uri uri,String mode) throws FileNotFoundException {
+        if ("/trial-export".equals(uri.getPath())) {
+            return ParcelFileDescriptor.open(new File(getContext().getCacheDir(),"trial-export.txt"),ParcelFileDescriptor.parseMode(mode));
+        }
         if (!"r".equals(mode) || !"/profile".equals(uri.getPath())) throw new FileNotFoundException();
         File document = new File(getContext().getCacheDir(),"synthetic-document.toml");
         try (InputStream in = getContext().getAssets().open("synthetic-temperature.toml"); FileOutputStream out = new FileOutputStream(document)) {

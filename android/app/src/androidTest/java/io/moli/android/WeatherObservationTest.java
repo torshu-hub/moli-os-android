@@ -22,7 +22,7 @@ public final class WeatherObservationTest {
         if (!ProtectedKey.exists(app)) ProtectedKey.create(app,"4826");
         EngineHost.maintain(() -> { ProfileStore.weather(app); return null; }).get(10,TimeUnit.SECONDS);
         String evidence="NETWORK_UNAVAILABLE: no fresh weather received during bounded observation\n";
-        try (ActivityScenario<MainActivity> ui=ActivityScenario.launch(MainActivity.class)) {
+        try (ActivityScenario<IntegrationsActivity> ui=ActivityScenario.launch(IntegrationsActivity.class)) {
             ui.onActivity(a -> app.startForegroundService(new Intent(app,MoliService.class)));
             long until=android.os.SystemClock.elapsedRealtime()+30000;
             while (EngineHost.state()!=EngineHost.State.RUNNING && EngineHost.state()!=EngineHost.State.ERROR && android.os.SystemClock.elapsedRealtime()<until) Thread.sleep(100);
@@ -47,6 +47,22 @@ public final class WeatherObservationTest {
                 if (evidence.startsWith("LIVE_")) break;
                 Thread.sleep(500);
             } while(android.os.SystemClock.elapsedRealtime()<until);
+            long lease=EngineHost.currentLease();
+            ui.onActivity(a -> a.probe.performClick());
+            long end=android.os.SystemClock.elapsedRealtime()+20000;
+            java.util.concurrent.atomic.AtomicReference<String> outcome=new java.util.concurrent.atomic.AtomicReference<>("pending");
+            do { Thread.sleep(100); ui.onActivity(a -> outcome.set(a.probeOutcome)); }
+            while("pending".equals(outcome.get()) && android.os.SystemClock.elapsedRealtime()<end);
+            assertNotEquals("pending",outcome.get()); assertEquals(lease,EngineHost.currentLease());
+            java.util.concurrent.atomic.AtomicReference<JSONObject> probe=new java.util.concurrent.atomic.AtomicReference<>();
+            ui.onActivity(a -> probe.set(a.probeObservation));
+            evidence += probe.get()==null ? "NO_LIVE_PROBE_OBSERVED: one-time check did not return fresh weather\n" :
+                    "LIVE_ONE_SHOT_HTTPS_OBSERVED temperature="+probe.get().getDouble("temperature")+" humidity="+probe.get().getDouble("humidity")+" received_ms="+probe.get().getLong("received_ms")+"\n";
+            ui.onActivity(a -> a.probe.performClick());
+            end=android.os.SystemClock.elapsedRealtime()+5000;
+            do { Thread.sleep(100); ui.onActivity(a -> outcome.set(a.probeOutcome)); }
+            while("pending".equals(outcome.get()) && android.os.SystemClock.elapsedRealtime()<end);
+            assertEquals("limited",outcome.get()); assertEquals(lease,EngineHost.currentLease());
         } finally {
             app.startService(new Intent(app,MoliService.class).setAction(MoliService.STOP));
             long until=android.os.SystemClock.elapsedRealtime()+30000;

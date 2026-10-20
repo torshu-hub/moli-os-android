@@ -36,7 +36,7 @@ final class ProfileStore {
     static File stage(Context c) { return new File(c.getCacheDir(), "profile-staged.toml"); }
     static JSONObject stage(Context c, InputStream in) throws Exception {
         String text = bounded(in, LIMIT); JSONObject result = nativeResult(text, 0);
-        atomic(stage(c), text); return result;
+        atomic(stage(c), text); TrialLog.record(TrialJournal.Event.PROFILE_REVIEWED,0,0); return result;
     }
     static JSONObject state(Context c) throws Exception {
         File f = new File(data(c), "android-integrations.json");
@@ -46,12 +46,13 @@ final class ProfileStore {
         File dir = data(c);
         atomic(new File(dir, "android-integrations.previous.json"), state(c).toString());
         atomic(new File(dir, "android-integrations.json"), next.toString());
+        TrialLog.record(TrialJournal.Event.SELECTION_CHANGED,next.optBoolean("demo")?1:0,next.has("weather")?1:0);
     }
     static void approve(Context c, String expected) throws Exception {
         String text = read(stage(c), LIMIT); JSONObject info = nativeResult(text, 0);
         if (!info.getString("sha256").equals(expected)) throw new Rejected("changed");
         installFile(c, text, info);
-        JSONObject next = state(c); next.put("import", info); save(c, next);
+        JSONObject next = state(c); next.put("import", info); save(c, next); TrialLog.record(TrialJournal.Event.PROFILE_APPROVED,0,0);
     }
     private static void installFile(Context c, String text, JSONObject info) throws Exception {
         File dir = new File(data(c), "android-profiles");
@@ -96,6 +97,22 @@ final class ProfileStore {
         JSONObject info = nativeResult(text, 0);
         if (!hash.equals(info.getString("sha256"))) throw new Rejected("changed");
         return new JSONObject().put("text", text).put("sha256", hash);
+    }
+    static JSONObject weatherProbe(Context c) throws Exception {
+        JSONObject selected=state(c), entry=selected.optJSONObject("weather");
+        if(entry==null) entry=selected.optJSONObject("import");
+        if(entry==null || !"weather".equals(entry.optString("mode"))) throw new Rejected("approval");
+        JSONObject input=checked(c,entry); input.put("data",data(c).getAbsolutePath());
+        android.content.SharedPreferences p=c.getSharedPreferences("weather-budget",Context.MODE_PRIVATE);
+        WeatherBudget budget=new WeatherBudget(p.getLong("last",0),p.getLong("window",0),p.getInt("attempts",0));
+        if(!budget.reserve(System.currentTimeMillis())) { TrialLog.record(TrialJournal.Event.PROBE_LIMITED,0,0); throw new Rejected("rate"); }
+        if(!p.edit().putLong("last",budget.last).putLong("window",budget.window).putInt("attempts",budget.attempts).commit()) throw new Rejected("storage");
+        TrialLog.record(TrialJournal.Event.PROBE_START,0,0);
+        try {
+            JSONObject result=nativeResult(input.toString(),2);
+            TrialLog.record(TrialJournal.Event.PROBE_OK,result.getLong("received_ms"),0);
+            return result;
+        } catch(Exception failure) { TrialLog.record(TrialJournal.Event.PROBE_FAILED,0,0); throw failure; }
     }
     static SyntheticEndpoint prepare(Context c) throws Exception {
         File dir = data(c);

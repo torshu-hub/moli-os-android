@@ -1,4 +1,4 @@
-//! Narrow Java bridge for engine lifetime and pure profile onboarding.
+//! Narrow Java bridge for engine lifetime, profile onboarding and explicit weather checks.
 //! Inputs are copied through the jni crate; panics never unwind into the JVM.
 
 mod profiles;
@@ -99,6 +99,7 @@ pub extern "system" fn Java_io_moli_android_NativeServer_profile(
         match operation {
             0 => profiles::review(&text),
             1 => profiles::configuration(&text).map(|v| serde_json::json!({"config":v})),
+            2 => profiles::weather_probe(&text),
             _ => Err("input"),
         }
     }));

@@ -39,7 +39,10 @@ final class EngineHealth {
         final String origin = EngineHost.origin(), token = EngineHost.token();
         if (generation != lease) reset(generation);
         long now = SystemClock.elapsedRealtime();
-        if (lastAttempt >= 0) maxGap = Math.max(maxGap, now - lastAttempt);
+        if (lastAttempt >= 0) {
+            long gap=now-lastAttempt; maxGap = Math.max(maxGap,gap);
+            if(gap>FRESH) TrialLog.record(TrialJournal.Event.CHECK_GAP,gap,0);
+        }
         lastAttempt = now; busy = true;
         CHECKS.execute(() -> {
             boolean ok = request(origin, token);
@@ -51,6 +54,7 @@ final class EngineHealth {
                 if (ok) { successes++; lastSuccess = SystemClock.elapsedRealtime(); }
                 else failures++;
             }
+            TrialLog.record(ok?TrialJournal.Event.HEALTH_OK:TrialJournal.Event.HEALTH_FAILED,0,0);
         });
     }
     static boolean request(String origin, String token) {

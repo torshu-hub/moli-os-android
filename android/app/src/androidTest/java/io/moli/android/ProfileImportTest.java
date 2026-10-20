@@ -47,6 +47,7 @@ public final class ProfileImportTest {
         Instrumentation.ActivityMonitor picker=instrumentation.addMonitor(filter,
                 new Instrumentation.ActivityResult(Activity.RESULT_OK,new Intent().setData(uri)),true);
         try (ActivityScenario<IntegrationsActivity> ui=ActivityScenario.launch(IntegrationsActivity.class)) {
+            ui.onActivity(a -> click(a,R.string.trial_begin)); until(TrialLog::active);
             ui.onActivity(a -> a.choose.performClick());
             uiContains(ui,"SHA-256",true); assertEquals(1,picker.getHits());
             assertFalse(ProfileStore.state(app).has("import"));
@@ -90,6 +91,22 @@ public final class ProfileImportTest {
             // Removing only the invalid profile leaves Demo and engine data intact.
             ui.onActivity(a -> click(a,R.string.integration_remove_import)); until(() -> !ProfileStore.state(app).has("import"));
             assertTrue(ProfileStore.state(app).optBoolean("demo"));
+            ui.onActivity(a -> click(a,R.string.trial_end)); until(() -> !TrialLog.active());
+            int count=TrialLog.count(); TrialLog.record(TrialJournal.Event.HEALTH_OK,0,0); assertEquals(count,TrialLog.count());
+            IntentFilter saveFilter=new IntentFilter(Intent.ACTION_CREATE_DOCUMENT);
+            saveFilter.addCategory(Intent.CATEGORY_OPENABLE); saveFilter.addDataType("text/plain");
+            Uri output=Uri.parse("content://io.moli.synthetic.documents/trial-export");
+            Instrumentation.ActivityMonitor save=instrumentation.addMonitor(saveFilter,
+                    new Instrumentation.ActivityResult(Activity.RESULT_OK,new Intent().setData(output)),true);
+            try {
+                ui.onActivity(a -> click(a,R.string.trial_export));
+                until(() -> { AtomicBoolean saved=new AtomicBoolean(); ui.onActivity(a -> saved.set(a.message.getText().toString().equals(a.getString(R.string.trial_exported)))); return saved.get(); });
+                assertEquals(1,save.getHits());
+                String exported=ProfileStore.bounded(app.getContentResolver().openInputStream(output),65536);
+                assertTrue(exported.contains("PROFILE_APPROVED")); assertTrue(exported.contains("ENGINE_READ_OK")); assertTrue(exported.contains("SESSION_END"));
+                assertFalse(exported.contains("pin=4826")); assertFalse(exported.contains("synthetic-temperature.toml"));
+                assertFalse(exported.contains(ProtectedKey.open(app).getString("master")));
+            } finally { instrumentation.removeMonitor(save); }
         } finally {
             instrumentation.removeMonitor(picker);
             EngineHost.stop(EngineHost.currentLease()); until(() -> EngineHost.state()==EngineHost.State.STOPPED);

@@ -118,6 +118,49 @@ pub fn configuration(input: &str) -> Result<String, &'static str> {
     toml::to_string(&config).map_err(|_| "configuration")
 }
 
+/// Explicit, approved public-weather probe; does not change the running driver.
+pub fn weather_probe(input: &str) -> Result<Value, &'static str> {
+    let input: Value = serde_json::from_str(input).map_err(|_| "input")?;
+    let text = input["text"].as_str().ok_or("input")?;
+    let info = review(text)?;
+    if info["mode"] != "weather" || info["sha256"] != input["sha256"] {
+        return Err("changed");
+    }
+    let trust =
+        std::path::Path::new(input["data"].as_str().ok_or("input")?).join(moli_profile::TRUST_FILE);
+    let compiled = Profile::parse(text)
+        .map_err(|_| "syntax")?
+        .compile(Source::File)
+        .map_err(|_| "validation")?;
+    let config = moli_profile::Config {
+        profile: "open-meteo".into(),
+        host: Some("api.open-meteo.com".into()),
+        port: Some(443),
+        vars: [
+            ("lat".into(), "48.8566".into()),
+            ("lon".into(), "2.3522".into()),
+        ]
+        .into(),
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|_| "internal")?;
+    let result = runtime.block_on(async {
+        if !moli_profile::is_trusted(&trust, info["sha256"].as_str().ok_or("input")?).await.map_err(|_| "changed")? {
+            return Err("changed");
+        }
+        let result = tokio::time::timeout(std::time::Duration::from_secs(12),
+            moli_profile::read_only_once(&compiled, &config)).await.map_err(|_| "network")?.map_err(|_| "network")?;
+        let temperature = result.get("temperature").and_then(moli_core::Value::as_f64).ok_or("response")?;
+        let humidity = result.get("humidity").and_then(moli_core::Value::as_f64).ok_or("response")?;
+        let received = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|_| "internal")?.as_millis();
+        Ok(json!({"temperature":temperature,"humidity":humidity,"received_ms":received,"source":"live_https"}))
+    });
+    runtime.shutdown_timeout(std::time::Duration::from_millis(500));
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

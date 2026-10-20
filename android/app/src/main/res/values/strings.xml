@@ -75,7 +75,7 @@
     <string name="integration_fresh">reçue récemment</string>
     <string name="integration_stale">ancienne ou indisponible</string>
     <string name="integration_waiting">Intégration sélectionnée ; attente de données. En cas de panne réseau, aucune valeur fraîche ne peut être garantie.</string>
-    <string name="app_name_integrations">Moli OS Intégrations</string>
+    <string name="app_name_integrations">Moli OS Intégrations 0.5.1</string>
     <string name="engine_not_observed">Aucun contrôle récent : moniteur non exécuté ou encore en attente</string>
     <string name="engine_observed_failure">Dernier contrôle exécuté : le moteur n’a pas répondu correctement</string>
     <string name="engine_no_sample">Aucun contrôle terminé pour cette session</string>
@@ -86,4 +86,25 @@
     <string name="integration_read_status">Dernière lecture réussie du moteur : %1$s (%2$d lectures). Écran actualisé toutes les 5 secondes tant que cette page reste ouverte.</string>
     <string name="integration_no_read">Pas de lecture du moteur confirmée pour ce contrôle. Démarrez le moteur ou réessayez.</string>
     <string name="integration_weather_cadence">Open-Meteo : nouvelle requête météo toutes les 15 minutes. Relire l’écran ne force pas une requête Internet ; les valeurs peuvent rester identiques.</string>
+    <string name="trial_begin">Commencer un essai (nouveau journal)</string>
+    <string name="trial_end">Terminer l’essai</string>
+    <string name="trial_export">Exporter le journal texte…</string>
+    <string name="trial_active">Journal d’essai en cours : %1$d événements. Export uniquement à votre demande.</string>
+    <string name="trial_inactive">Journal arrêté : %1$d événements. Commencer un essai remplace seulement le journal précédent.</string>
+    <string name="trial_probe">Contrôler la météo maintenant (HTTPS)</string>
+    <string name="trial_probe_none">Contrôle météo ponctuel : pas encore effectué. Le résultat apparaîtra ici, séparément des valeurs du moteur.</string>
+    <string name="trial_probe_pending">Contrôle HTTPS ponctuel en cours, jusqu’à environ 12 secondes…</string>
+    <string name="trial_probe_ok">Contrôle HTTPS réel réussi : %1$.1f °C, humidité %2$.0f %%, reçu le %3$s. Coordonnées publiques de test Paris. Résultat ponctuel, distinct du flux du moteur (15 min).</string>
+    <string name="trial_probe_limited">Contrôle non lancé : attendre au moins une minute entre deux tentatives ; maximum dix par heure. Le cycle météo normal continue.</string>
+    <string name="trial_probe_approval">Ajoutez et approuvez Open-Meteo moteur arrêté avant le contrôle ponctuel. Aucune requête envoyée.</string>
+    <string name="trial_probe_failed">Contrôle sans résultat valide : vérifier Internet et l’approbation. Aucune nouvelle donnée météo confirmée ; le moteur conserve son fonctionnement normal.</string>
+    <string name="trial_exported">Journal enregistré dans le fichier choisi. Aucun envoi automatique.</string>
+    <string name="trial_export_failed">Export non effectué. Vérifiez la destination et réessayez ; aucun envoi automatique.</string>
+    <string name="trial_seen">confirmé</string>
+    <string name="trial_not_seen">pas encore confirmé</string>
+    <string name="trial_running">moteur démarré</string>
+    <string name="trial_transition">démarrage, arrêt ou maintenance en cours</string>
+    <string name="trial_guide">ESSAI GUIDÉ — les états ci-dessous sont observés, pas des validations automatiques.\n1. Commencer un essai, puis Arrêter avant de modifier les intégrations. Attendu : moteur arrêté. Observé : %1$s.\n2. Choisir synthetic-temperature.toml (ou Exemple fictif), examiner puis Approuver. Attendu : profil enregistré. Observé : %2$s.\n3. Ajouter Demo si souhaité, puis Démarrer. Attendu : 42,5 °C reçus et datés dans Valeurs. Observé : lecture fictive %3$s ; Demo %4$s.\n4. Arrêter, Ajouter Open-Meteo et approuver. Attendu : météo enregistrée. Observé : %5$s. Contrôler la météo maintenant pour une réponse HTTPS immédiate ici ; Démarrer pour le flux normal visible dans Valeurs. Observé dans le moteur : %6$s.\n5. Terminer l’essai puis Exporter le journal texte si vous souhaitez conserver ou transmettre volontairement ce retour.</string>
+    <string name="trial_view_values">Voir les valeurs reçues</string>
+    <string name="trial_view_guide">Revenir au guide</string>
 </resources>

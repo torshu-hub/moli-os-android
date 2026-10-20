@@ -6,6 +6,10 @@ on:
     paths:
       - 'android/**'
       - 'crates/moli-android/**'
+      - 'crates/moli-profile/**'
+      - 'vendor/**'
+      - 'Cargo.toml'
+      - '.cargo/audit.toml'
       - 'Cargo.lock'
       - 'scripts/test-android-integrations.sh'
       - '.github/workflows/android-integrations.yml'
@@ -40,15 +44,27 @@ jobs:
           # a source-hygiene/docs-only fix must not rebuild already verified APKs.
           if [ "$EVENT_ACTION" != synchronize ]; then
             echo 'rebuild=true' >> "$GITHUB_OUTPUT"
-          elif git diff --quiet "$BEFORE" "$AFTER" -- android crates integrations locales web .cargo Cargo.toml Cargo.lock moli.example.toml LICENSE NOTICE scripts/build-android.sh scripts/verify-android-apk.py scripts/test-android-integrations.sh .github/workflows/android-integrations.yml; then
+          elif git diff --quiet "$BEFORE" "$AFTER" -- android crates vendor integrations locales web .cargo Cargo.toml Cargo.lock moli.example.toml LICENSE NOTICE scripts/build-android.sh scripts/verify-android-apk.py scripts/test-android-integrations.sh .github/workflows/android-integrations.yml; then
             echo 'rebuild=false' >> "$GITHUB_OUTPUT"
           else
             status=$?
             [ "$status" = 1 ] || exit "$status"
             echo 'rebuild=true' >> "$GITHUB_OUTPUT"
           fi
-  apk:
+  security:
     needs: changed-inputs
+    if: needs.changed-inputs.outputs.rebuild == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283
+        with:
+          tool: cargo-audit@0.22.2
+      - run: cargo audit
+  apk:
+    needs: [changed-inputs, security]
     if: needs.changed-inputs.outputs.rebuild == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -79,9 +95,12 @@ jobs:
           path: |
             android/app/src/main/jniLibs/arm64-v8a/libmoli_android.so
             android/app/src/main/jniLibs/x86_64/libmoli_android.so
-          key: moli-jni-v1-${{ runner.os }}-${{ runner.arch }}-rust1.99.1-ndk28.2.13676358-api28-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.cargo/**', 'crates/**', 'integrations/**', 'locales/**', 'moli.example.toml', 'web/dist/**', 'scripts/build-android.sh') }}
-      - name: Test Rust onboarding policy
-        run: cargo +1.99.1 test --locked -p moli-android --lib
+          key: moli-jni-v1-${{ runner.os }}-${{ runner.arch }}-rust1.99.1-ndk28.2.13676358-api28-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.cargo/**', 'crates/**', 'vendor/**', 'integrations/**', 'locales/**', 'moli.example.toml', 'web/dist/**', 'scripts/build-android.sh') }}
+      - name: Test changed Rust onboarding and one-shot transport
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        run: |
+          cargo +1.99.1 test --locked -p moli-android --lib
+          cargo +1.99.1 test --locked -p moli-profile one_shot_uses_normal_transport_and_point_conversion
       - name: Build ARM64 JNI
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: sh scripts/build-android.sh arm64-v8a
@@ -92,15 +111,15 @@ jobs:
           set -euo pipefail
           chmod +x gradlew
           mkdir -p ../android-artifacts/install ../android-artifacts/reports
-          ./gradlew --no-daemon :app:testDebugUnitTest --tests io.moli.android.DataFreshnessTest --tests io.moli.android.ProfileInputTest :app:assembleDebug :app:lintDebug -PmoliAppSuffix=.preview.integrations
-          cp app/build/outputs/apk/debug/app-debug.apk ../android-artifacts/install/moli-os-android-0.5.0-integrations-arm64.apk
-          apk=../android-artifacts/install/moli-os-android-0.5.0-integrations-arm64.apk
+          ./gradlew --no-daemon :app:testDebugUnitTest --tests io.moli.android.DataFreshnessTest --tests io.moli.android.ProfileInputTest --tests io.moli.android.TrialJournalTest --tests io.moli.android.WeatherBudgetTest --tests io.moli.android.TrialEvidenceTest :app:assembleDebug :app:lintDebug -PmoliAppSuffix=.preview.integrations.v051
+          cp app/build/outputs/apk/debug/app-debug.apk ../android-artifacts/install/moli-os-android-0.5.1-integrations-arm64.apk
+          apk=../android-artifacts/install/moli-os-android-0.5.1-integrations-arm64.apk
           python3 ../scripts/verify-android-apk.py "$apk"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" > "$apk.certificate.txt"
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$apk"
-          (cd ../android-artifacts/install && sha256sum moli-os-android-0.5.0-integrations-arm64.apk > SHA256SUMS)
+          (cd ../android-artifacts/install && sha256sum moli-os-android-0.5.1-integrations-arm64.apk > SHA256SUMS)
           cp app/src/main/assets/synthetic-temperature.toml ../android-artifacts/install/
-          cp ../docs/android/INSTALLATION-0.5.0.txt ../android-artifacts/install/INSTALLATION.txt
+          cp ../docs/android/INSTALLATION-0.5.1.txt ../android-artifacts/install/INSTALLATION.txt
       - name: Build the emulator JNI library only on a native cache miss
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: sh scripts/build-android.sh x86_64
@@ -129,7 +148,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: moli-os-android-0.5.0-integrations-arm64
+          name: moli-os-android-0.5.1-integrations-arm64
           path: android-artifacts/install/*
           if-no-files-found: warn
           retention-days: 14
@@ -137,7 +156,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: moli-os-android-0.5.0-test-reports
+          name: moli-os-android-0.5.1-test-reports
           path: |
             android-artifacts/reports/
             android/app/build/reports/lint-results-debug.html
