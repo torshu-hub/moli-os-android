@@ -1,5 +1,7 @@
-//! The only exported symbols are the Java bridge's start/stop methods.
+//! Narrow Java bridge for engine lifetime and pure profile onboarding.
 //! Inputs are copied through the jni crate; panics never unwind into the JVM.
+
+mod profiles;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
@@ -79,4 +81,32 @@ pub extern "system" fn Java_io_moli_android_NativeServer_stop(
             "Native server could not stop cleanly",
         );
     }
+}
+
+// SAFETY: private Java bridge; text is copied, all errors are bounded codes.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_moli_android_NativeServer_profile(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    text: JString<'_>,
+    operation: jint,
+) -> jni::sys::jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let text: String = env.get_string(&text).map_err(|_| "input")?.into();
+        if text.len() > 524_288 {
+            return Err("size");
+        }
+        match operation {
+            0 => profiles::review(&text),
+            1 => profiles::configuration(&text).map(|v| serde_json::json!({"config":v})),
+            _ => Err("input"),
+        }
+    }));
+    let reply = match result {
+        Ok(Ok(value)) => value,
+        Ok(Err(code)) => serde_json::json!({"error":code}),
+        Err(_) => serde_json::json!({"error":"internal"}),
+    };
+    env.new_string(reply.to_string())
+        .map_or(std::ptr::null_mut(), jni::objects::JString::into_raw)
 }

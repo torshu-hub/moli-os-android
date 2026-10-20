@@ -1,0 +1,121 @@
+package io.moli.android;
+
+import android.content.Context;
+import android.util.AtomicFile;
+import org.json.JSONObject;
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.charset.*;
+import java.nio.file.Files;
+
+/** Exact-byte approval, immutable profile copies and atomic selection. Engine must be stopped for changes. */
+final class ProfileStore {
+    static final int LIMIT = 65536;
+    static final class Rejected extends Exception { Rejected(String code) { super(code); } }
+    static File data(Context c) throws Exception { return ProtectedKey.dataDirectory(c, ProtectedKey.open(c)); }
+    static String bounded(InputStream stream, int limit) throws Exception {
+        if (stream == null) throw new Rejected("input");
+        try (InputStream in = stream; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] b = new byte[4096]; int n;
+            while ((n = in.read(b)) != -1) { if (out.size() + n > limit) throw new Rejected("size"); out.write(b, 0, n); }
+            return StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(out.toByteArray())).toString();
+        }
+    }
+    static String read(File f, int limit) throws Exception { return bounded(new FileInputStream(f), limit); }
+    static void atomic(File f, String text) throws Exception {
+        AtomicFile target = new AtomicFile(f); FileOutputStream out = target.startWrite();
+        try { out.write(text.getBytes(StandardCharsets.UTF_8)); target.finishWrite(out); }
+        catch (Exception failure) { target.failWrite(out); throw failure; }
+    }
+    static JSONObject nativeResult(String text, int operation) throws Exception {
+        JSONObject result = new JSONObject(NativeServer.profile(text, operation));
+        if (result.has("error")) throw new Rejected(result.getString("error"));
+        return result;
+    }
+    static File stage(Context c) { return new File(c.getCacheDir(), "profile-staged.toml"); }
+    static JSONObject stage(Context c, InputStream in) throws Exception {
+        String text = bounded(in, LIMIT); JSONObject result = nativeResult(text, 0);
+        atomic(stage(c), text); return result;
+    }
+    static JSONObject state(Context c) throws Exception {
+        File f = new File(data(c), "android-integrations.json");
+        return f.exists() ? new JSONObject(bounded(new AtomicFile(f).openRead(), LIMIT)) : new JSONObject();
+    }
+    private static void save(Context c, JSONObject next) throws Exception {
+        File dir = data(c);
+        atomic(new File(dir, "android-integrations.previous.json"), state(c).toString());
+        atomic(new File(dir, "android-integrations.json"), next.toString());
+    }
+    static void approve(Context c, String expected) throws Exception {
+        String text = read(stage(c), LIMIT); JSONObject info = nativeResult(text, 0);
+        if (!info.getString("sha256").equals(expected)) throw new Rejected("changed");
+        installFile(c, text, info);
+        JSONObject next = state(c); next.put("import", info); save(c, next);
+    }
+    private static void installFile(Context c, String text, JSONObject info) throws Exception {
+        File dir = new File(data(c), "android-profiles");
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("storage");
+        File target = new File(dir, info.getString("sha256") + ".toml");
+        if (target.exists()) { if (!read(target, LIMIT).equals(text)) throw new Rejected("changed"); }
+        else {
+            String[] entries = dir.list(); if (entries == null || entries.length >= 16) throw new Rejected("quota");
+            atomic(target, text);
+        }
+        File trust = new File(data(c), "trusted-profiles.toml");
+        String old = trust.exists() ? read(trust, 262144) : "";
+        String hash = info.getString("sha256");
+        if (!old.contains("sha256 = \"" + hash + "\"")) {
+            // Paths are app-owned; TOML literal strings avoid escape interpretation.
+            atomic(trust, old + "\n[[trusted]]\npath = '" + target.getAbsolutePath() + "'\nsha256 = \"" + hash + "\"\n");
+        }
+    }
+    static void demo(Context c) throws Exception {
+        JSONObject next = state(c); next.put("demo", true); save(c, next);
+    }
+    static void weather(Context c) throws Exception {
+        String text = bounded(c.getAssets().open("open-meteo.toml"), LIMIT);
+        JSONObject info = nativeResult(text, 0); installFile(c, text, info);
+        JSONObject next = state(c); next.put("weather", info); save(c, next);
+    }
+    static void remove(Context c, String item) throws Exception {
+        if (!item.equals("demo") && !item.equals("weather") && !item.equals("import")) throw new Rejected("input");
+        JSONObject next = state(c); next.remove(item); save(c, next);
+    }
+    static void rollback(Context c) throws Exception {
+        File previous = new File(data(c), "android-integrations.previous.json");
+        JSONObject next = new JSONObject(read(previous, LIMIT));
+        // Revalidate all selected bytes before publishing the previous selection.
+        for (String item : new String[]{"import", "weather"}) if (next.has(item)) checked(c, next.getJSONObject(item));
+        save(c, next);
+    }
+    private static JSONObject checked(Context c, JSONObject entry) throws Exception {
+        String hash = entry.getString("sha256");
+        if (!hash.matches("[a-f0-9]{64}")) throw new Rejected("changed");
+        String text = read(new File(data(c), "android-profiles/" + hash + ".toml"), LIMIT);
+        JSONObject info = nativeResult(text, 0);
+        if (!hash.equals(info.getString("sha256"))) throw new Rejected("changed");
+        return new JSONObject().put("text", text).put("sha256", hash);
+    }
+    static SyntheticEndpoint prepare(Context c) throws Exception {
+        File dir = data(c);
+        if (!new File(dir, "android-integrations.json").exists()) return null;
+        JSONObject selected = state(c), spec = new JSONObject();
+        spec.put("data", dir.getAbsolutePath()).put("demo", selected.optBoolean("demo"));
+        boolean synthetic = false;
+        for (String item : new String[]{"import", "weather"}) if (selected.has(item)) {
+            JSONObject checked = checked(c, selected.getJSONObject(item)); spec.put(item, checked);
+            synthetic |= "synthetic".equals(nativeResult(checked.getString("text"), 0).getString("mode"));
+        }
+        SyntheticEndpoint endpoint = synthetic ? new SyntheticEndpoint() : null;
+        try {
+            spec.put("port", endpoint == null ? 0 : endpoint.port());
+            File config = new File(dir, "moli.toml");
+            spec.put("config", config.exists() ? read(config, 262144) : "");
+            if (selected.optBoolean("demo")) atomic(new File(dir, "android-demo.json"), bounded(c.getAssets().open("android-demo.json"), LIMIT));
+            String updated = nativeResult(spec.toString(), 1).getString("config");
+            atomic(config, updated);
+            return endpoint;
+        } catch (Exception failure) { if (endpoint != null) endpoint.close(); throw failure; }
+    }
+}

@@ -35,7 +35,7 @@ public final class MainActivity extends Activity {
                 }
                 web.setVisibility(View.GONE); status.setVisibility(View.VISIBLE);
                 status.setText(state == EngineHost.State.STARTING ? R.string.starting : state == EngineHost.State.STOPPING ? R.string.stopping :
-                        state == EngineHost.State.ERROR ? R.string.failed : state == EngineHost.State.MAINTENANCE ? R.string.backup_working : R.string.stopped);
+                        state == EngineHost.State.ERROR ? (EngineHost.profileFailure ? R.string.integration_changed : R.string.failed) : state == EngineHost.State.MAINTENANCE ? R.string.backup_working : R.string.stopped);
                 if (state == EngineHost.State.STOPPED || state == EngineHost.State.ERROR) {
                     if (bound) { unbindService(connection); bound = false; } server = null;
                 }
@@ -76,6 +76,8 @@ public final class MainActivity extends Activity {
         backup.setOnClickListener(v -> startActivity(new Intent(this, BackupActivity.class))); root.addView(backup);
         Button info = new Button(this); info.setText(R.string.app_info);
         info.setOnClickListener(v -> startActivity(new Intent(this, AppInfoActivity.class))); root.addView(info);
+        Button integrations = new Button(this); integrations.setText(R.string.integration_title);
+        integrations.setOnClickListener(v -> startActivity(new Intent(this, IntegrationsActivity.class))); root.addView(integrations);
         status = new TextView(this); status.setText(R.string.stopped); root.addView(status);
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);

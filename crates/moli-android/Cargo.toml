@@ -13,6 +13,9 @@ crate-type = ["cdylib"]
 moli-os = { path = "../moli-os" }
 moli-runtime.workspace = true
 jni = "0.21.1"
+moli-profile.workspace = true
+serde_json.workspace = true
+toml.workspace = true
 
 # This boundary deliberately does not inherit unsafe_code=forbid: Rust 2024
 # marks exported symbols as unsafe attributes. No raw-pointer operations are

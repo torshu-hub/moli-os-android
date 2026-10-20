@@ -1154,7 +1154,10 @@ version = "0.1.0"
 dependencies = [
  "jni",
  "moli-os",
+ "moli-profile",
  "moli-runtime",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]

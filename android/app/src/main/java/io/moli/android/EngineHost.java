@@ -11,6 +11,8 @@ final class EngineHost {
     private static volatile State state = State.STOPPED;
     private static volatile String origin, token;
     private static long lease;
+    private static SyntheticEndpoint synthetic;
+    static volatile boolean profileFailure;
     private EngineHost() {}
     static State state() { return state; }
     static String origin() { return origin; }
@@ -20,12 +22,13 @@ final class EngineHost {
         if (state == State.RUNNING || state == State.STARTING) return lease;
         if (state != State.STOPPED) return -1;
         long current = ++lease;
-        state = State.STARTING;
+        state = State.STARTING; profileFailure = false;
         Context app = context.getApplicationContext();
         WORK.execute(() -> {
             try {
                 JSONObject keys = ProtectedKey.open(app);
                 String session = ProtectedKey.randomHex();
+                synthetic = ProfileStore.prepare(app);
                 int port = NativeServer.start(ProtectedKey.dataDirectory(app, keys).getAbsolutePath(),
                         keys.getString("master"), session, keys.getString("pin"));
                 synchronized (EngineHost.class) {
@@ -37,6 +40,8 @@ final class EngineHost {
                     }
                 }
             } catch (Exception | LinkageError failure) {
+                if (synthetic != null) { synthetic.close(); synthetic = null; }
+                profileFailure = failure instanceof ProfileStore.Rejected;
                 synchronized (EngineHost.class) { state = State.ERROR; }
             }
         });
@@ -51,6 +56,7 @@ final class EngineHost {
             catch (Exception | LinkageError failure) { /* No secret/native error logging. */ }
             finally {
                 synchronized (EngineHost.class) {
+                    if (synthetic != null) { synthetic.close(); synthetic = null; }
                     origin = null; token = null; state = success ? State.STOPPED : State.ERROR;
                 }
             }

@@ -5,4 +5,5 @@ final class NativeServer {
     private NativeServer() {}
     static native int start(String data, String key, String token, String pin);
     static native void stop();
+    static native String profile(String text, int operation);
 }
