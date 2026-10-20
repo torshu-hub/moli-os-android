@@ -39,4 +39,11 @@
     <string name="notifications_blocked">blocked</string>
     <string name="battery_exempt">Android exemption active</string>
     <string name="battery_optimized">Android optimization active</string>
+    <string name="app_name_diagnostics">Moli OS Diagnostics</string>
+    <string name="engine_confirmed">Engine: recent response confirmed</string>
+    <string name="engine_unconfirmed">Engine: response unconfirmed</string>
+    <string name="engine_never">never</string>
+    <string name="engine_check">Check engine now</string>
+    <string name="engine_diagnostic">\n%1$s\nLast success: %2$s s\nSuccesses / failures this session: %3$d / %4$d\nLongest interval without a check: %5$d s\nSuccessful starts in this installation: %6$d</string>
+    <string name="engine_help">Each success comes from an authenticated local HTTP request to the Rust engine. A notification alone proves nothing. Checks run every 30 s when Android allows it. A long gap can indicate suspension; success after waking does not prove continuous operation during sleep. Record counters before and after. No forced wake or battery changes.</string>
 </resources>

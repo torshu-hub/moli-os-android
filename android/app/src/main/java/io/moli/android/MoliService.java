@@ -13,6 +13,7 @@ public final class MoliService extends Service {
     private boolean commandReceived;
     boolean hasCommand() { return commandReceived; }
     private EngineHost.State notified;
+    private boolean notifiedHealthy;
     final class LocalBinder extends Binder { MoliService service() { return MoliService.this; } }
     String origin() { return EngineHost.state() == EngineHost.State.RUNNING ? EngineHost.origin() : null; }
     String token() { return EngineHost.token(); }
@@ -24,8 +25,12 @@ public final class MoliService extends Service {
             if (state == EngineHost.State.STOPPED || state == EngineHost.State.ERROR || state == EngineHost.State.MAINTENANCE) {
                 stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return;
             }
-            if (state != notified) { startForeground(1, notification(state)); notified = state; }
-            if (state != EngineHost.State.RUNNING) handler.postDelayed(this, 250);
+            boolean healthy = EngineHealth.snapshot()[0] == 1;
+            if (state != notified || healthy != notifiedHealthy) {
+                startForeground(1, notification(state)); notified = state; notifiedHealthy = healthy;
+            }
+            if (state == EngineHost.State.RUNNING) EngineHealth.check();
+            handler.postDelayed(this, state == EngineHost.State.RUNNING ? EngineHealth.INTERVAL : 250);
         }
     };
     @Override public void onCreate() {
@@ -37,7 +42,7 @@ public final class MoliService extends Service {
         PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
         PendingIntent stop = PendingIntent.getService(this, 1, new Intent(this, MoliService.class).setAction(STOP), PendingIntent.FLAG_IMMUTABLE);
         int text = state == EngineHost.State.STARTING ? R.string.starting :
-                state == EngineHost.State.STOPPING ? R.string.stopping : R.string.service_running;
+                state == EngineHost.State.STOPPING ? R.string.stopping : EngineHealth.snapshot()[0] == 1 ? R.string.engine_confirmed : R.string.engine_unconfirmed;
         return new Notification.Builder(this, "moli").setSmallIcon(android.R.drawable.ic_menu_myplaces)
                 .setContentTitle(getString(R.string.app_name)).setContentText(getString(text))
                 .setContentIntent(open).setOngoing(true)
