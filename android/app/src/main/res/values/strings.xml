@@ -61,13 +61,13 @@
     <string name="integration_demo_permission">Appareils simulés par le pilote Demo natif. Aucune connexion réseau. Approuver cette activation ?</string>
     <string name="integration_weather_permission">Lecture HTTPS uniquement vers api.open-meteo.com, coordonnées publiques de test Paris 48.8566 / 2.3522, sans clé. Prévisions météo actualisées, pas une mesure chez vous. Les requêtes et votre IP sont visibles du fournisseur. Approuver ?</string>
     <string name="integration_synthetic_permission">Lecture HTTP uniquement vers une source fictive interne créée par cette application. Aucun appareil du réseau local. Valeurs simulées : 42,5 °C et 55 %.</string>
-    <string name="integration_review">Fichier : %1$s\nProfil : %2$s\nSHA-256 des octets examinés : %3$s\n%4$s\nPoints : %5$d\nRequêtes GET (chemin et période en secondes) : %6$s</string>
+    <string name="integration_review">Vérification du fichier (le nom du profil peut contenir une valeur fictive) :\nFichier : %1$s\nProfil : %2$s\nSHA-256 des octets examinés : %3$s\n%4$s\nPoints : %5$d\nRequêtes GET (chemin et période en secondes) : %6$s</string>
     <string name="integration_saved">Sélection enregistrée. Appuyez sur Démarrer pour activer. Les paramètres sont conservés ; aucune ancienne donnée supprimée.</string>
     <string name="integration_initialize">Initialisez le PIN depuis l’écran principal avant de configurer les intégrations.</string>
     <string name="integration_stop_first">Arrêtez le moteur et attendez la fin de l’arrêt avant de modifier les intégrations.</string>
     <string name="integration_changed">Profil modifié ou approbation invalide : activation refusée. Arrêtez le moteur puis réimportez et examinez le fichier, ou revenez à la sélection précédente.</string>
     <string name="integration_rejected">Import refusé : fichier UTF-8 TOML de 64 Kio maximum, valide et en lecture seule. Seuls l’exemple /status sans hôte et le profil Open-Meteo fourni sont acceptés ; aucun secret, en-tête personnalisé, écriture ou autre destination. Vérifiez aussi que Moli est initialisé et que le stockage est disponible.</string>
-    <string name="integration_selected">Sélection persistante : %1$s / %2$s / %3$s</string>
+    <string name="integration_selected">Intégrations enregistrées\nDemo : %1$s\nOpen-Meteo : %2$s\nProfil importé : %3$s</string>
     <string name="integration_not_running">Moteur arrêté : aucune donnée actuelle vérifiée.</string>
     <string name="integration_unavailable">Données indisponibles : initialisez ou démarrez le moteur, puis réessayez. Aucune ancienne valeur ne doit être considérée comme une preuve de connexion.</string>
     <string name="integration_simulated">SIMULATION</string>
@@ -80,4 +80,6 @@
     <string name="engine_observed_failure">Dernier contrôle exécuté : le moteur n’a pas répondu correctement</string>
     <string name="engine_no_sample">Aucun contrôle terminé pour cette session</string>
     <string name="engine_gap_help">Un grand intervalle signifie absence de contrôle, pas panne HTTP prouvée. Les échecs comptent seulement des requêtes réellement tentées. Le compteur de démarrages indique une nouvelle instance du moteur, pas une simple réouverture de l’interface.</string>
+    <string name="integration_data_heading">Valeurs et état</string>
+    <string name="integration_engine_running">Moteur interrogé : données ci-dessous.</string>
 </resources>

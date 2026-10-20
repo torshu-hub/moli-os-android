@@ -61,13 +61,13 @@
     <string name="integration_demo_permission">Synthetic devices from the native Demo driver. No network connection. Approve activation?</string>
     <string name="integration_weather_permission">Read-only HTTPS to api.open-meteo.com, public Paris test coordinates 48.8566 / 2.3522, no key. Updated forecast data, not a measurement at your home. Requests and your IP are visible to the provider. Approve?</string>
     <string name="integration_synthetic_permission">Read-only HTTP to a synthetic source owned by this app. No local network device. Simulated values: 42.5 °C and 55%.</string>
-    <string name="integration_review">File: %1$s\nProfile: %2$s\nSHA-256 of reviewed bytes: %3$s\n%4$s\nPoints: %5$d\nGET requests (path and interval in seconds): %6$s</string>
+    <string name="integration_review">File review (the profile name may contain a synthetic value):\nFile: %1$s\nProfile: %2$s\nSHA-256 of reviewed bytes: %3$s\n%4$s\nPoints: %5$d\nGET requests (path and interval in seconds): %6$s</string>
     <string name="integration_saved">Selection saved. Press Start to activate. Settings persist; no previous data deleted.</string>
     <string name="integration_initialize">Initialize the PIN on the main screen before configuring integrations.</string>
     <string name="integration_stop_first">Stop the engine and wait until it has stopped before changing integrations.</string>
     <string name="integration_changed">Changed profile or invalid approval: activation refused. Stop, reimport and review the file, or restore the previous selection.</string>
     <string name="integration_rejected">Import refused: valid read-only UTF-8 TOML, at most 64 KiB. Only the hostless /status example and supplied Open-Meteo profile are accepted: no secrets, custom headers, writes or other destinations. Also check initialization and available storage.</string>
-    <string name="integration_selected">Persistent selection: %1$s / %2$s / %3$s</string>
+    <string name="integration_selected">Saved integrations\nDemo: %1$s\nOpen-Meteo: %2$s\nImported profile: %3$s</string>
     <string name="integration_not_running">Engine stopped: no current data verified.</string>
     <string name="integration_unavailable">Data unavailable: initialize or start the engine and retry. Old values do not prove connectivity.</string>
     <string name="integration_simulated">SIMULATION</string>
@@ -80,4 +80,6 @@
     <string name="engine_observed_failure">Last executed check: engine did not respond correctly</string>
     <string name="engine_no_sample">No completed check this session</string>
     <string name="engine_gap_help">A large gap means no check, not a proven HTTP failure. Failures count actual attempted requests. The start counter identifies a new engine instance, not simply reopening the UI.</string>
+    <string name="integration_data_heading">Values and status</string>
+    <string name="integration_engine_running">Engine queried: received data below.</string>
 </resources>

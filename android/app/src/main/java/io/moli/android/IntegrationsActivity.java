@@ -18,6 +18,7 @@ public final class IntegrationsActivity extends Activity {
     Button choose, approve;
     AlertDialog confirmationDialog;
     TextView review, values, message;
+    private ScrollView scroll;
     private JSONObject pending;
     private String source = "";
     private final Handler timer = new Handler(Looper.getMainLooper());
@@ -27,11 +28,18 @@ public final class IntegrationsActivity extends Activity {
     };
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
-        ScrollView scroll = new ScrollView(this);
+        scroll = new ScrollView(this);
         LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
         int pad = (int)(16 * getResources().getDisplayMetrics().density); body.setPadding(pad,pad,pad,pad); scroll.addView(body);
+        TextView heading = new TextView(this); heading.setText(R.string.integration_data_heading); heading.setTextSize(22); body.addView(heading);
+        values = new TextView(this); values.setTextIsSelectable(true); body.addView(values);
         message = new TextView(this); message.setText(R.string.integration_help); body.addView(message);
         button(body, R.string.stop, () -> startService(new Intent(this,MoliService.class).setAction(MoliService.STOP)));
+        button(body,R.string.start, () -> {
+            if (!ProtectedKey.exists(this)) { message.setText(R.string.integration_initialize); return; }
+            getSharedPreferences("host",MODE_PRIVATE).edit().putBoolean("wanted",true).apply();
+            startForegroundService(new Intent(this,MoliService.class)); loadValues();
+        });
         choose = button(body,R.string.integration_import, () -> {
             Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);
             startActivityForResult(pick, PICK);
@@ -49,18 +57,15 @@ public final class IntegrationsActivity extends Activity {
         button(body,R.string.integration_remove_demo, () -> change(() -> { ProfileStore.remove(this,"demo"); return null; }));
         button(body,R.string.integration_remove_weather, () -> change(() -> { ProfileStore.remove(this,"weather"); return null; }));
         button(body,R.string.integration_rollback, () -> change(() -> { ProfileStore.rollback(this); return null; }));
-        button(body,R.string.start, () -> {
-            if (!ProtectedKey.exists(this)) { message.setText(R.string.integration_initialize); return; }
-            getSharedPreferences("host",MODE_PRIVATE).edit().putBoolean("wanted",true).apply();
-            startForegroundService(new Intent(this,MoliService.class)); loadValues();
-        });
-        values = new TextView(this); values.setTextIsSelectable(true); body.addView(values);
         button(body,R.string.back, this::finish); setContentView(scroll);
     }
     private Button button(LinearLayout parent, int label, Runnable action) {
         Button b = new Button(this); b.setText(label); b.setOnClickListener(v -> action.run()); parent.addView(b); return b;
     }
     private void confirm(int explanation, Callable<Void> action) {
+        if (EngineHost.state() != EngineHost.State.STOPPED) {
+            showStopRequired(); return;
+        }
         confirmationDialog = new AlertDialog.Builder(this).setMessage(explanation).setNegativeButton(android.R.string.cancel,null)
                 .setPositiveButton(R.string.integration_approve,(d,w) -> change(action)).show();
     }
@@ -69,10 +74,16 @@ public final class IntegrationsActivity extends Activity {
             Future<Void> work = EngineHost.maintain(action);
             approve.setEnabled(false);
             IO.execute(() -> {
-                try { work.get(); runOnUiThread(() -> { if (!isDestroyed()) { pending = null; review.setText(""); message.setText(R.string.integration_saved); loadValues(); } }); }
+                try { work.get(); runOnUiThread(() -> { if (!isDestroyed()) { pending = null; review.setText(""); message.setText(R.string.integration_saved); scroll.smoothScrollTo(0,0); loadValues(); } }); }
                 catch (Exception failure) { error(failure.getCause() == null ? failure : failure.getCause()); }
             });
-        } catch (IllegalStateException busy) { message.setText(R.string.integration_stop_first); }
+        } catch (IllegalStateException busy) { showStopRequired(); }
+    }
+    private void showStopRequired() {
+        message.setText(R.string.integration_stop_first);
+        new AlertDialog.Builder(this).setMessage(R.string.integration_stop_first)
+                .setPositiveButton(android.R.string.ok,null).show();
+        scroll.smoothScrollTo(0,0);
     }
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request,result,data);
@@ -131,6 +142,7 @@ public final class IntegrationsActivity extends Activity {
                     try { if (c.getResponseCode()!=200) throw new java.io.IOException(); snapshot = new JSONObject(ProfileStore.bounded(c.getInputStream(),262144)); }
                     finally { c.disconnect(); }
                     if (EngineHost.state()!=EngineHost.State.RUNNING || lease!=EngineHost.currentLease()) throw new java.io.IOException();
+                    text.append(getString(R.string.integration_engine_running)).append('\n');
                     text.append(renderValues(installed,snapshot));
                 }
             } catch (Exception failure) { text.append(getString(R.string.integration_unavailable)); }
