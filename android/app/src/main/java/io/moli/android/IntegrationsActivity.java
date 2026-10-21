@@ -43,7 +43,7 @@ public final class IntegrationsActivity extends Activity {
         button(body,R.string.trial_begin, () -> IO.execute(() -> { TrialLog.begin(this); runOnUiThread(this::updateTrialStatus); loadValuesOnUi(); }));
         button(body,R.string.trial_end, () -> IO.execute(() -> { TrialLog.end(this); runOnUiThread(this::updateTrialStatus); }));
         button(body,R.string.trial_export, () -> startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT)
-                .setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"moli-os-essai-0.5.1.txt"),EXPORT_TRIAL));
+                .setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"moli-os-essai-0.6.0.txt"),EXPORT_TRIAL));
         probe = button(body,R.string.trial_probe, this::weatherProbe);
         probeResult = new TextView(this); probeResult.setText(R.string.trial_probe_none); body.addView(probeResult);
         refreshStatus = new TextView(this); refreshStatus.setText(R.string.integration_no_read); body.addView(refreshStatus);

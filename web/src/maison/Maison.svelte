@@ -54,6 +54,8 @@
     { path: 'infra', label: 'commun.nav.infra', icon: 'server' },
   ];
 
+  const navigation = $derived(home.config?.android && !home.config?.favorites ? NAV.filter(n => ['', 'pieces', 'plan', 'dehors'].includes(n.path)) : NAV);
+
   let moliOpen = $state(false);
   let prefersDark = $state(false);
 
@@ -115,7 +117,7 @@
       </svg>
     </a>
     <ul>
-      {#each NAV as item (item.path)}
+      {#each navigation as item (item.path)}
         <li>
           <a href="#/{item.path}" class:active={page === item.path} aria-current={page === item.path ? 'page' : undefined}>
             <span class="glyph">

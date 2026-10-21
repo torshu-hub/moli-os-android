@@ -6,16 +6,18 @@
   // one). A tap opens the detail: the next day on the map, the hours and the
   // days to come.
   import { onMount } from 'svelte';
-  import { home, value, clock, greeting, num, longDate } from '../lib/home.svelte.js';
+  import { home, hub, device, value, clock, greeting, num, longDate } from '../lib/home.svelte.js';
   import { sky, watchSky, hours, outlook, localTs } from '../lib/sky.svelte.js';
   import { weatherOf } from '../lib/icons.js';
   import { t } from '../../lib/i18n.svelte.js';
   import Icon from './Icon.svelte';
   import WeatherMap from './WeatherMap.svelte';
   import SkyDetail from './SkyDetail.svelte';
+  import { sourceStatus } from '../lib/source-status.js';
 
   const out = $derived(home.config?.outdoor ?? {});
   const w = $derived(out.weather);
+  const fresh = $derived(!home.config?.android || sourceStatus(hub.connected, device(w), hub.drivers.find(d => d.instance === device(w)?.instance), ['temperature','humidity'], home.now, 930000).state === 'fresh');
   const day = $derived(value(w, 'daylight') !== false);
   const now = $derived(weatherOf(value(w, 'weather_code'), day));
   const hhmm = (iso) => (iso ? String(iso).slice(11, 16) : '—');
@@ -36,7 +38,7 @@
     narrow = phone.matches;
     const change = () => (narrow = phone.matches);
     phone.addEventListener('change', change);
-    const stop = watchSky();
+    const stop = home.config?.android ? () => {} : watchSky();
     return () => {
       phone.removeEventListener('change', change);
       stop();
@@ -51,8 +53,8 @@
     <p class="time num">{clock(home.now)}</p>
   </div>
 
-  {#if w}
-    <button class="sky" class:live={sky.map} onclick={() => (open = true)} aria-label={t('maison.meteo.ouvrir', { label: now.label })}>
+  {#if w && fresh}
+    <button class="sky" class:live={sky.map} onclick={() => home.config?.android ? (location.hash = '#/dehors') : (open = true)} aria-label={t('maison.meteo.ouvrir', { label: now.label })}>
       {#if sky.map}
         <span class="space" aria-hidden="true">
           <WeatherMap map={sky.map} {hour} tx={narrow ? 0.17 : 0.34} ty={0.5} />

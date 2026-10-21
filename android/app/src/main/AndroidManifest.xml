@@ -19,6 +19,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".HomeSettingsActivity" android:exported="false" />
         <activity android:name=".BackupActivity" android:exported="false" />
         <activity android:name=".IntegrationsActivity" android:exported="false" />
         <activity android:name=".AppInfoActivity" android:exported="false" />

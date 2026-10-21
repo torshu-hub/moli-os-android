@@ -72,12 +72,17 @@ public final class MainActivity extends Activity {
         start = new Button(this); start.setText(R.string.start); start.setOnClickListener(v -> prepare());
         stop = new Button(this); stop.setText(R.string.stop); stop.setOnClickListener(v -> stopServer());
         controls.addView(start); controls.addView(stop); root.addView(controls);
+        Button settings = new Button(this); settings.setText(R.string.home_settings);
+        settings.setOnClickListener(v -> startActivity(new Intent(this,HomeSettingsActivity.class))); controls.addView(settings);
         backup = new Button(this); backup.setText(R.string.backup_title);
-        backup.setOnClickListener(v -> startActivity(new Intent(this, BackupActivity.class))); root.addView(backup);
-        Button info = new Button(this); info.setText(R.string.app_info);
-        info.setOnClickListener(v -> startActivity(new Intent(this, AppInfoActivity.class))); root.addView(info);
-        Button integrations = new Button(this); integrations.setText(R.string.integration_title);
-        integrations.setOnClickListener(v -> startActivity(new Intent(this, IntegrationsActivity.class))); root.addView(integrations);
+        backup.setOnClickListener(v -> startActivity(new Intent(this, BackupActivity.class)));
+        LinearLayout tools = new LinearLayout(this); tools.addView(backup);
+        Button diagnostics = new Button(this); diagnostics.setText(R.string.home_tools);
+        diagnostics.setOnClickListener(v -> {
+            PopupMenu menu = new PopupMenu(this,diagnostics);
+            menu.getMenu().add(0,1,0,R.string.app_info); menu.getMenu().add(0,2,1,R.string.integration_title);
+            menu.setOnMenuItemClickListener(item -> { startActivity(new Intent(this,item.getItemId()==1?AppInfoActivity.class:IntegrationsActivity.class)); return true; }); menu.show();
+        }); tools.addView(diagnostics); root.addView(tools);
         status = new TextView(this); status.setText(R.string.stopped); root.addView(status);
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);
@@ -90,6 +95,9 @@ public final class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String origin = loaded;
+                if (request.isForMainFrame() && origin != null && EngineHost.state() == EngineHost.State.RUNNING && origin.equals(EngineHost.origin()) && (origin+"/android/settings").equals(uri.toString())) {
+                    startActivity(new Intent(MainActivity.this,HomeSettingsActivity.class)); return true;
+                }
                 return origin == null || EngineHost.state() != EngineHost.State.RUNNING || !origin.equals(EngineHost.origin()) || !"http".equals(uri.getScheme())
                         || !"127.0.0.1".equals(uri.getHost()) || uri.getPort() != Uri.parse(origin).getPort();
             }

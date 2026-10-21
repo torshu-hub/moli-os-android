@@ -75,7 +75,7 @@
     <string name="integration_fresh">recently received</string>
     <string name="integration_stale">stale or unavailable</string>
     <string name="integration_waiting">Integration selected; waiting for data. Fresh values cannot be guaranteed during a network failure.</string>
-    <string name="app_name_integrations">Moli OS Integrations 0.5.1</string>
+    <string name="app_name_integrations">Moli OS 0.6.0</string>
     <string name="engine_not_observed">No recent check: monitor not scheduled or still pending</string>
     <string name="engine_observed_failure">Last executed check: engine did not respond correctly</string>
     <string name="engine_no_sample">No completed check this session</string>
@@ -94,7 +94,7 @@
     <string name="trial_probe">Check weather now (HTTPS)</string>
     <string name="trial_probe_none">One-time weather check: not performed yet. Its result will appear here, separately from engine values.</string>
     <string name="trial_probe_pending">One-time HTTPS check in progress, up to about 12 seconds…</string>
-    <string name="trial_probe_ok">Real HTTPS check succeeded: %1$.1f °C, humidity %2$.0f %%, received %3$s. Public Paris test coordinates. One-time result, separate from the engine stream (15 min).</string>
+    <string name="trial_probe_ok">Real HTTPS check succeeded: %1$.1f °C, humidity %2$.0f %%, received %3$s. Location approved in settings. One-time result, separate from the engine stream (15 min).</string>
     <string name="trial_probe_limited">Check not started: wait at least one minute between attempts; at most ten per hour. Normal weather polling continues.</string>
     <string name="trial_probe_approval">Add and approve Open-Meteo with the engine stopped before this check. No request was sent.</string>
     <string name="trial_probe_failed">No valid check result: verify Internet and approval. No new weather data confirmed; normal engine operation is unchanged.</string>
@@ -107,4 +107,19 @@
     <string name="trial_guide">GUIDED TRIAL — states below are observed evidence, not automatic validation.\n1. Start a trial, then Stop before changing integrations. Expected: engine stopped. Observed: %1$s.\n2. Choose synthetic-temperature.toml (or Synthetic example), review and Approve. Expected: saved profile. Observed: %2$s.\n3. Optionally add Demo, then Start. Expected: 42.5 °C received with a timestamp under Values. Observed: synthetic read %3$s; Demo %4$s.\n4. Stop, Add Open-Meteo and approve. Expected: weather saved. Observed: %5$s. Check weather now for an immediate HTTPS result here; Start for the normal stream under Values. Engine observation: %6$s.\n5. End trial, then Export text journal to keep it or voluntarily share the results.</string>
     <string name="trial_view_values">View received values</string>
     <string name="trial_view_guide">Return to guide</string>
+    <string name="home_settings">Home and weather</string>
+    <string name="home_settings_help">Stop the engine, edit settings, then Save and Start. Tablet readings stay local; no GPS.</string>
+    <string name="home_weather_enabled">Enable Open-Meteo weather</string>
+    <string name="home_location">Place name</string>
+    <string name="home_latitude">Latitude (−90 to 90)</string>
+    <string name="home_longitude">Longitude (−180 to 180)</string>
+    <string name="home_location_help">Saving allows these coordinates to be sent to Open-Meteo via HTTPS every 15 minutes. No account needed. Public example: Paris, 48.8566 / 2.3522. The name stays local.</string>
+    <string name="home_rooms">Rooms (one per line)</string>
+    <string name="home_rooms_help">Prepare rooms here. Use existing Moli functions to assign equipment after adding a compatible integration. No real device is added or controlled.</string>
+    <string name="home_save">Save</string>
+    <string name="home_dashboard">Back to dashboard</string>
+    <string name="home_saved">Settings saved. Start the engine and return to the dashboard.</string>
+    <string name="home_invalid">Check name and coordinates; up to 32 rooms, 60 characters each.</string>
+    <string name="home_failed">Settings may be incomplete: check them before starting and retry.</string>
+    <string name="home_tools">Diagnostic tools</string>
 </resources>

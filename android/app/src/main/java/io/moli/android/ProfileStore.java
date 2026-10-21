@@ -77,7 +77,45 @@ final class ProfileStore {
     static void weather(Context c) throws Exception {
         String text = bounded(c.getAssets().open("open-meteo.toml"), LIMIT);
         JSONObject info = nativeResult(text, 0); installFile(c, text, info);
+        JSONObject next = state(c), previous = next.optJSONObject("weather");
+        if (previous != null && previous.has("location")) info.put("location", previous.getJSONObject("location"));
+        next.put("weather", info); save(c, next);
+    }
+    static void configureWeather(Context c, String label, double latitude, double longitude) throws Exception {
+        if (label.trim().isEmpty() || label.length() > 80 || !Double.isFinite(latitude) || Math.abs(latitude) > 90 || !Double.isFinite(longitude) || Math.abs(longitude) > 180) throw new Rejected("location");
+        String text = bounded(c.getAssets().open("open-meteo.toml"), LIMIT);
+        JSONObject info = nativeResult(text, 0); installFile(c, text, info);
+        info.put("location", new JSONObject().put("label", label.trim()).put("latitude", latitude).put("longitude", longitude));
         JSONObject next = state(c); next.put("weather", info); save(c, next);
+    }
+    static JSONObject home(Context c) throws Exception {
+        File f = new File(data(c), "home.json");
+        return f.exists() ? new JSONObject(read(f, 262144)) : new JSONObject();
+    }
+    static void rooms(Context c, String names) throws Exception {
+        org.json.JSONArray rooms = new org.json.JSONArray(); java.util.Set<String> used = new java.util.HashSet<>();
+        for (String line : names.split("\\n")) {
+            String name = line.trim(); if (name.isEmpty() || !used.add(name)) continue;
+            if (name.length() > 60 || rooms.length() >= 32) throw new Rejected("rooms");
+            JSONObject existing = null;
+            org.json.JSONArray old = home(c).optJSONArray("rooms");
+            if (old != null) for (int i=0;i<old.length();i++) if (name.equals(old.getJSONObject(i).optString("name"))) existing = old.getJSONObject(i);
+            rooms.put(existing == null ? new JSONObject().put("name",name) : existing);
+        }
+        JSONObject h = home(c); h.put("rooms",rooms); atomic(new File(data(c),"home.json"),h.toString());
+    }
+    private static void prepareHome(Context c, JSONObject selected) throws Exception {
+        JSONObject h = home(c), android = h.optJSONObject("android");
+        if (android == null) android = new JSONObject();
+        android.put("tablet", "android-tablet:tablet");
+        JSONObject weather = selected.optJSONObject("weather");
+        android.put("weather", weather == null ? JSONObject.NULL : "android-weather:api.open-meteo.com:443");
+        android.put("location", weather == null ? "" : weather.optJSONObject("location") == null ? "Paris (démo)" : weather.getJSONObject("location").getString("label"));
+        h.put("android",android);
+        JSONObject out = h.optJSONObject("outdoor"); if (out == null) out = new JSONObject();
+        if (weather != null) out.put("weather",android.getString("weather"));
+        else if ("android-weather:api.open-meteo.com:443".equals(out.optString("weather"))) out.remove("weather");
+        h.put("outdoor",out); atomic(new File(data(c),"home.json"),h.toString());
     }
     static void remove(Context c, String item) throws Exception {
         if (!item.equals("demo") && !item.equals("weather") && !item.equals("import")) throw new Rejected("input");
@@ -96,7 +134,9 @@ final class ProfileStore {
         String text = read(new File(data(c), "android-profiles/" + hash + ".toml"), LIMIT);
         JSONObject info = nativeResult(text, 0);
         if (!hash.equals(info.getString("sha256"))) throw new Rejected("changed");
-        return new JSONObject().put("text", text).put("sha256", hash);
+        JSONObject result = new JSONObject().put("text", text).put("sha256", hash);
+        if (entry.has("location")) result.put("location", entry.getJSONObject("location"));
+        return result;
     }
     static JSONObject weatherProbe(Context c) throws Exception {
         JSONObject selected=state(c), entry=selected.optJSONObject("weather");
@@ -116,22 +156,23 @@ final class ProfileStore {
     }
     static SyntheticEndpoint prepare(Context c) throws Exception {
         File dir = data(c);
-        if (!new File(dir, "android-integrations.json").exists()) return null;
         JSONObject selected = state(c), spec = new JSONObject();
         spec.put("data", dir.getAbsolutePath()).put("demo", selected.optBoolean("demo"));
-        boolean synthetic = false;
         for (String item : new String[]{"import", "weather"}) if (selected.has(item)) {
             JSONObject checked = checked(c, selected.getJSONObject(item)); spec.put(item, checked);
-            synthetic |= "synthetic".equals(nativeResult(checked.getString("text"), 0).getString("mode"));
         }
-        SyntheticEndpoint endpoint = synthetic ? new SyntheticEndpoint() : null;
+        String tabletText = bounded(c.getAssets().open("tablet.toml"), LIMIT);
+        JSONObject tablet = nativeResult(tabletText, 0); installFile(c, tabletText, tablet);
+        spec.put("tablet", new JSONObject().put("text", tabletText).put("sha256", tablet.getString("sha256")));
+        SyntheticEndpoint endpoint = new SyntheticEndpoint(c.getApplicationContext());
         try {
-            spec.put("port", endpoint == null ? 0 : endpoint.port());
+            spec.put("port", endpoint.port());
             File config = new File(dir, "moli.toml");
             spec.put("config", config.exists() ? read(config, 262144) : "");
             if (selected.optBoolean("demo")) atomic(new File(dir, "android-demo.json"), bounded(c.getAssets().open("android-demo.json"), LIMIT));
             String updated = nativeResult(spec.toString(), 1).getString("config");
             atomic(config, updated);
+            prepareHome(c, selected);
             return endpoint;
         } catch (Exception failure) { if (endpoint != null) endpoint.close(); throw failure; }
     }

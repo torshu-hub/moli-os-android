@@ -18,7 +18,9 @@ pub fn review(text: &str) -> Result<Value, &'static str> {
     {
         return Err("size");
     }
-    let mode = if compiled.meta.host.as_deref() == Some("api.open-meteo.com")
+    let mode = if text == include_str!("../../../android/app/src/main/assets/tablet.toml") {
+        "tablet"
+    } else if compiled.meta.host.as_deref() == Some("api.open-meteo.com")
         && compiled.meta.https
         && compiled.meta.port.unwrap_or(443) == 443
     {
@@ -77,7 +79,7 @@ pub fn configuration(input: &str) -> Result<String, &'static str> {
     drivers.retain(|d| {
         !matches!(
             d.get("id").and_then(toml::Value::as_str),
-            Some("android-import" | "android-demo" | "android-weather")
+            Some("android-import" | "android-demo" | "android-weather" | "android-tablet")
         )
     });
     if input["demo"].as_bool() == Some(true) {
@@ -87,7 +89,11 @@ pub fn configuration(input: &str) -> Result<String, &'static str> {
             .map_err(|_| "configuration")?,
         );
     }
-    for (key, id) in [("import", "android-import"), ("weather", "android-weather")] {
+    for (key, id) in [
+        ("import", "android-import"),
+        ("weather", "android-weather"),
+        ("tablet", "android-tablet"),
+    ] {
         if input[key].is_null() {
             continue;
         }
@@ -101,7 +107,7 @@ pub fn configuration(input: &str) -> Result<String, &'static str> {
         if info["mode"] == "weather" {
             options["host"] = json!("api.open-meteo.com");
             options["port"] = json!(443);
-            options["vars"] = json!({"lat":"48.8566","lon":"2.3522"});
+            options["vars"] = coordinates(&input[key])?;
         } else {
             let port = input["port"]
                 .as_u64()
@@ -116,6 +122,22 @@ pub fn configuration(input: &str) -> Result<String, &'static str> {
         );
     }
     toml::to_string(&config).map_err(|_| "configuration")
+}
+
+// Only finite numeric coordinates reach the existing URL-template transport.
+fn coordinates(input: &Value) -> Result<Value, &'static str> {
+    if input["location"].is_null() {
+        return Ok(json!({"lat":"48.8566","lon":"2.3522"})); // Legacy approved demo.
+    }
+    let lat = input["location"]["latitude"]
+        .as_f64()
+        .filter(|v| v.is_finite() && (-90.0..=90.0).contains(v))
+        .ok_or("location")?;
+    let lon = input["location"]["longitude"]
+        .as_f64()
+        .filter(|v| v.is_finite() && (-180.0..=180.0).contains(v))
+        .ok_or("location")?;
+    Ok(json!({"lat":lat.to_string(),"lon":lon.to_string()}))
 }
 
 /// Explicit, approved public-weather probe; does not change the running driver.
@@ -136,11 +158,7 @@ pub fn weather_probe(input: &str) -> Result<Value, &'static str> {
         profile: "open-meteo".into(),
         host: Some("api.open-meteo.com".into()),
         port: Some(443),
-        vars: [
-            ("lat".into(), "48.8566".into()),
-            ("lon".into(), "2.3522".into()),
-        ]
-        .into(),
+        vars: serde_json::from_value(coordinates(&input)?).map_err(|_| "location")?,
     };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -183,6 +201,33 @@ mod tests {
             .is_err()
         );
     }
+    #[test]
+    fn configurable_weather_is_numeric_bounded_and_keeps_tablet_read_only() {
+        let weather = include_str!("../../../integrations/open-meteo/profile.toml");
+        let tablet = include_str!("../../../android/app/src/main/assets/tablet.toml");
+        let mut spec = json!({"config":"", "data":"/synthetic", "port":1234,
+            "weather":{"text":weather,"sha256":moli_profile::sha256(weather),"location":{"latitude":45.764,"longitude":4.8357}},
+            "tablet":{"text":tablet,"sha256":moli_profile::sha256(tablet)}});
+        let parsed: toml::Value =
+            toml::from_str(&configuration(&spec.to_string()).unwrap()).unwrap();
+        let drivers = parsed["driver"].as_array().unwrap();
+        assert_eq!(
+            drivers[0]["options"]["vars"]["lat"].as_str(),
+            Some("45.764")
+        );
+        assert_eq!(drivers[1]["id"].as_str(), Some("android-tablet"));
+        assert_eq!(review(tablet).unwrap()["mode"], "tablet");
+        assert!(review(&tablet.replace("/tablet", "/switch")).is_err());
+        for location in [
+            json!({"latitude":91,"longitude":0}),
+            json!({"latitude":0,"longitude":181}),
+            json!({"latitude":"0&host=example.invalid","longitude":0}),
+        ] {
+            spec["weather"]["location"] = location;
+            assert_eq!(configuration(&spec.to_string()), Err("location"));
+        }
+    }
+
     #[test]
     fn weather_fixture_uses_existing_point_conversion() {
         let weather = include_str!("../../../integrations/open-meteo/profile.toml");
