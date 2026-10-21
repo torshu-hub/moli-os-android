@@ -72,13 +72,21 @@ public final class HomeSetupTest {
                 until(()->{AtomicReference<String> dom=new AtomicReference<>();main.onActivity(a->a.web.evaluateJavascript("document.body.innerText.includes('Cette tablette') && document.body.innerText.includes('Lieu test public')",dom::set));
                     long end=android.os.SystemClock.elapsedRealtime()+1000;while(dom.get()==null && android.os.SystemClock.elapsedRealtime()<end)Thread.sleep(10);return "true".equals(dom.get());});
                 AtomicLong first = new AtomicLong();
-                until(() -> {
-                    AtomicReference<String> sample = new AtomicReference<>();
-                    main.onActivity(a -> a.web.evaluateJavascript("(()=>{const t=document.querySelector('[data-tablet-receipt]');return t?.dataset.tabletStatus==='fresh' ? Number(t.dataset.tabletReceipt) : 0})()", sample::set));
-                    long end=android.os.SystemClock.elapsedRealtime()+1000;while(sample.get()==null && android.os.SystemClock.elapsedRealtime()<end)Thread.sleep(10);
-                    if(sample.get()!=null && sample.get().matches("[0-9]+")) first.set(Long.parseLong(sample.get()));
-                    return first.get()>0;
-                });
+                AtomicReference<String> lastSample = new AtomicReference<>("none");
+                try {
+                    until(() -> {
+                        AtomicReference<String> sample = new AtomicReference<>();
+                        main.onActivity(a -> a.web.evaluateJavascript("JSON.stringify({status:document.querySelector('[data-tablet-receipt]')?.dataset.tabletStatus,receipt:document.querySelector('[data-tablet-receipt]')?.dataset.tabletReceipt,hidden:document.hidden})", sample::set));
+                        long end=android.os.SystemClock.elapsedRealtime()+1000;while(sample.get()==null && android.os.SystemClock.elapsedRealtime()<end)Thread.sleep(10);
+                        if(sample.get()!=null && !"null".equals(sample.get())) {
+                            String decoded=String.valueOf(new JSONTokener(sample.get()).nextValue());
+                            lastSample.set(decoded);JSONObject observed=new JSONObject(decoded);
+                            double receipt=observed.optDouble("receipt");
+                            if("fresh".equals(observed.optString("status")) && Double.isFinite(receipt) && receipt>0) first.set((long)receipt);
+                        }
+                        return first.get()>0;
+                    });
+                } catch(AssertionError failure) {throw new AssertionError("Tablet source evidence (coded state/timestamp/visibility only): "+lastSample.get(),failure);}
                 long initial=first.get();
                 until(() -> {
                     AtomicReference<String> renewed=new AtomicReference<>();
