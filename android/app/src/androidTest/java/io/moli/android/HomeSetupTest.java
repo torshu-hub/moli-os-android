@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.*;
 public final class HomeSetupTest {
     private interface Check { boolean ready() throws Exception; }
     private static void until(Check check) throws Exception {
-        long end=android.os.SystemClock.elapsedRealtime()+30000;
+        long end=android.os.SystemClock.elapsedRealtime()+65000;
         while(!check.ready() && android.os.SystemClock.elapsedRealtime()<end) Thread.sleep(100);
         assertTrue("Home setup observation within timeout",check.ready());
     }
@@ -57,6 +57,21 @@ public final class HomeSetupTest {
             try(ActivityScenario<MainActivity> main=ActivityScenario.launch(MainActivity.class)) {
                 until(()->{AtomicReference<String> dom=new AtomicReference<>();main.onActivity(a->a.web.evaluateJavascript("document.body.innerText.includes('Cette tablette') && document.body.innerText.includes('Lieu test public')",dom::set));
                     long end=android.os.SystemClock.elapsedRealtime()+1000;while(dom.get()==null && android.os.SystemClock.elapsedRealtime()<end)Thread.sleep(10);return "true".equals(dom.get());});
+                AtomicLong first = new AtomicLong();
+                until(() -> {
+                    AtomicReference<String> sample = new AtomicReference<>();
+                    main.onActivity(a -> a.web.evaluateJavascript("(()=>{const t=document.querySelector('[data-tablet-receipt]');return t?.dataset.tabletStatus==='fresh' ? Number(t.dataset.tabletReceipt) : 0})()", sample::set));
+                    long end=android.os.SystemClock.elapsedRealtime()+1000;while(sample.get()==null && android.os.SystemClock.elapsedRealtime()<end)Thread.sleep(10);
+                    if(sample.get()!=null && sample.get().matches("[0-9]+")) first.set(Long.parseLong(sample.get()));
+                    return first.get()>0;
+                });
+                long initial=first.get();
+                until(() -> {
+                    AtomicReference<String> renewed=new AtomicReference<>();
+                    main.onActivity(a -> a.web.evaluateJavascript("(()=>{const t=document.querySelector('[data-tablet-receipt]');return t?.dataset.tabletStatus==='fresh' && Number(t.dataset.tabletReceipt)>"+initial+"})()", renewed::set));
+                    long end=android.os.SystemClock.elapsedRealtime()+1000;while(renewed.get()==null && android.os.SystemClock.elapsedRealtime()<end)Thread.sleep(10);
+                    return "true".equals(renewed.get());
+                });
                 assertEquals(lease,EngineHost.currentLease());
             }
         } finally {app.startService(new Intent(app,MoliService.class).setAction(MoliService.STOP));until(()->EngineHost.state()==EngineHost.State.STOPPED);}

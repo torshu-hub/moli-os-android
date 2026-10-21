@@ -5,7 +5,7 @@
   const cfg = $derived(home.config.android);
   const tablet = $derived(device(cfg.tablet));
   const weather = $derived(device(cfg.weather));
-  const status = (d, keys, age) => sourceStatus(hub.connected, d, hub.drivers.find((v) => v.instance === d?.instance), keys, home.now, age);
+  const status = (d, keys, age) => sourceStatus(hub.connected && home.snapshotHealthy, d, hub.drivers.find((v) => v.instance === d?.instance), keys, home.now, age);
   const w = $derived(status(weather, ['temperature','humidity'], 930000));
   const b = $derived(status(tablet, ['battery','charging','network'], 65000));
   const rooms = $derived(home.config.rooms ?? []);
@@ -23,7 +23,7 @@
     <p class="muted">{t('maison.android.weather_help')}</p>
     <a href="#/dehors">{t('maison.android.weather_detail')}</a>
   </section>
-  <section class="card">
+  <section class="card" data-tablet-status={b.state} data-tablet-receipt={b.ts}>
     <div class="card-head"><h2>{t('maison.android.tablet')}</h2><span class="chip" class:good={b.state === 'fresh'}>{t('maison.android.' + b.state)}</span></div>
     <p class="reading">{num(value(cfg.tablet,'battery'))} %</p>
     <p>{value(cfg.tablet,'charging') == null ? '—' : t(value(cfg.tablet,'charging') ? 'maison.android.plugged' : 'maison.android.on_battery')}</p>

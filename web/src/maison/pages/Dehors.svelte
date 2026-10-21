@@ -9,7 +9,7 @@
 
   const out = $derived(home.config?.outdoor ?? {});
   const w = $derived(out.weather);
-  const source = $derived(sourceStatus(hub.connected, device(w), hub.drivers.find(d => d.instance === device(w)?.instance), ['temperature','humidity'], home.now, 930000));
+  const source = $derived(sourceStatus(hub.connected && (!home.config?.android || home.snapshotHealthy), device(w), hub.drivers.find(d => d.instance === device(w)?.instance), ['temperature','humidity'], home.now, 930000));
   const air = $derived(out.air);
   const pool = $derived(out.pool);
   const v = (id, key) => value(id, key);

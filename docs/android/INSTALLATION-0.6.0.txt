@@ -20,7 +20,8 @@ UTILISATION
    Le nom du lieu reste local. Attribution : https://open-meteo.com/.
 5. La météo se renouvelle toutes les 15 min ; la tablette est relue toutes les
    30 s lorsque le moteur tourne. Le tableau de bord utilise le flux en direct
-   du moteur. Une donnée ancienne ou indisponible est indiquée explicitement.
+   du moteur, avec relecture locale des échantillons toutes les 15 s à l’écran
+   (aucune requête météo supplémentaire). Une donnée ancienne ou indisponible est indiquée explicitement.
 
 Les pièces sont préparées pour les équipements futurs ; aucune intégration
 matérielle réelle n’est configurée par ce lot. Les pièces sans appareil sont

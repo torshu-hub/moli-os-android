@@ -45,6 +45,24 @@ function applySnapshot(snapshot) {
   hub.guard = snapshot.guard ?? null;
 }
 
+/** Re-read sample timestamps: unchanged values intentionally produce no SSE event. */
+export async function refreshSnapshot() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch('/api/devices', { signal: controller.signal });
+    if (!res.ok) return false;
+    const snapshot = await res.json();
+    if (!Array.isArray(snapshot.devices) || !Array.isArray(snapshot.drivers)) return false;
+    applySnapshot(snapshot);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function splitPoint(point) {
   const i = point.indexOf('/');
   return [point.slice(0, i), point.slice(i + 1)];

@@ -17,7 +17,7 @@
 
   const out = $derived(home.config?.outdoor ?? {});
   const w = $derived(out.weather);
-  const fresh = $derived(!home.config?.android || sourceStatus(hub.connected, device(w), hub.drivers.find(d => d.instance === device(w)?.instance), ['temperature','humidity'], home.now, 930000).state === 'fresh');
+  const fresh = $derived(!home.config?.android || sourceStatus(hub.connected && (!home.config?.android || home.snapshotHealthy), device(w), hub.drivers.find(d => d.instance === device(w)?.instance), ['temperature','humidity'], home.now, 930000).state === 'fresh');
   const day = $derived(value(w, 'daylight') !== false);
   const now = $derived(weatherOf(value(w, 'weather_code'), day));
   const hhmm = (iso) => (iso ? String(iso).slice(11, 16) : '—');
