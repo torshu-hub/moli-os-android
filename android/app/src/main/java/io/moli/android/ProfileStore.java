@@ -38,11 +38,11 @@ final class ProfileStore {
         String text = bounded(in, LIMIT); JSONObject result = nativeResult(text, 0);
         atomic(stage(c), text); TrialLog.record(TrialJournal.Event.PROFILE_REVIEWED,0,0); return result;
     }
-    static JSONObject state(Context c) throws Exception {
+    static synchronized JSONObject state(Context c) throws Exception {
         File f = new File(data(c), "android-integrations.json");
         return f.exists() ? new JSONObject(bounded(new AtomicFile(f).openRead(), LIMIT)) : new JSONObject();
     }
-    private static void save(Context c, JSONObject next) throws Exception {
+    private static synchronized void save(Context c, JSONObject next) throws Exception {
         File dir = data(c);
         atomic(new File(dir, "android-integrations.previous.json"), state(c).toString());
         atomic(new File(dir, "android-integrations.json"), next.toString());

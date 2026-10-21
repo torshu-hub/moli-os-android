@@ -29,6 +29,17 @@ public final class HomeSetupTest {
         Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();
         if(!ProtectedKey.exists(app)) ProtectedKey.create(app,"4826");
         assertEquals(EngineHost.State.STOPPED,EngineHost.state());
+        assertTrue(ProfileStore.data(app).isDirectory() || ProfileStore.data(app).mkdirs());
+        // AtomicFile is atomic replacement, not a reader/writer lock. In particular,
+        // openRead may discard a writer's .new file unless both share our lock.
+        java.util.concurrent.Future<Void> writes=EngineHost.maintain(() -> {
+            for(int i=0;i<30;i++) {ProfileStore.demo(app);ProfileStore.remove(app,"demo");}
+            return null;
+        });
+        int reads=0;
+        do {ProfileStore.state(app);reads++;Thread.yield();} while(!writes.isDone());
+        writes.get(10,java.util.concurrent.TimeUnit.SECONDS);assertTrue(reads>0);
+        assertFalse(ProfileStore.state(app).optBoolean("demo"));
         try(ActivityScenario<HomeSettingsActivity> ui=ActivityScenario.launch(HomeSettingsActivity.class)) {
             until(() -> {AtomicBoolean ready=new AtomicBoolean();ui.onActivity(a->ready.set(a.save.isEnabled()));return ready.get();});
             ui.onActivity(a->{a.weather.setChecked(true);a.label.setText("Lieu test public");a.latitude.setText("91");a.longitude.setText("4.8357");a.rooms.setText("Salon\nBureau\nSalon");a.save.performClick();assertEquals(a.getString(R.string.home_invalid),a.message.getText().toString());});
