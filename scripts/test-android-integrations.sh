@@ -6,6 +6,11 @@ app=io.moli.android.app.preview.home.v060
 if adb shell pm path "$app" | grep -q '^package:'; then
     echo 'Expected a fresh emulator; existing installation left untouched' >&2; exit 1
 fi
+# Foreground UI checks only, after the disposable-emulator guard above.
+adb shell settings put system screen_off_timeout 1800000
+adb shell svc power stayon true
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell wm dismiss-keyguard
 ./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest -PmoliAbis=x86_64 -PmoliAppSuffix=.preview.home.v060
 adb install app/build/outputs/apk/debug/app-debug.apk
 adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
