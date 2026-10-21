@@ -1,0 +1,83 @@
+package io.moli.android;
+
+import android.content.*;
+import android.os.SystemClock;
+import android.view.KeyEvent;
+import androidx.lifecycle.Lifecycle;
+import androidx.test.core.app.ActivityScenario;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import java.util.concurrent.atomic.AtomicReference;
+import static org.junit.Assert.*;
+
+/** Real system Back dispatch and WebView routes; disposable emulator, no provider calls. */
+@RunWith(AndroidJUnit4.class)
+public final class BackNavigationTest {
+    private interface Check { boolean ready() throws Exception; }
+    private static void until(Check check) throws Exception {
+        long end = SystemClock.elapsedRealtime() + 30000;
+        while (!check.ready() && SystemClock.elapsedRealtime() < end) Thread.sleep(50);
+        assertTrue("Navigation condition within timeout", check.ready());
+    }
+    private static String js(ActivityScenario<MainActivity> ui, String script) throws Exception {
+        AtomicReference<String> result = new AtomicReference<>();
+        ui.onActivity(a -> a.web.evaluateJavascript(script, result::set));
+        until(() -> result.get() != null);
+        return result.get();
+    }
+    private static void back() {
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+    }
+    private static void resumed(ActivityScenario<MainActivity> ui) {
+        assertEquals(Lifecycle.State.RESUMED, ui.getState());
+    }
+    private static void home(ActivityScenario<MainActivity> ui) throws Exception {
+        until(() -> "true".equals(js(ui, "(location.hash==='' || location.hash==='#/') && !!document.querySelector('[data-tablet-receipt]')")));
+        resumed(ui);
+    }
+    private static void open(ActivityScenario<MainActivity> ui, String route) throws Exception {
+        assertEquals("true", js(ui, "(()=>{const a=document.querySelector('a[href=\"#/" + route + "\"]');if(!a)return false;a.click();return true})()"));
+        until(() -> "true".equals(js(ui, "location.hash==='#/" + route + "' && !document.querySelector('[data-tablet-receipt]')")));
+    }
+    @Test public void backReturnsHomeThenConfirmsExitWithoutStoppingEngine() throws Exception {
+        Context app = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertEquals(EngineHost.State.STOPPED, EngineHost.state());
+        if (!ProtectedKey.exists(app)) ProtectedKey.create(app, "4826");
+        app.getSharedPreferences("host", Context.MODE_PRIVATE).edit().putBoolean("wanted", false).commit();
+        ProfileStore.remove(app, "weather"); // No remote call is needed for navigation.
+        try {
+            try (ActivityScenario<MainActivity> ui = ActivityScenario.launch(MainActivity.class)) {
+                ui.onActivity(a -> app.startForegroundService(new Intent(app, MoliService.class)));
+                until(() -> EngineHost.state() == EngineHost.State.RUNNING);
+                long lease = EngineHost.currentLease();
+                home(ui);
+                open(ui, "dehors"); back(); home(ui);
+                back(); resumed(ui); // First Back at Home only warns.
+                open(ui, "pieces");
+                ui.onActivity(MainActivity::onBackPressed); // Legacy dispatch used before API 33.
+                home(ui);
+                back(); resumed(ui); // Changing page has cancelled the previous warning.
+                Thread.sleep(2200);
+                back(); resumed(ui); // An expired warning cannot close the interface.
+                ui.moveToState(Lifecycle.State.CREATED);
+                ui.moveToState(Lifecycle.State.RESUMED);
+                back(); resumed(ui); // Leaving the screen also cancels confirmation.
+                back(); until(() -> ui.getState() == Lifecycle.State.DESTROYED);
+                assertEquals(lease, EngineHost.currentLease());
+                assertEquals(EngineHost.State.RUNNING, EngineHost.state());
+                assertTrue("Real Rust HTTP still answers after closing UI", EngineHealth.request(EngineHost.origin(), EngineHost.token()));
+            }
+            try (ActivityScenario<MainActivity> reopened = ActivityScenario.launch(MainActivity.class)) {
+                home(reopened);
+                back(); resumed(reopened);
+                assertTrue(EngineHealth.request(EngineHost.origin(), EngineHost.token()));
+            }
+        } finally {
+            app.startService(new Intent(app, MoliService.class).setAction(MoliService.STOP));
+            until(() -> EngineHost.state() == EngineHost.State.STOPPED);
+        }
+    }
+}

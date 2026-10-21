@@ -75,7 +75,9 @@
     <string name="integration_fresh">reçue récemment</string>
     <string name="integration_stale">ancienne ou indisponible</string>
     <string name="integration_waiting">Intégration sélectionnée ; attente de données. En cas de panne réseau, aucune valeur fraîche ne peut être garantie.</string>
-    <string name="app_name_integrations">Moli OS 0.6.0</string>
+    <string name="app_name_integrations">Moli OS 0.6.1</string>
+    <string name="back_exit">Appuyez encore sur Retour pour fermer l’interface.</string>
+    <string name="back_exit_running">Appuyez encore sur Retour pour fermer l’interface. Le serveur reste actif.</string>
     <string name="engine_not_observed">Aucun contrôle récent : moniteur non exécuté ou encore en attente</string>
     <string name="engine_observed_failure">Dernier contrôle exécuté : le moteur n’a pas répondu correctement</string>
     <string name="engine_no_sample">Aucun contrôle terminé pour cette session</string>

@@ -18,6 +18,9 @@ public final class MainActivity extends Activity {
     private MoliService server;
     private boolean bound;
     private volatile String loaded;
+    private long exitBackAt = -1;
+    private Toast exitHint;
+    private Runnable unregisterBack;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -92,6 +95,9 @@ public final class MainActivity extends Activity {
         web.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.setWebViewClient(new WebViewClient() {
+            @Override public void doUpdateVisitedHistory(WebView view, String url, boolean reload) {
+                resetExitBack();
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String origin = loaded;
@@ -111,6 +117,7 @@ public final class MainActivity extends Activity {
         });
         root.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
+        if (Build.VERSION.SDK_INT >= 33) unregisterBack = ModernBack.register(this);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
         handler.post(refresh);
         if (EngineHost.state() == EngineHost.State.RUNNING || EngineHost.state() == EngineHost.State.STARTING ||
@@ -148,14 +155,57 @@ public final class MainActivity extends Activity {
         web.loadUrl("about:blank"); web.setVisibility(View.GONE);
         status.setText(R.string.stopping); status.setVisibility(View.VISIBLE);
     }
+    // Return to the dashboard root, rather than traversing WebView history (which
+    // also contains loading/stopped pages). Closing the UI never stops the service.
+    private void dashboardBack() {
+        String origin = loaded;
+        String url = web.getUrl();
+        if (origin != null && url != null && url.startsWith(origin + "/")) {
+            Uri page = Uri.parse(url);
+            String fragment = page.getFragment();
+            if (!"/".equals(page.getPath()) || (fragment != null && !fragment.isEmpty() && !"/".equals(fragment))) {
+                resetExitBack();
+                web.loadUrl(origin + "/#/");
+                return;
+            }
+        }
+        long now = SystemClock.elapsedRealtime();
+        if (exitBackAt >= 0 && now - exitBackAt <= 2000) {
+            resetExitBack();
+            finish();
+        } else {
+            exitBackAt = now;
+            if (exitHint != null) exitHint.cancel();
+            exitHint = Toast.makeText(this, EngineHost.state() == EngineHost.State.RUNNING
+                    ? R.string.back_exit_running : R.string.back_exit, Toast.LENGTH_SHORT);
+            exitHint.show();
+        }
+    }
+    private void resetExitBack() {
+        exitBackAt = -1;
+        if (exitHint != null) { exitHint.cancel(); exitHint = null; }
+    }
+    @SuppressWarnings("deprecation")
+    @Override public void onBackPressed() { dashboardBack(); }
+
+    @android.annotation.TargetApi(33)
+    private static final class ModernBack {
+        static Runnable register(MainActivity activity) {
+            android.window.OnBackInvokedCallback callback = activity::dashboardBack;
+            activity.getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback);
+            return () -> activity.getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(callback);
+        }
+    }
     @Override public void onStart() {
         super.onStart(); web.onResume(); handler.removeCallbacks(refresh); handler.post(refresh);
     }
     @Override public void onStop() {
-        handler.removeCallbacks(refresh); web.onPause(); super.onStop();
+        resetExitBack(); handler.removeCallbacks(refresh); web.onPause(); super.onStop();
     }
     @Override public void onDestroy() {
         handler.removeCallbacks(refresh);
+        if (unregisterBack != null) unregisterBack.run();
         if (bound) unbindService(connection);
         web.destroy();
         super.onDestroy();

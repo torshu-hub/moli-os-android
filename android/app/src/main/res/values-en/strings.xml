@@ -75,7 +75,9 @@
     <string name="integration_fresh">recently received</string>
     <string name="integration_stale">stale or unavailable</string>
     <string name="integration_waiting">Integration selected; waiting for data. Fresh values cannot be guaranteed during a network failure.</string>
-    <string name="app_name_integrations">Moli OS 0.6.0</string>
+    <string name="app_name_integrations">Moli OS 0.6.1</string>
+    <string name="back_exit">Press Back again to close the interface.</string>
+    <string name="back_exit_running">Press Back again to close the interface. The server stays active.</string>
     <string name="engine_not_observed">No recent check: monitor not scheduled or still pending</string>
     <string name="engine_observed_failure">Last executed check: engine did not respond correctly</string>
     <string name="engine_no_sample">No completed check this session</string>
