@@ -3,6 +3,9 @@ package io.moli.android;
 import android.content.*;
 import android.os.SystemClock;
 import android.view.KeyEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.Button;
 import androidx.lifecycle.Lifecycle;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -42,6 +45,17 @@ public final class BackNavigationTest {
         assertEquals("true", js(ui, "(()=>{const a=document.querySelector('a[href=\"#/" + route + "\"]');if(!a)return false;a.click();return true})()"));
         until(() -> "true".equals(js(ui, "location.hash==='#/" + route + "' && !document.querySelector('[data-tablet-receipt]')")));
     }
+    private static Button button(View view, String text) {
+        if (view instanceof Button && text.contentEquals(((Button) view).getText())) return (Button) view;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                Button found = button(group.getChildAt(i), text);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
     @Test public void backReturnsHomeThenConfirmsExitWithoutStoppingEngine() throws Exception {
         Context app = InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertEquals(EngineHost.State.STOPPED, EngineHost.state());
@@ -50,7 +64,12 @@ public final class BackNavigationTest {
         ProfileStore.remove(app, "weather"); // No remote call is needed for navigation.
         try {
             try (ActivityScenario<MainActivity> ui = ActivityScenario.launch(MainActivity.class)) {
-                ui.onActivity(a -> app.startForegroundService(new Intent(app, MoliService.class)));
+                // Use the real Start control: it both starts AND binds the UI.
+                // Sending a service intent alone leaves this initially stopped UI unbound.
+                ui.onActivity(a -> {
+                    Button start = button(a.getWindow().getDecorView(), a.getString(R.string.start));
+                    assertNotNull(start); assertTrue(start.isEnabled()); start.performClick();
+                });
                 until(() -> EngineHost.state() == EngineHost.State.RUNNING);
                 long lease = EngineHost.currentLease();
                 home(ui);
