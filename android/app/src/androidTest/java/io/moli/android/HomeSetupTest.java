@@ -16,8 +16,11 @@ public final class HomeSetupTest {
     private interface Check { boolean ready() throws Exception; }
     private static void until(Check check) throws Exception {
         long end=android.os.SystemClock.elapsedRealtime()+65000;
-        while(!check.ready() && android.os.SystemClock.elapsedRealtime()<end) Thread.sleep(100);
-        assertTrue("Home setup observation within timeout",check.ready());
+        while (true) {
+            if (check.ready()) return;
+            if (android.os.SystemClock.elapsedRealtime() >= end) fail("Home setup observation within timeout");
+            Thread.sleep(100);
+        }
     }
     private static JSONObject get(String path) throws Exception {
         HttpURLConnection c=(HttpURLConnection)new URL(EngineHost.origin()+path).openConnection();

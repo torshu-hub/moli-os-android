@@ -21,8 +21,11 @@ public final class BackNavigationTest {
     private interface Check { boolean ready() throws Exception; }
     private static void until(Check check) throws Exception {
         long end = SystemClock.elapsedRealtime() + 30000;
-        while (!check.ready() && SystemClock.elapsedRealtime() < end) Thread.sleep(50);
-        assertTrue("Navigation condition within timeout", check.ready());
+        while (true) {
+            if (check.ready()) return;
+            if (SystemClock.elapsedRealtime() >= end) fail("Navigation condition within timeout");
+            Thread.sleep(50);
+        }
     }
     private static String js(ActivityScenario<MainActivity> ui, String script) throws Exception {
         AtomicReference<String> result = new AtomicReference<>();

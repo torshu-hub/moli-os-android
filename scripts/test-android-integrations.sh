@@ -15,7 +15,7 @@ adb shell wm dismiss-keyguard
 adb install app/build/outputs/apk/debug/app-debug.apk
 adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell pm grant "$app" android.permission.POST_NOTIFICATIONS
-for class in ProfileImportTest EngineDiagnosticsTest WeatherObservationTest HomeSetupTest BackNavigationTest; do
+for class in ProfileImportTest EngineDiagnosticsTest WeatherObservationTest BackNavigationTest HomeSetupTest; do
     log=../android-artifacts/reports/$class.txt
     adb shell am instrument -w -r -e class "io.moli.android.$class" "$app.test/androidx.test.runner.AndroidJUnitRunner" > "$log"
     cat "$log"
