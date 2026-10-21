@@ -33,7 +33,10 @@ public final class HomeSetupTest {
         // AtomicFile is atomic replacement, not a reader/writer lock. In particular,
         // openRead may discard a writer's .new file unless both share our lock.
         java.util.concurrent.Future<Void> writes=EngineHost.maintain(() -> {
-            for(int i=0;i<30;i++) {ProfileStore.demo(app);ProfileStore.remove(app,"demo");}
+            for(int i=0;i<30;i++) {
+                ProfileStore.demo(app);assertTrue("Committed selection must survive concurrent readers",ProfileStore.state(app).optBoolean("demo"));
+                ProfileStore.remove(app,"demo");assertFalse(ProfileStore.state(app).optBoolean("demo"));
+            }
             return null;
         });
         int reads=0;
