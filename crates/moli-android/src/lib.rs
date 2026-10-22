@@ -1,6 +1,7 @@
 //! Narrow Java bridge for engine lifetime, profile onboarding, local equipment consent and explicit weather checks.
 //! Inputs are copied through the jni crate; panics never unwind into the JVM.
 
+mod discovery;
 mod equipment;
 mod profiles;
 
@@ -111,6 +112,7 @@ pub extern "system" fn Java_io_moli_android_NativeServer_profile(
                 }
                 equipment::store_keys(&serde_json::from_str(&text).map_err(|_| "input")?)
             }
+            5 => discovery::review(&serde_json::from_str(&text).map_err(|_| "input")?),
             _ => Err("input"),
         }
     }));

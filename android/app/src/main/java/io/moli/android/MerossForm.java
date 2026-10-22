@@ -31,6 +31,13 @@ final class MerossForm {
     private void append(JSONObject input) {
         Row row=new Row(input); entries.add(row); rows.addView(row.body);
     }
+    boolean suggest(String host) {
+        if(entries.size()>=8) return false;
+        for(Row row:entries) if(row.host.getText().toString().trim().equals(host)) return false;
+        JSONObject input=new JSONObject();
+        try { input.put("host",host).put("enabled",false); } catch(JSONException impossible) { return false; }
+        append(input); edited(); setEnabled(enabled); return true;
+    }
     JSONArray settings() throws Exception {
         JSONArray result=new JSONArray();
         for(Row r:entries) result.put(new JSONObject().put("id",r.id).put("name",r.name.getText().toString().trim())

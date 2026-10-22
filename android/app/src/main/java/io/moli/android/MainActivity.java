@@ -88,7 +88,8 @@ public final class MainActivity extends Activity {
         diagnostics.setOnClickListener(v -> {
             PopupMenu menu = new PopupMenu(this,diagnostics);
             menu.getMenu().add(0,1,0,R.string.app_info); menu.getMenu().add(0,2,1,R.string.integration_title);
-            menu.setOnMenuItemClickListener(item -> { startActivity(new Intent(this,item.getItemId()==1?AppInfoActivity.class:IntegrationsActivity.class)); return true; }); menu.show();
+            menu.getMenu().add(0,3,2,R.string.network_title);
+            menu.setOnMenuItemClickListener(item -> { startActivity(new Intent(this,item.getItemId()==1?AppInfoActivity.class:item.getItemId()==3?LocalNetworkActivity.class:IntegrationsActivity.class)); return true; }); menu.show();
         }); tools.addView(diagnostics);
         Button equipment = new Button(this); equipment.setText(R.string.equipment_title);
         equipment.setOnClickListener(v -> startActivity(new Intent(this,EquipmentSettingsActivity.class)));

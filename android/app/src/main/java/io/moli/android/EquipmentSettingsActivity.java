@@ -8,7 +8,7 @@ import android.widget.*;
 import org.json.JSONObject;
 import java.util.concurrent.*;
 
-/** Configures only user-approved read operations; no discovery or device commands. */
+/** Configures only user-approved read operations; discovery suggestions never activate a driver. */
 public final class EquipmentSettingsActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -41,6 +41,7 @@ public final class EquipmentSettingsActivity extends Activity {
         scroll.addView(body);
         text(body, R.string.equipment_title);
         text(body, R.string.equipment_help);
+        button(body, R.string.network_title, () -> startActivity(new Intent(this,LocalNetworkActivity.class)));
         stateText = text(body, R.string.equipment_stop_first);
         button(body, R.string.stop, () -> startService(new Intent(this, MoliService.class).setAction(MoliService.STOP)));
         printer = new CheckBox(this); printer.setText(R.string.equipment_printer); body.addView(printer);
@@ -80,11 +81,32 @@ public final class EquipmentSettingsActivity extends Activity {
                     printer.setChecked(p != null); gateway.setChecked(g != null);
                     if (p != null) { host.setText(p.optString("host")); port.setText(p.optString("port")); path.setText(p.optString("path")); }
                     if (g != null) location.setText(g.optString("location"));
-                    try { meross.load(selected.optJSONArray("meross")); ready = true; }
+                    try { meross.load(selected.optJSONArray("meross")); ready = true; applySuggestion(); }
                     catch (Exception invalid) { message.setText(R.string.equipment_initialize); }
                 });
             } catch (Exception failure) { runOnUiThread(() -> { if (!isDestroyed()) message.setText(R.string.equipment_initialize); }); }
         });
+    }
+    private void applySuggestion() {
+        Intent intent=getIntent(); String kind=intent.getStringExtra("discovery_kind"), ip=intent.getStringExtra("discovery_ip");
+        if(kind==null || !NetworkEvidence.privateIp(NetworkEvidence.ipv4(ip))) return;
+        if(kind.equals("meross")) {
+            if(!meross.suggest(ip)) { message.setText(R.string.network_duplicate); return; }
+        } else if(kind.equals("ipp")) {
+            int number=intent.getIntExtra("discovery_port",0); if(number<1 || number>65535) return;
+            printer.setChecked(false); host.setText(ip); port.setText(String.valueOf(number));
+            path.setText(NetworkEvidence.ippPath(intent.getStringExtra("discovery_path")));
+        } else if(kind.equals("igd")) {
+            String url=intent.getStringExtra("discovery_location");
+            try {
+                JSONObject checked=new JSONObject().put("gateway",new JSONObject().put("location",url));
+                ProfileStore.nativeResult(checked.toString(),3);
+                if(!new java.net.URI(url).getHost().equals(ip)) return;
+                gateway.setChecked(false); location.setText(url);
+            } catch(Exception invalid) { return; }
+        } else return;
+        edited(); message.setText(R.string.network_suggestion);
+        intent.removeExtra("discovery_kind"); // Rotation must not append the same suggestion twice.
     }
     private void save() {
         if (EngineHost.state() != EngineHost.State.STOPPED || busy || !ready) return;
