@@ -179,6 +179,27 @@ pub async fn read_only_once(
         .collect())
 }
 
+#[derive(Debug)]
+struct MerossKeyRejected;
+impl std::fmt::Display for MerossKeyRejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Meross key rejected")
+    }
+}
+impl std::error::Error for MerossKeyRejected {}
+
+/// Safe classification only; never copy a transport error containing an address into diagnostics.
+#[must_use]
+pub fn mss310_identity_error(error: &anyhow::Error) -> &'static str {
+    if error.is::<MerossKeyRejected>() {
+        "account_key"
+    } else if error.is::<std::io::Error>() || error.is::<tokio::time::error::Elapsed>() {
+        "account_local"
+    } else {
+        "account_protocol"
+    }
+}
+
 /// One signed GET to verify an MSS310's hardware UUID before account-assisted provisioning.
 /// Callers must approve the private numeric destination; no discovery or write is performed.
 pub async fn mss310_identity(host: &str, port: u16, key: &str) -> anyhow::Result<String> {
@@ -664,6 +685,13 @@ async fn fetch(
         .with_context(|| format!("{}: unreadable {:?} answer", request.path, request.format))?;
     if let (Call::Meross { namespace, .. }, Answer::Json(json)) = (&request.call, &answer) {
         let method = json["header"]["method"].as_str().unwrap_or_default();
+        // Public Meross protocol: ERROR 5001 explicitly means invalid key. Other errors are not guessed.
+        if method == "ERROR"
+            && json["header"]["namespace"] == *namespace
+            && json["payload"]["error"]["code"] == 5001
+        {
+            return Err(MerossKeyRejected.into());
+        }
         if method != "GETACK" {
             bail!("{namespace}: Meross response rejected (key or protocol)");
         }

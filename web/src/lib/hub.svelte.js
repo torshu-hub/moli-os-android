@@ -4,6 +4,7 @@ import { setLanguage, t } from './i18n.svelte.js';
 
 export const hub = $state({
   connected: false,
+  observedAt: 0, // Local receipt clock; never infer receipt from a remote sample timestamp.
   /** @type {Record<string, any>} device id → DeviceView */
   devices: {},
   /** @type {any[]} */
@@ -37,6 +38,7 @@ export const hub = $state({
 const JOURNAL_MAX = 60;
 
 function applySnapshot(snapshot) {
+  hub.observedAt=Date.now();
   const devices = {};
   for (const d of snapshot.devices) devices[d.id] = d;
   hub.devices = devices;
@@ -84,6 +86,7 @@ function applyEvent(e) {
       delete hub.devices[e.device];
       break;
     case 'state': {
+      hub.observedAt=Date.now();
       const [id, key] = splitPoint(e.point);
       const device = hub.devices[id];
       if (!device) break;

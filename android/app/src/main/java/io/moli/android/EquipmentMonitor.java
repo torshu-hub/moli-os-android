@@ -35,17 +35,21 @@ final class EquipmentMonitor {
         for(int i=0;i<rows.length();i++){
             JSONObject row=rows.getJSONObject(i);String instance=row.getString("instance");int kind=row.getInt("kind");boolean running=false;
             for(int d=0;d<drivers.length();d++){JSONObject driver=drivers.getJSONObject(d);if(instance.equals(driver.optString("instance")))running="running".equals(driver.optJSONObject("status")==null?"":driver.optJSONObject("status").optString("state"));}
-            int count=0;boolean identity=false;
+            int count=0;boolean identity=false;long receipt=0;
             for(int d=0;d<devices.length();d++){JSONObject device=devices.getJSONObject(d);if(!instance.equals(device.optString("instance")))continue;JSONObject state=device.optJSONObject("state");if(state==null)continue;
-                String gate=kind==1?"responding":kind==2?"connected":"reported_model";JSONObject sample=state.optJSONObject(gate);
+                JSONObject uptime=state.optJSONObject("uptime");
+                String gate=kind==1?"responding":kind==2?(uptime!=null && !uptime.isNull("value")?"uptime":"connected"):"reported_model";JSONObject sample=state.optJSONObject(gate);
+                if(sample!=null && !sample.isNull("value"))receipt=Math.max(receipt,sample.optLong("ts"));
                 identity=recent(sample,running,device.optBoolean("online"),now,kind==2?35000:65000);
                 if(kind==1 && (sample==null || !sample.optBoolean("value")))identity=false;
                 String[] points=kind==1?new String[]{"state","responding"}:kind==2?new String[]{"connected","line_down","line_up"}:new String[]{"on","power","current","voltage","energy_recent","signal"};
                 for(String key:points)if(recent(state.optJSONObject(key),running,device.optBoolean("online"),now,key.equals("energy_recent")?660000:key.equals("signal")?135000:kind==2?35000:65000))count++;
             }
             boolean ok=identity && count>0;
-            TrialLog.action(app,TrialJournal.Event.EQUIPMENT_READ,TrialJournal.Source.EQUIPEMENTS,ok?TrialJournal.Outcome.FRAIS:TrialJournal.Outcome.ABSENT,TrialJournal.Error.AUCUNE,kind,count,row.optString("identity",instance));
-            text.append(kind==1?"IPP":kind==2?"IGD":"MSS310 "+row.optString("name")).append(" — ").append(app.getString(ok?R.string.equipment_read_ok:R.string.equipment_read_unavailable)).append(" (").append(count).append(")\n");
+            TrialLog.action(app,TrialJournal.Event.EQUIPMENT_READ,TrialJournal.Source.EQUIPEMENTS,ok?TrialJournal.Outcome.FRAIS:TrialJournal.Outcome.ABSENT,TrialJournal.Error.AUCUNE,kind,count,row.optString("identity",instance),null,receipt);
+            text.append(kind==1?"IPP":kind==2?"IGD":"MSS310 "+row.optString("name")).append(" — ").append(app.getString(ok?R.string.equipment_read_ok:R.string.equipment_read_unavailable)).append(" (").append(count).append(")");
+            if(receipt>0)text.append("\n").append(app.getString(R.string.equipment_receipt,java.text.DateFormat.getDateTimeInstance().format(new java.util.Date(receipt)),Math.max(0,(now-receipt)/1000)));
+            text.append('\n');
         }
         if(display!=null)display.accept(text.length()==0?app.getString(R.string.equipment_no_reads):text.toString());
     }

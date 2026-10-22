@@ -1,0 +1,57 @@
+Moli OS Android 0.12.0 — identification guidée et fraîcheur des lectures
+
+APK ARM64 / Android 9+ ; aucun SET Meross, impression ou changement de box.
+La signature reste debug et temporaire : installation distincte
+io.moli.android.app.preview.guided.v0120, code 15. Pas de clé permanente créée.
+Pour conserver la session et les réglages utiles de 0.11 : arrêter son moteur,
+exporter une sauvegarde chiffrée, puis la restaurer dans 0.12 VIERGE AVANT PIN.
+Ne pas désinstaller des données utiles avant d’avoir vérifié leur récupération.
+Une seule application doit faire tourner son moteur à la fois.
+
+Essai différé — cinq gestes
+1. Depuis l’Accueil, commencer le Journal d’essai. Ouvrir Ajouter un équipement →
+   Compte Meross : les quatre prises du cache restauré doivent être retrouvées
+   sans mot de passe. Actualiser reste volontaire, soumis au délai affiché.
+2. Appuyer sur Identifier mes prises sur ce Wi-Fi. Accepter l’arrêt du moteur
+   s’il est actif, puis la recherche ponctuelle autorisée. Les sondes 80/631 sont
+   proposées pour les prises qui ne s’annoncent pas ; elles restent désactivables.
+3. Choisir au plus huit candidates et appuyer sur Identifier les candidates choisies.
+   Le retour à la prise sélectionnée lance leur contrôle d’identité, sans second
+   bouton caché. L’écran indique les correspondances par prise et les refus par
+   candidate. Si aucune correspondance : choisir d’autres candidates sur le Wi-Fi,
+   sans en déduire un problème de clé. L’adresse manuelle reste dans Avancé.
+4. Choisir la prise dont la correspondance est confirmée, vérifier son nom, cocher
+   la lecture puis Vérifier et enregistrer. Ce bouton relit l’UUID avant de sauver.
+   Démarrer et afficher les données : vérifier valeurs/état/date/âge sur l’Accueil.
+   Identité confirmée et configuration enregistrée ne signifient pas mesure reçue.
+5. Terminer et exporter le TXT du Journal d’essai. Le joindre volontairement au chat
+   si souhaité ; aucune transmission automatique, aucun IP/MAC/UUID/secret exporté.
+
+Imprimante / box
+Ajouter un équipement propose des formulaires séparés : imprimante IPP ou box IGD.
+Depuis une IP trouvée même seulement en HTTP, Choisir le type → Configurer comme
+imprimante est un choix manuel, pas une reconnaissance. Le port IPP suggéré est 631
+et /ipp/print est proposé seulement comme chemin documenté quand rien n’a été annoncé.
+Vérifier le chemin, autoriser, enregistrer puis Tester les lectures. Pour IGD, utiliser
+l’URL XML annoncée/connue, pas la page d’administration de la box. Les autres réglages
+sauvegardés restent conservés quand on configure un seul type. Aucune impression.
+
+Statuts et limites
+- L’inventaire cache n’est pas une preuve de présence locale. Aucun appel cloud
+  simplement en changeant de page ; le mot de passe n’est pas conservé.
+- Identité locale : Meross GET System.All encapsulé en HTTP POST /config, jamais SET.
+  Huit candidates privées maximum, 2,5 s/candidate, six recherches/heure et 10 s minimum.
+  Seul un UUID exact de l’inventaire autorise l’enregistrement ; consentement explicite.
+- Les erreurs distinguent sélection absente du cache, UUID différent, réseau/prise
+  inaccessible, réponse incompatible, et clé refusée seulement sur réponse Meross 5001.
+  Une réponse de protocole n’est pas à elle seule une preuve de modèle matériel.
+- Réception, âge et état sont affichés. Les valeurs inchangées n’émettent pas toujours
+  un événement SSE ; l’instantané et l’uptime IGD sont utilisés pour constater la
+  réception réelle. Ni une nouvelle lecture de l’écran ni un horodatage local ne
+  transforme une ancienne donnée fournisseur en donnée fraîche.
+- Journal 256 événements ; omissions signalées, pseudonymes HMAC propres à la session.
+  appareil# désigne la prise/cible, candidate# l’adresse correspondante, sans valeur brute.
+  Les observations de lecture incluent leur véritable dernière réception. Pas de secret.
+- Pas de MAC générale sans root ; pas de promesse de fonctionnement continu 24 h/24
+  en veille Samsung. Compatibilité physique MSS310 et IPP à confirmer par l’utilisateur.
+- Les anciens essais TOML/synthétiques/météo restent sous Outils → Avancé.

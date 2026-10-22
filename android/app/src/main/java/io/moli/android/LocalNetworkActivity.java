@@ -12,6 +12,7 @@ public final class LocalNetworkActivity extends Activity {
     private final Handler main=new Handler(Looper.getMainLooper());
     final NetworkEvidence.Results results=new NetworkEvidence.Results();
     Button search, cancel, useCandidates;
+    AlertDialog consentDialog;
     CheckBox probes;
     TextView state, warnings, last;
     ProgressBar progress;
@@ -36,22 +37,23 @@ public final class LocalNetworkActivity extends Activity {
         int pad=(int)(16*getResources().getDisplayMetrics().density); body.setPadding(pad,pad,pad,pad);
         ScrollView scroll=new ScrollView(this); scroll.addView(body); setContentView(scroll);
         text(body,getString(R.string.network_title)); text(body,getString(R.string.network_help));
-        probes=new CheckBox(this); probes.setText(R.string.network_probes); body.addView(probes);
-        search=button(body,R.string.network_search,() -> new AlertDialog.Builder(this).setTitle(R.string.network_title)
-                .setMessage(R.string.network_consent).setNegativeButton(android.R.string.cancel,null)
+        probes=new CheckBox(this); probes.setText(R.string.network_probes);probes.setChecked(getIntent().getBooleanExtra("identify_meross",false)); body.addView(probes);
+        search=button(body,R.string.network_search,() -> consentDialog=new AlertDialog.Builder(this).setTitle(R.string.network_title)
+                .setMessage(getString(R.string.network_consent)+(getIntent().getBooleanExtra("identify_meross",false)?"\n"+getString(R.string.account_network_consent):"")).setNegativeButton(android.R.string.cancel,null)
                 .setPositiveButton(R.string.network_search,(d,w) -> begin(new LocalDiscovery(this,probes.isChecked()))).show());
         cancel=button(body,R.string.network_cancel,() -> { if(running!=null) running.close(); }); cancel.setEnabled(false);
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal); progress.setMax(20); body.addView(progress);
         state=text(body,getString(R.string.network_idle)); warnings=text(body,""); last=text(body,""); updateLast();
-        cards=new LinearLayout(this); cards.setOrientation(LinearLayout.VERTICAL); body.addView(cards);
         useCandidates=button(body,R.string.account_use_candidates,()->{
             ArrayList<String> ips=new ArrayList<>(candidateIps);
             TrialLog.action(this,TrialJournal.Event.IP_CHOSEN,TrialJournal.Source.RESEAU,TrialJournal.Outcome.REUSSI,TrialJournal.Error.AUCUNE,ips.size(),0,null);
-            setResult(RESULT_OK,new Intent().putStringArrayListExtra("candidates",ips));finish();
+            setResult(RESULT_OK,new Intent().putStringArrayListExtra("candidates",ips).putExtra("identify_now",getIntent().getBooleanExtra("identify_meross",false)));finish();
         });useCandidates.setVisibility(getIntent().getBooleanExtra("pick_meross_ip",false)?android.view.View.VISIBLE:android.view.View.GONE);useCandidates.setEnabled(false);
+        cards=new LinearLayout(this); cards.setOrientation(LinearLayout.VERTICAL); body.addView(cards);
         text(body,getString(R.string.network_mac_unavailable));
         button(body,R.string.journal_title,()->startActivity(new Intent(this,TrialJournalActivity.class)));
         button(body,R.string.back,this::finish);
+        if(getIntent().getBooleanExtra("identify_meross",false))main.post(()->search.performClick());
     }
     // A package-private source seam exercises the actual UI with deterministic fixtures, never a test intent.
     void begin(DiscoverySearch source) {
@@ -99,8 +101,8 @@ public final class LocalNetworkActivity extends Activity {
                 int proof=e.proof==NetworkEvidence.Proof.OPEN_PORT?R.string.network_port_proof:e.proof==NetworkEvidence.Proof.DESCRIPTION?R.string.network_description_proof:e.kind==NetworkEvidence.Kind.UPNP?R.string.network_ssdp_proof:R.string.network_mdns_proof;
                 text(card,getString(service)+" — port "+e.port+"\n"+getString(proof));
                 // Open ports alone do not qualify an IPP/IGD integration.
-                if(e.kind==NetworkEvidence.Kind.IPP && e.proof!=NetworkEvidence.Proof.OPEN_PORT)button(card,R.string.network_configure_ipp,()->configure(e,"ipp"));
-                if(e.kind==NetworkEvidence.Kind.IGD && e.proof==NetworkEvidence.Proof.DESCRIPTION)button(card,R.string.network_configure_igd,()->configure(e,"igd"));
+                if(!getIntent().getBooleanExtra("pick_meross_ip",false) && e.kind==NetworkEvidence.Kind.IPP)button(card,R.string.network_configure_ipp,()->configure(e,"ipp"));
+                if(!getIntent().getBooleanExtra("pick_meross_ip",false) && e.kind==NetworkEvidence.Kind.IGD && e.proof==NetworkEvidence.Proof.DESCRIPTION)button(card,R.string.network_configure_igd,()->configure(e,"igd"));
             }
             if(getIntent().getBooleanExtra("pick_meross_ip",false)){
                 boolean port80=false;for(NetworkEvidence.Entry e:group)if(e.port==80)port80=true;
@@ -112,9 +114,12 @@ public final class LocalNetworkActivity extends Activity {
             button(card,R.string.network_copy,()->copy(first));
             if(getIntent().getBooleanExtra("pick_meross_ip",false))button(card,R.string.account_pick_ip,()->{
                 TrialLog.action(this,TrialJournal.Event.IP_CHOSEN,TrialJournal.Source.RESEAU,TrialJournal.Outcome.REUSSI,TrialJournal.Error.AUCUNE,0,0,first.ip);
-                setResult(RESULT_OK,new Intent().putExtra("ip",first.ip));finish();
+                Intent choice=new Intent();if(getIntent().getBooleanExtra("identify_meross",false))choice.putStringArrayListExtra("candidates",new ArrayList<>(java.util.Collections.singletonList(first.ip))).putExtra("identify_now",true);else choice.putExtra("ip",first.ip);setResult(RESULT_OK,choice);finish();
             });
-            else button(card,R.string.network_configure_meross,()->new AlertDialog.Builder(this).setTitle(R.string.meross_title).setMessage(R.string.network_meross_warning).setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.network_continue,(d,w)->configure(first,"meross")).show());
+            else button(card,R.string.network_configure_type,()->new AlertDialog.Builder(this).setTitle(R.string.network_type_help)
+                .setItems(new String[]{getString(R.string.network_as_printer),getString(R.string.account_find_plugs)},(dialog,which)->{
+                    if(which==0)configure(first,"ipp");else startActivity(new Intent(this,MerossAccountActivity.class));
+                }).setNegativeButton(android.R.string.cancel,null).show());
         }
         useCandidates.setEnabled(running==null && !candidateIps.isEmpty());
     }
@@ -139,7 +144,10 @@ public final class LocalNetworkActivity extends Activity {
         // Meross is a manual model choice: another service's port/name is NOT a Meross endpoint/identity.
         if(kind.equals("meross")) return i;
         i.putExtra("discovery_port",e.port);
-        if(kind.equals("ipp")) i.putExtra("discovery_path",e.path);
+        if(kind.equals("ipp")) {
+            boolean announced=e.kind==NetworkEvidence.Kind.IPP && e.proof!=NetworkEvidence.Proof.OPEN_PORT;
+            i.putExtra("discovery_port",e.kind==NetworkEvidence.Kind.IPP?e.port:631).putExtra("discovery_path",announced?e.path:"/ipp/print").putExtra("ipp_confirmed",announced);
+        }
         if(kind.equals("igd")) i.putExtra("discovery_location",e.location);
         return i;
     }

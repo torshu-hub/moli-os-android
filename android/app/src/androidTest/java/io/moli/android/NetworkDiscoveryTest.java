@@ -92,7 +92,12 @@ public final class NetworkDiscoveryTest {
             }
             try(ActivityScenario<EquipmentSettingsActivity> ui=ActivityScenario.launch(LocalNetworkActivity.selection(app,igd,"igd"))) {
                 until(() -> { AtomicReference<Boolean> ready=new AtomicReference<>(false); ui.onActivity(a -> ready.set(a.location.getText().toString().equals(igd.location))); return ready.get(); });
-                ui.onActivity(a -> { assertFalse(a.gateway.isChecked()); assertFalse(a.start.isEnabled()); });
+                ui.onActivity(a -> { assertFalse(a.gateway.isChecked()); assertFalse(a.start.isEnabled());assertTrue(a.gateway.isShown());assertFalse(a.printer.isShown());assertFalse(a.meross.add.isShown()); });
+            }
+            // A user may explicitly try IPP on an HTTP-only candidate; no protocol/model is invented.
+            try(ActivityScenario<EquipmentSettingsActivity> ui=ActivityScenario.launch(LocalNetworkActivity.selection(app,http,"ipp"))){
+                until(()->{AtomicReference<Boolean> ready=new AtomicReference<>(false);ui.onActivity(a->ready.set(a.host.getText().toString().equals(http.ip)&&a.save.isEnabled()));return ready.get();});
+                ui.onActivity(a->{assertTrue(a.printer.isShown());assertFalse(a.gateway.isShown());assertFalse(a.meross.add.isShown());assertFalse(a.printer.isChecked());assertEquals("631",a.port.getText().toString());assertEquals("/ipp/print",a.path.getText().toString());assertEquals(a.getString(R.string.ipp_unrecognized),a.message.getText().toString());});
             }
             assertEquals(EngineHost.State.STOPPED,EngineHost.state());
         } finally { EngineHost.maintain(() -> { EquipmentStore.save(app,new JSONObject()); return null; }).get(); }

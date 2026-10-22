@@ -54,13 +54,11 @@
   "maison.accueil.air": "Air",
   "maison.accueil.humidite": "Humidité",
   "maison.accueil.piscine": "Piscine",
-
   "maison.air.tres_bon": "Très bon",
   "maison.air.bon": "Bon",
   "maison.air.moyen": "Moyen",
   "maison.air.mediocre": "Médiocre",
   "maison.air.mauvais": "Mauvais",
-
   "maison.dehors.titre": "Dehors",
   "maison.dehors.sous_titre": "Le temps qu’il fait, l’air, la piscine et le jardin.",
   "maison.dehors.ressenti": "Ressenti {feels}° · max {max}° · min {min}°",
@@ -98,7 +96,6 @@
   "maison.dehors.eclaire": "Éclairé",
   "maison.dehors.noir": "Dans le noir",
   "maison.dehors.credit": "Météo et qualité de l’air :",
-
   "maison.pieces.titre": "Pièces",
   "maison.pieces.sous_titre": "Chaque pièce, ses lumières et ce qu’elle sent.",
   "maison.pieces.affichage": "Affichage des boutons",
@@ -106,7 +103,6 @@
   "maison.pieces.icones": "Icônes seules",
   "maison.pieces.allumees_one": "{count} lumière allumée",
   "maison.pieces.allumees_other": "{count} lumières allumées",
-
   "maison.plan.titre": "Plan",
   "maison.plan.sous_titre": "La maison telle qu’elle est, en ce moment. Touche une lumière pour l’allumer.",
   "maison.plan.sous_titre_edition": "Touche un appareil dans la liste, puis l’endroit où il est. Glisse pour déplacer.",
@@ -153,17 +149,14 @@
   "maison.plan.zoom_avant": "Zoomer",
   "maison.plan.zoom_arriere": "Dézoomer",
   "maison.plan.tout_le_plan": "Tout le plan",
-
   "maison.plan3d.indisponible": "3D indisponible sur cet appareil : {reason}",
   "maison.plan3d.pas_demarre": "la 3D n’a pas pu démarrer",
   "maison.plan3d.construction": "Construction de la maison…",
   "maison.plan3d.vue_ensemble": "Revenir à la vue d'ensemble",
-
   "maison.skin.plan": "Plan",
   "maison.skin.blueprint": "Blueprint",
   "maison.skin.nuit": "Nuit",
   "maison.skin.aquarelle": "Aquarelle",
-
   "maison.meuble.bed": "Lit",
   "maison.meuble.bunk": "Lits superposés",
   "maison.meuble.sofa": "Canapé",
@@ -188,7 +181,6 @@
   "maison.meuble.stairs": "Escalier",
   "maison.meuble.stairs_u": "Escalier en U",
   "maison.meuble.other": "Autre",
-
   "maison.meteo.previsions": "Prévisions",
   "maison.meteo.heures": "Heures",
   "maison.meteo.jours": "7 jours",
@@ -259,5 +251,8 @@
   "maison.equipment.meross_help": "Lecture seule. La consommation correspond à la date indiquée, pas à un index total. Une valeur absente n’est pas un zéro.",
   "maison.equipment.mss_on_state": "ON",
   "maison.equipment.mss_off_state": "OFF",
-  "maison.equipment.meross_unavailable": "Lecture non confirmée. Vérifiez l’adresse locale, la clé enregistrée et la connexion de la prise ; un protocole différent peut aussi être refusé."
+  "maison.equipment.meross_unavailable": "Lecture non confirmée. Vérifiez l’adresse locale, la clé enregistrée et la connexion de la prise ; un protocole différent peut aussi être refusé.",
+  "maison.equipment.age": "Actualisé il y a {seconds} s",
+  "maison.equipment.duration": "{days} j {hours} h {minutes} min",
+  "maison.equipment.read_confirmed": "Lecture active : réponse fraîche reçue, distincte de la configuration enregistrée."
 }

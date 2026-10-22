@@ -2,6 +2,11 @@ package io.moli.android;
 import org.junit.Test;
 import static org.junit.Assert.*;
 public final class TrialJournalTest {
+    @Test public void pairedPseudonymsAndReceiptRoundTripWithoutRawIdentifiers()throws Exception {
+        TrialJournal j=new TrialJournal();j.action(1792692000000L,TrialJournal.Event.CANDIDATE_RESULT,TrialJournal.Source.COMPTE,TrialJournal.Outcome.REFUSE,TrialJournal.Error.UUID_DIFFERENT,0,0,"0123456789abcdef","abcdef0123456789",0);
+        j.action(1792692001000L,TrialJournal.Event.EQUIPMENT_READ,TrialJournal.Source.EQUIPEMENTS,TrialJournal.Outcome.FRAIS,TrialJournal.Error.AUCUNE,2,3,"0123456789abcdef","",1792692000999L);
+        String text=TrialJournal.parse(j.json()).text();assertTrue(text.contains("candidate#abcdef0123456789"));assertTrue(text.contains("UUID_DIFFERENT"));assertTrue(text.contains("dernière_réception="));assertFalse(text.contains("192.168."));
+    }
     @Test public void typedActionsHaveReadableTimestampsAndNeverAcceptArbitraryStrings() throws Exception {
         TrialJournal j=new TrialJournal();j.salt="c".repeat(64);j.active=true;
         j.action(1792692000000L,TrialJournal.Event.UUID_CHECK,TrialJournal.Source.COMPTE,TrialJournal.Outcome.REFUSE,TrialJournal.Error.IDENTITE,1,0,"raw-ip-192.168.1.20");

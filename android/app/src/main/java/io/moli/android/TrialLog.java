@@ -11,7 +11,7 @@ final class TrialLog {
     static synchronized void attach(Context context) {
         app=context.getApplicationContext();
         if(journal!=null) return;
-        try { File f=file(); journal=f.exists()?TrialJournal.parse(ProfileStore.bounded(new AtomicFile(f).openRead(),65536)):new TrialJournal(); }
+        try { File f=file(); journal=f.exists()?TrialJournal.parse(ProfileStore.bounded(new AtomicFile(f).openRead(),131072)):new TrialJournal(); }
         catch(Exception ignored) { journal=new TrialJournal();journal.incomplete=true; }
     }
     private static File file() { return new File(app.getFilesDir(),"trial-session.json"); }
@@ -32,30 +32,37 @@ final class TrialLog {
             save(); } catch(Exception ignored) { /* Fixed schema only. */ }
     }
     static synchronized void action(Context c,TrialJournal.Event event,TrialJournal.Source source,TrialJournal.Outcome outcome,TrialJournal.Error error,long a,long b,String identity) {
-        attach(c); if(!journal.active)return;
+        action(c,event,source,outcome,error,a,b,identity,null,0);
+    }
+    static synchronized void action(Context c,TrialJournal.Event event,TrialJournal.Source source,TrialJournal.Outcome outcome,TrialJournal.Error error,long a,long b,String identity,String candidate,long receipt) {
+        attach(c);if(!journal.active)return;
         try {
-            String pseudonym="";
-            if(identity!=null && !identity.isEmpty()) {
-                if(journal.salt.isEmpty())journal.salt=ProtectedKey.randomHex();
-                javax.crypto.Mac mac=javax.crypto.Mac.getInstance("HmacSHA256");
-                mac.init(new javax.crypto.spec.SecretKeySpec(journal.salt.getBytes(java.nio.charset.StandardCharsets.UTF_8),"HmacSHA256"));
-                byte[] digest=mac.doFinal(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                StringBuilder hex=new StringBuilder();for(int i=0;i<8;i++)hex.append(String.format(java.util.Locale.ROOT,"%02x",digest[i]&255));pseudonym=hex.toString();
-            }
+            String pseudonym=pseudonym(identity),peer=pseudonym(candidate);
             if(event==TrialJournal.Event.EQUIPMENT_READ){
                 for(int i=journal.events.length()-1;i>=0;i--){org.json.JSONObject previous=journal.events.getJSONObject(i);
                     if(event.name().equals(previous.optString("event")) && pseudonym.equals(previous.optString("subject"))){
-                        if(outcome.name().equals(previous.optString("result")) && a==previous.optLong("a") && b==previous.optLong("b"))return;break;
+                        if(outcome.name().equals(previous.optString("result")) && a==previous.optLong("a") && b==previous.optLong("b") && (receipt==previous.optLong("receipt") || System.currentTimeMillis()-previous.optLong("time")<60000))return;break;
                     }
                 }
             }
-            journal.action(System.currentTimeMillis(),event,source,outcome,error,a,b,pseudonym);save();
+            journal.action(System.currentTimeMillis(),event,source,outcome,error,a,b,pseudonym,peer,receipt);save();
         }catch(Exception ignored){ /* No raw identifiers, exception text or salt in export. */ }
+    }
+    private static String pseudonym(String identity)throws Exception {
+        if(identity==null || identity.isEmpty())return "";
+        if(journal.salt.isEmpty())journal.salt=ProtectedKey.randomHex();
+        javax.crypto.Mac mac=javax.crypto.Mac.getInstance("HmacSHA256");
+        mac.init(new javax.crypto.spec.SecretKeySpec(journal.salt.getBytes(java.nio.charset.StandardCharsets.UTF_8),"HmacSHA256"));
+        byte[] digest=mac.doFinal(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        StringBuilder hex=new StringBuilder();for(int i=0;i<8;i++)hex.append(String.format(java.util.Locale.ROOT,"%02x",digest[i]&255));return hex.toString();
     }
     static TrialJournal.Error error(String code) {
         if(code==null)return TrialJournal.Error.AUCUNE;
         return switch(code) {
             case "account_identity" -> TrialJournal.Error.IDENTITE;
+            case "account_inventory_missing" -> TrialJournal.Error.INVENTAIRE_ABSENT;
+            case "account_uuid_different" -> TrialJournal.Error.UUID_DIFFERENT;
+            case "account_key" -> TrialJournal.Error.CLE_REFUSEE;
             case "account_auth" -> TrialJournal.Error.AUTHENTIFICATION;
             case "account_mfa" -> TrialJournal.Error.MFA;
             case "account_expired" -> TrialJournal.Error.AUTHENTIFICATION;
@@ -63,7 +70,8 @@ final class TrialLog {
             case "account_denied","account_wifi" -> TrialJournal.Error.AUTORISATION;
             case "storage","account_initialize" -> TrialJournal.Error.COFFRE;
             case "running" -> TrialJournal.Error.MOTEUR_ACTIF;
-            case "account_protocol","account_region","account_redirect" -> TrialJournal.Error.REPONSE;
+            case "account_protocol" -> TrialJournal.Error.INCOMPATIBLE;
+            case "account_region","account_redirect" -> TrialJournal.Error.REPONSE;
             case "account_input","equipment_ip","equipment_port","meross_settings","meross_duplicate" -> TrialJournal.Error.SAISIE;
             default -> TrialJournal.Error.RESEAU;
         };

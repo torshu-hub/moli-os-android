@@ -12,7 +12,7 @@ import java.text.DateFormat;
 import java.util.*;
 import java.util.concurrent.*;
 
-/** Experimental real client, with simulation-only validation clearly displayed; never automatic login. */
+/** Account-assisted read-only setup; explicit cloud calls and exact local identity checks. */
 public final class MerossAccountActivity extends Activity {
     private final ExecutorService io=Executors.newSingleThreadExecutor();
     private final Handler handler=new Handler(Looper.getMainLooper());
@@ -25,7 +25,10 @@ public final class MerossAccountActivity extends Activity {
     JSONArray inventory=new JSONArray();
     boolean busy,loaded,connected;
     private String pendingUuid,displayedUuid;
-    private LinearLayout login;
+    private LinearLayout login,manual;
+    private TextView identitySummary;
+    private JSONArray identityResults=new JSONArray();
+    private boolean queuedIdentify,waitingForStop,manualEntry;
     private TextView session;
     private Button identify,startRead;
     private boolean associated;
@@ -39,7 +42,7 @@ public final class MerossAccountActivity extends Activity {
             boolean ready=stopped && ProtectedKey.exists(MerossAccountActivity.this) && !busy;
             connect.setEnabled(ready && !connected && cloudConsent.isChecked() && SystemClock.elapsedRealtime()>=signinAt);
             refresh.setEnabled(ready && connected && SystemClock.elapsedRealtime()>=refreshAt); forget.setEnabled(ready && connected);
-            associate.setEnabled(ready && connected && inventory.length()>0); pick.setEnabled(!busy && connected && inventory.length()>0);
+            associate.setEnabled(ready && connected && inventory.length()>0 && (manualEntry || verifiedSelection())); pick.setEnabled(!busy && connected && inventory.length()>0);
             identify.setEnabled(ready && connected && !candidates.isEmpty() && SystemClock.elapsedRealtime()>=identifyAt);
             startRead.setEnabled(ready && associated);
             for(View field:new View[]{email,password,otp,region,cloudConsent,host,port,name,readConsent,devices}) field.setEnabled(ready);
@@ -51,6 +54,8 @@ public final class MerossAccountActivity extends Activity {
                 + (connected && getSystemService(android.net.ConnectivityManager.class).getActiveNetwork()==null?"\n"+getString(R.string.account_offline):"")
                 + (stopped?"":"\n"+getString(R.string.account_stop))
                 + (connected?"\n"+getString(R.string.account_budget,inventoryUsed,Math.max(0,(refreshAt-SystemClock.elapsedRealtime()+999)/1000)):""));
+            if(waitingForStop && stopped && !busy){waitingForStop=false;openPicker();}
+            if(queuedIdentify && ready && loaded && !busy){queuedIdentify=false;if(SystemClock.elapsedRealtime()<identifyAt)message.setText(R.string.account_rate);else identifyCandidates();}
             handler.postDelayed(this,400);
         }
     };
@@ -83,18 +88,17 @@ public final class MerossAccountActivity extends Activity {
             public void onNothingSelected(AdapterView<?> p) {}
             public void onItemSelected(AdapterView<?> p,View view,int position,long id) {
                 JSONObject item=inventory.optJSONObject(position);
-                if(item!=null && !item.optString("uuid").equals(displayedUuid)) {displayedUuid=item.optString("uuid");name.setText(item.optString("name"));host.setText(identified.getOrDefault(displayedUuid,""));associated=false;}
+                if(item!=null && !item.optString("uuid").equals(displayedUuid)) {displayedUuid=item.optString("uuid");name.setText(item.optString("name"));host.setText(identified.getOrDefault(displayedUuid,""));associated=false;readConsent.setChecked(false);renderIdentities();}
             }
         });
-        name=field(body,R.string.meross_name,false);host=field(body,R.string.equipment_host,false);port=field(body,R.string.equipment_port,false);port.setInputType(InputType.TYPE_CLASS_NUMBER);port.setText("80");
-        pick=button(body,R.string.account_pick,() -> {
-            JSONObject selected=selected();if(selected==null)return;pendingUuid=selected.optString("uuid");
-            startActivityForResult(new Intent(this,LocalNetworkActivity.class).putExtra("pick_meross_ip",true),41);
-        });
-        identify=button(body,R.string.account_identify,()-> {
-            try {submit("identify",new JSONObject().put("candidates",new JSONArray(candidates)));}catch(Exception invalid){message.setText(R.string.account_input);}
-        });
-        text(body,R.string.network_mac_unavailable);
+        pick=button(body,R.string.account_find_plugs,this::findPlugs);
+        identitySummary=text(body,R.string.account_identify_help);
+        name=field(body,R.string.meross_name,false);
+        button(body,R.string.account_manual,this::showManual);
+        manual=new LinearLayout(this);manual.setOrientation(LinearLayout.VERTICAL);body.addView(manual);manual.setVisibility(View.GONE);
+        host=field(manual,R.string.equipment_host,false);port=field(manual,R.string.equipment_port,false);port.setInputType(InputType.TYPE_CLASS_NUMBER);port.setText("80");
+        identify=button(manual,R.string.account_identify,this::identifyCandidates);
+        text(manual,R.string.network_mac_unavailable);
         readConsent=new CheckBox(this);readConsent.setText(R.string.account_read_consent);body.addView(readConsent);
         associate=button(body,R.string.account_associate,() -> {
             JSONObject item=selected();if(item==null)return;
@@ -112,14 +116,14 @@ public final class MerossAccountActivity extends Activity {
         TextWatcher unsaved=new TextWatcher(){public void beforeTextChanged(CharSequence text,int start,int count,int after){}public void afterTextChanged(Editable text){}public void onTextChanged(CharSequence text,int start,int before,int count){if(associated){associated=false;startRead.setEnabled(false);message.setText(R.string.equipment_unsaved);}}};
         for(EditText field:new EditText[]{host,port,name})field.addTextChangedListener(unsaved);
         if(saved==null){android.content.SharedPreferences draft=getSharedPreferences("meross-draft",MODE_PRIVATE);displayedUuid=draft.getString("uuid",null);host.setText(draft.getString("host",""));port.setText(draft.getString("port","80"));name.setText(draft.getString("name",""));}
-        if(saved!=null){displayedUuid=saved.getString("uuid");host.setText(saved.getString("host",""));port.setText(saved.getString("port","80"));name.setText(saved.getString("name",""));readConsent.setChecked(saved.getBoolean("read"));pendingUuid=saved.getString("pending");candidates=saved.getStringArrayList("candidates");if(candidates==null)candidates=new ArrayList<>();}
+        if(saved!=null){try{identityResults=new JSONArray(saved.getString("identity_results","[]"));for(int i=0;i<identityResults.length();i++){JSONObject row=identityResults.getJSONObject(i);if("matched".equals(row.optString("result")))identified.put(row.optString("uuid"),row.optString("host"));}}catch(JSONException ignored){}displayedUuid=saved.getString("uuid");host.setText(saved.getString("host",""));port.setText(saved.getString("port","80"));name.setText(saved.getString("name",""));readConsent.setChecked(saved.getBoolean("read"));pendingUuid=saved.getString("pending");candidates=saved.getStringArrayList("candidates");if(candidates==null)candidates=new ArrayList<>();}
     }
-    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("uuid",displayedUuid);out.putString("host",host.getText().toString());out.putString("port",port.getText().toString());out.putString("name",name.getText().toString());out.putBoolean("read",readConsent.isChecked());out.putString("pending",pendingUuid);out.putStringArrayList("candidates",candidates);}
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("identity_results",identityResults.toString());out.putString("uuid",displayedUuid);out.putString("host",host.getText().toString());out.putString("port",port.getText().toString());out.putString("name",name.getText().toString());out.putBoolean("read",readConsent.isChecked());out.putString("pending",pendingUuid);out.putStringArrayList("candidates",candidates);}
     private JSONObject selected(){return inventory.optJSONObject(devices.getSelectedItemPosition());}
     void submit(String action,JSONObject input) {
         if(busy || (!action.equals("status") && EngineHost.state()!=EngineHost.State.STOPPED)){message.setText(R.string.account_stop);return;}
         try {input.put("action",action);}catch(JSONException ignored){return;}
-        TrialLog.action(this,event(action),TrialJournal.Source.COMPTE,TrialJournal.Outcome.DEBUT,TrialJournal.Error.AUCUNE,0,0,input.optString("uuid"));
+        TrialLog.action(this,event(action),TrialJournal.Source.COMPTE,TrialJournal.Outcome.DEBUT,TrialJournal.Error.AUCUNE,input.optBoolean("enabled")?1:0,0,input.optString("uuid"),input.optString("host"),0);
         busy=true;message.setText(R.string.account_wait);connect.setEnabled(false);refresh.setEnabled(false);forget.setEnabled(false);associate.setEnabled(false);pick.setEnabled(false);
         for(View f:new View[]{email,password,otp,region,devices,host,port,name,cloudConsent,readConsent})f.setEnabled(false);
         io.execute(() -> {
@@ -136,17 +140,19 @@ public final class MerossAccountActivity extends Activity {
                     if(error.equals("account_expired")){connected=false;inventory=new JSONArray();devices.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new ArrayList<>()));}message.setText(errorText(error));login.setVisibility(connected?View.GONE:View.VISIBLE);return;}
                 String status=response.optString("state");
                 if(status.equals("identified")){
-                    JSONArray rows=response.optJSONArray("results");int matches=0;boolean chosen=false;JSONObject target=selected();
-                    if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null && "matched".equals(row.optString("result"))){matches++;identified.put(row.optString("uuid"),row.optString("host"));if(target!=null && target.optString("uuid").equals(row.optString("uuid"))){host.setText(row.optString("host"));chosen=true;}}}
-                    identifyAt=SystemClock.elapsedRealtime()+10000;
-                    message.setText(getString(chosen?R.string.account_candidate_match:R.string.account_candidate_none,matches,rows==null?0:rows.length()));
+                    JSONArray rows=response.optJSONArray("results");identityResults=rows==null?new JSONArray():rows;identified.clear();
+                    for(int i=0;i<identityResults.length();i++){JSONObject row=identityResults.optJSONObject(i);if(row!=null && "matched".equals(row.optString("result")))identified.put(row.optString("uuid"),row.optString("host"));}
+                    JSONObject target=selected();boolean chosen=target!=null && identified.containsKey(target.optString("uuid"));
+                    if(chosen)host.setText(identified.get(target.optString("uuid")));
+                    identifyAt=SystemClock.elapsedRealtime()+10000;renderIdentities();
+                    message.setText(getString(chosen?R.string.account_candidate_match:R.string.account_candidate_none,identified.size(),identityResults.length()));
                     return;
                 }
                 if(status.equals("associated")){associated=readConsent.isChecked();message.setText(associated?R.string.account_associated:R.string.account_associated_disabled);readConsent.setChecked(false);
                     return;}
                 connected=status.equals("connected");inventory=response.optJSONArray("items");if(inventory==null)inventory=new JSONArray();
                 ArrayList<String> labels=new ArrayList<>();
-                for(int i=0;i<inventory.length();i++){JSONObject item=inventory.optJSONObject(i);if(item!=null)labels.add(item.optString("name")+" — "+item.optString("model")+" / "+item.optString("hardware")+"\nUUID : "+item.optString("uuid"));}
+                for(int i=0;i<inventory.length();i++){JSONObject item=inventory.optJSONObject(i);if(item!=null)labels.add(item.optString("name")+" — "+item.optString("model")+" / "+item.optString("hardware"));}
                 String preserve=displayedUuid; devices.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));
                 for(int i=0;i<inventory.length();i++)if(inventory.optJSONObject(i)!=null && inventory.optJSONObject(i).optString("uuid").equals(preserve))devices.setSelection(i);
                 login.setVisibility(connected?View.GONE:View.VISIBLE);
@@ -157,7 +163,8 @@ public final class MerossAccountActivity extends Activity {
                 int label=status.equals("expired")?R.string.account_expired:connected?(received<=0?R.string.account_no_inventory:inventory.length()==0?R.string.account_empty:R.string.account_connected):R.string.account_disconnected;
                 if(action.equals("forget"))label=response.optBoolean("revoked")?R.string.account_forgotten:R.string.account_forgotten_offline;
                 if(response.has("warning"))label=errorText(response.optString("warning"));
-                message.setText(label);
+                if(queuedIdentify)label=R.string.account_candidates_ready;
+                message.setText(label);renderIdentities();
             });
         });
     }
@@ -169,7 +176,12 @@ public final class MerossAccountActivity extends Activity {
         if(action.equals("forget"))b=response!=null && response.optBoolean("revoked")?1:0;
         if(action.equals("associate"))a=input.optBoolean("enabled")?1:0;
         if(action.equals("identify") && response!=null){JSONArray rows=response.optJSONArray("results");a=0;b=rows==null?0:rows.length();if(rows!=null)for(int i=0;i<rows.length();i++)if(rows.optJSONObject(i)!=null && rows.optJSONObject(i).optString("result").equals("matched"))a++;if(a==0 && error==null)outcome=TrialJournal.Outcome.INDISPONIBLE;}
-        TrialLog.action(this,event(action),TrialJournal.Source.COMPTE,outcome,TrialLog.error(error!=null?error:warning),a,b,input.optString("uuid"));
+        if(action.equals("identify") && response!=null){JSONArray rows=response.optJSONArray("results");if(rows!=null)for(int i=0;i<rows.length();i++){
+            JSONObject row=rows.optJSONObject(i);if(row==null)continue;String result=row.optString("result");
+            String code=switch(result){case "matched"->null;case "different"->"account_uuid_different";case "key_rejected"->"account_key";case "incompatible"->"account_protocol";default->"account_local";};
+            TrialLog.action(this,TrialJournal.Event.CANDIDATE_RESULT,TrialJournal.Source.COMPTE,result.equals("matched")?TrialJournal.Outcome.REUSSI:TrialJournal.Outcome.REFUSE,TrialLog.error(code),0,0,row.optString("uuid",input.optString("uuid")),row.optString("host"),0);
+        }}
+        TrialLog.action(this,event(action),TrialJournal.Source.COMPTE,outcome,TrialLog.error(error!=null?error:warning),a,b,input.optString("uuid"),input.optString("host"),0);
     }
     static int errorText(String code) {
         return switch(code){
@@ -179,6 +191,9 @@ public final class MerossAccountActivity extends Activity {
             case "account_rate" -> R.string.account_rate;
             case "account_denied" -> R.string.account_denied;
             case "account_identity" -> R.string.account_identity;
+            case "account_inventory_missing" -> R.string.account_inventory_missing;
+            case "account_uuid_different" -> R.string.account_uuid_different;
+            case "account_key" -> R.string.account_key;
             case "account_local" -> R.string.account_local;
             case "account_wifi" -> R.string.account_wifi;
             case "account_region","account_redirect" -> R.string.account_region;
@@ -197,9 +212,24 @@ public final class MerossAccountActivity extends Activity {
         if(request==41 && result==RESULT_OK && data!=null && selected!=null && selected.optString("uuid").equals(pendingUuid)){
             if(data.hasExtra("ip"))host.setText(data.getStringExtra("ip"));
             ArrayList<String> found=data.getStringArrayListExtra("candidates");candidates=found==null?new ArrayList<>():found;
-            if(!candidates.isEmpty())message.setText(R.string.account_candidates_ready);
+            if(!candidates.isEmpty()){message.setText(R.string.account_candidates_ready);queuedIdentify=data.getBooleanExtra("identify_now",false);}
+            if(data.hasExtra("ip"))showManual();
         }
         pendingUuid=null;
+    }
+    boolean verifiedSelection(){JSONObject item=selected();return item!=null && host.getText().toString().trim().equals(identified.get(item.optString("uuid")));}
+    void showManual(){manualEntry=true;manual.setVisibility(View.VISIBLE);}
+    private void findPlugs(){
+        if(EngineHost.state()!=EngineHost.State.STOPPED){new AlertDialog.Builder(this).setMessage(R.string.account_identify_stop).setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.account_stop_find,(d,w)->{waitingForStop=true;startService(new Intent(this,MoliService.class).setAction(MoliService.STOP));}).show();return;}
+        openPicker();
+    }
+    private void openPicker(){JSONObject target=selected();if(target==null)return;pendingUuid=target.optString("uuid");startActivityForResult(new Intent(this,LocalNetworkActivity.class).putExtra("pick_meross_ip",true).putExtra("identify_meross",true),41);}
+    private void identifyCandidates(){try{JSONObject target=selected();if(target==null)return;submit("identify",new JSONObject().put("uuid",target.optString("uuid")).put("candidates",new JSONArray(candidates)));}catch(Exception invalid){message.setText(R.string.account_input);}}
+    private void renderIdentities(){
+        if(identitySummary==null)return;StringBuilder text=new StringBuilder(getString(R.string.account_identify_help));
+        for(int i=0;i<inventory.length();i++){JSONObject item=inventory.optJSONObject(i);if(item==null)continue;String ip=identified.get(item.optString("uuid"));text.append("\n• ").append(item.optString("name")).append(" — ").append(getString(ip==null?R.string.account_not_matched:R.string.account_matched));if(ip!=null)text.append(" : ").append(ip);}
+        for(int i=0;i<identityResults.length();i++){JSONObject row=identityResults.optJSONObject(i);if(row==null)continue;int label=switch(row.optString("result")){case "matched"->R.string.account_matched;case "different"->R.string.account_uuid_different;case "key_rejected"->R.string.account_key;case "incompatible"->R.string.account_protocol;default->R.string.account_unreachable;};text.append("\n").append(row.optString("host")).append(" — ").append(getString(label));}
+        identitySummary.setText(text.toString());
     }
     private TextView text(LinearLayout body,int label){TextView t=new TextView(this);t.setText(label);t.setTextSize(16);body.addView(t);return t;}
     private Button button(LinearLayout body,int label,Runnable task){Button b=new Button(this);b.setText(label);b.setOnClickListener(v -> task.run());body.addView(b);return b;}

@@ -16,7 +16,7 @@ import static org.junit.Assert.*;
 public final class UsabilityJourneyTest {
     private static void resumed(ActivityScenario<MerossAccountActivity> ui,MerossAccountStore.Backend backend)throws Exception {
         MerossAccountTest.until(()->{AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a->done.set(a.loaded && !a.busy));return done.get();});
-        ui.onActivity(a->{a.backend=backend;a.loaded=false;});MerossAccountTest.message(ui,R.string.account_connected);
+        ui.onActivity(a->{a.backend=backend;a.showManual();a.loaded=false;});MerossAccountTest.message(ui,R.string.account_connected);
     }
     @Test public void cachedAccountReturnsWithoutPasswordAndExportCorrelatesOnlyPseudonyms()throws Exception {
         assertTrue(android.os.Build.FINGERPRINT.contains("generic")||android.os.Build.MODEL.contains("sdk"));

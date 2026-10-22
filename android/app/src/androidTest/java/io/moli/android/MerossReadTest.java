@@ -24,7 +24,7 @@ public final class MerossReadTest {
         long end=SystemClock.elapsedRealtime()+100000;
         while(true) { if(check.ready())return; if(SystemClock.elapsedRealtime()>=end)fail("MSS310 observation timed out"); Thread.sleep(100); }
     }
-    private static JSONObject get(String path) throws Exception {
+    static JSONObject get(String path) throws Exception {
         HttpURLConnection c=(HttpURLConnection)new URL(EngineHost.origin()+path).openConnection();
         c.setConnectTimeout(2000);c.setReadTimeout(3000);c.setRequestProperty("Cookie","moli_android="+EngineHost.token());
         try { assertEquals(200,c.getResponseCode());return new JSONObject(ProfileStore.bounded(c.getInputStream(),524288)); } finally { c.disconnect(); }
@@ -32,12 +32,12 @@ public final class MerossReadTest {
     private static String js(ActivityScenario<MainActivity> ui,String code) throws Exception {
         AtomicReference<String> result=new AtomicReference<>();ui.onActivity(a->a.web.evaluateJavascript(code,result::set));until(()->result.get()!=null);return result.get();
     }
-    private static String address() throws Exception {
+    static String address() throws Exception {
         for(NetworkInterface net:Collections.list(NetworkInterface.getNetworkInterfaces()))
             for(InetAddress ip:Collections.list(net.getInetAddresses()))if(ip instanceof Inet4Address && ip.isSiteLocalAddress() && !ip.isLoopbackAddress())return ip.getHostAddress();
         throw new IOException("Private emulator interface required");
     }
-    private static JSONObject device(int fixture) throws Exception {
+    static JSONObject device(int fixture) throws Exception {
         JSONArray ds=get("/api/devices").getJSONArray("devices");String nativeId=String.format(Locale.ROOT,"%032x",fixture);
         for(int i=0;i<ds.length();i++) { JSONObject d=ds.getJSONObject(i); if(d.getString("id").endsWith(":"+nativeId) && d.optBoolean("online"))return d; }
         return null;
@@ -110,7 +110,7 @@ public final class MerossReadTest {
             }
         }
     }
-    private static final class Fixture implements AutoCloseable {
+    static final class Fixture implements AutoCloseable {
         final int id;final ServerSocket server=new ServerSocket(0,8,InetAddress.getByName("0.0.0.0"));final Thread worker;
         volatile boolean running=true,available=true;volatile int reads,errors;volatile Throwable failure;
         Fixture(int id)throws Exception {this.id=id;server.setSoTimeout(500);worker=new Thread(this::serve,"mss310-fixture");worker.start();}
@@ -127,7 +127,7 @@ public final class MerossReadTest {
             switch(ns){case "Appliance.System.All":file="all";break;case "Appliance.Control.Electricity":file="electricity";break;case "Appliance.Control.ConsumptionX":file="consumption";break;case "Appliance.System.Runtime":file="runtime";break;default:throw new IOException("Namespace forbidden");}
             String signed=rh.getString("messageId")+"a".repeat(32)+rh.getLong("timestamp");StringBuilder expected=new StringBuilder();for(byte v:MessageDigest.getInstance("MD5").digest(signed.getBytes(StandardCharsets.UTF_8)))expected.append(String.format(Locale.ROOT,"%02x",v&255));
             JSONObject response;
-            if(!expected.toString().equals(rh.getString("sign"))){errors++;response=new JSONObject().put("header",new JSONObject().put("method","ERROR")).put("payload",new JSONObject().put("error",new JSONObject().put("code",5001)));}
+            if(!expected.toString().equals(rh.getString("sign"))){errors++;response=new JSONObject().put("header",new JSONObject().put("method","ERROR").put("namespace",ns)).put("payload",new JSONObject().put("error",new JSONObject().put("code",5001)));}
             else {
                 reads++;String text=ProfileStore.bounded(InstrumentationRegistry.getInstrumentation().getContext().getAssets().open("mss310/"+file+".json"),8192);response=new JSONObject(text);
                 if(file.equals("all"))response.getJSONObject("payload").getJSONObject("all").getJSONObject("system").getJSONObject("hardware").put("uuid",String.format(Locale.ROOT,"%032x",id));

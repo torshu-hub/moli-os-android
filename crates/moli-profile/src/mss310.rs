@@ -241,6 +241,51 @@ mod binding_tests {
     use super::*;
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
     #[tokio::test]
+    async fn explicit_invalid_key_is_distinct_from_protocol_and_unreachable() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let fixture = tokio::spawn(async move {
+            for code in [5001, 5002] {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut header = vec![];
+                let mut byte = [0];
+                while !header.ends_with(b"\r\n\r\n") {
+                    stream.read_exact(&mut byte).await.unwrap();
+                    header.push(byte[0]);
+                    assert!(header.len() < 8192);
+                }
+                let head = String::from_utf8(header).unwrap();
+                let len = head
+                    .lines()
+                    .find_map(|line| {
+                        line.to_ascii_lowercase()
+                            .strip_prefix("content-length:")
+                            .map(|n| n.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap();
+                let mut body = vec![0; len];
+                stream.read_exact(&mut body).await.unwrap();
+                let request: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert_eq!(request["header"]["method"], "GET");
+                assert_eq!(request["header"]["namespace"], "Appliance.System.All");
+                let response=json!({"header":{"method":"ERROR","namespace":"Appliance.System.All"},"payload":{"error":{"code":code,"detail":"never-copy-private-data"}}}).to_string();
+                stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}",response.len()).as_bytes()).await.unwrap();
+            }
+        });
+        for expected in ["account_key", "account_protocol"] {
+            let error = crate::mss310_identity("127.0.0.1", port, &"a".repeat(32))
+                .await
+                .unwrap_err();
+            assert_eq!(crate::mss310_identity_error(&error), expected);
+            assert!(!error.to_string().contains("never-copy-private-data"));
+        }
+        fixture.await.unwrap();
+        let error = crate::mss310_identity("127.0.0.1", port, &"a".repeat(32))
+            .await
+            .unwrap_err();
+        assert_eq!(crate::mss310_identity_error(&error), "account_local");
+    }
+    #[tokio::test]
     async fn meross_bound_measurement_refuses_another_uuid_before_reading_electricity() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();

@@ -19,7 +19,8 @@ public final class EquipmentSettingsActivity extends Activity {
     TextView message;
     Button save, start, test;
     private TextView reading;
-    private LinearLayout manual;
+    private LinearLayout manual,printerGroup,gatewayGroup,merossGroup;
+    private String mode="";
     private String storedConfig="";
     private TextView stateText;
     MerossForm meross;
@@ -31,6 +32,7 @@ public final class EquipmentSettingsActivity extends Activity {
             start.setEnabled(ready && !busy && stopped && revision == savedRevision);
             for (android.view.View field : new android.view.View[]{printer,gateway,host,port,path,location}) field.setEnabled(ready && !busy && stopped);
             meross.setEnabled(ready && !busy && stopped);
+            if(state!=EngineHost.State.RUNNING)reading.setText(R.string.equipment_read_inactive);
             stateText.setText(stopped ? R.string.equipment_stopped : R.string.equipment_stop_first);
             test.setEnabled(ready && !busy && (state==EngineHost.State.RUNNING || stopped && revision==savedRevision));
             if(state==EngineHost.State.RUNNING)EquipmentMonitor.poll(EquipmentSettingsActivity.this,text->runOnUiThread(()->{if(!isDestroyed())reading.setText(text);}),false);
@@ -49,20 +51,23 @@ public final class EquipmentSettingsActivity extends Activity {
         text(body,R.string.equipment_steps);
         button(body,R.string.journal_title,()->startActivity(new Intent(this,TrialJournalActivity.class)));
         button(body, R.string.network_title, () -> startActivity(new Intent(this,LocalNetworkActivity.class)));
+        button(body,R.string.equipment_add_printer,()->focus("ipp"));
+        button(body,R.string.equipment_add_gateway,()->focus("igd"));
         button(body, R.string.account_title, () -> startActivity(new Intent(this,MerossAccountActivity.class)));
         stateText = text(body, R.string.equipment_stop_first);
         button(body, R.string.stop, () -> startService(new Intent(this, MoliService.class).setAction(MoliService.STOP)));
         manual=new LinearLayout(this);manual.setOrientation(LinearLayout.VERTICAL);body.addView(manual);manual.setVisibility(android.view.View.GONE);
-        button(body,R.string.equipment_manual,()->manual.setVisibility(manual.getVisibility()==android.view.View.VISIBLE?android.view.View.GONE:android.view.View.VISIBLE));
-        printer = new CheckBox(this); printer.setText(R.string.equipment_printer); manual.addView(printer);
-        host = field(manual, R.string.equipment_host, false);
-        port = field(manual, R.string.equipment_port, true); port.setText("631");
-        path = field(manual, R.string.equipment_path, false); path.setText("/ipp/print");
-        text(manual, R.string.equipment_printer_help);
-        gateway = new CheckBox(this); gateway.setText(R.string.equipment_gateway); manual.addView(gateway);
-        location = field(manual, R.string.equipment_location, false);
-        text(manual, R.string.equipment_gateway_help);
-        meross = new MerossForm(this,manual,this::edited);
+        button(body,R.string.equipment_manual,()->new android.app.AlertDialog.Builder(this).setTitle(R.string.advanced_tools).setItems(new String[]{getString(R.string.meross_title),getString(R.string.integration_title)},(d,w)->{if(w==0)focus("meross");else startActivity(new Intent(this,IntegrationsActivity.class));}).show());
+        printerGroup=group(manual);gatewayGroup=group(manual);merossGroup=group(manual);
+        printer = new CheckBox(this); printer.setText(R.string.equipment_printer); printerGroup.addView(printer);
+        host = field(printerGroup, R.string.equipment_host, false);
+        port = field(printerGroup, R.string.equipment_port, true); port.setText("631");
+        path = field(printerGroup, R.string.equipment_path, false); path.setText("/ipp/print");
+        text(printerGroup, R.string.equipment_printer_help);
+        gateway = new CheckBox(this); gateway.setText(R.string.equipment_gateway); gatewayGroup.addView(gateway);
+        location = field(gatewayGroup, R.string.equipment_location, false);
+        text(gatewayGroup, R.string.equipment_gateway_help);
+        meross = new MerossForm(this,merossGroup,this::edited);
         message = text(body, R.string.equipment_consent);
         save = button(body, R.string.equipment_save, this::save); save.setEnabled(false);
         start = button(body, R.string.equipment_start, () -> {
@@ -88,6 +93,7 @@ public final class EquipmentSettingsActivity extends Activity {
         for (EditText field : new EditText[]{host,port,path,location}) field.addTextChangedListener(changed);
         printer.setOnCheckedChangeListener((button,checked) -> edited());
         gateway.setOnCheckedChangeListener((button,checked) -> edited());
+        if(saved!=null && saved.getString("mode")!=null && !saved.getString("mode").isEmpty())focus(saved.getString("mode"));
         io.execute(() -> {
             try {
                 JSONObject selected = EquipmentStore.read(this);
@@ -122,7 +128,7 @@ public final class EquipmentSettingsActivity extends Activity {
                 gateway.setChecked(false); location.setText(url);
             } catch(Exception invalid) { return; }
         } else return;
-        manual.setVisibility(android.view.View.VISIBLE);edited(); message.setText(R.string.network_suggestion);
+        focus(kind);edited();message.setText(kind.equals("ipp") && !intent.getBooleanExtra("ipp_confirmed",false)?R.string.ipp_unrecognized:R.string.network_suggestion);
         intent.removeExtra("discovery_kind"); // Rotation must not append the same suggestion twice.
     }
     private void save() {
@@ -147,7 +153,8 @@ public final class EquipmentSettingsActivity extends Activity {
                 boolean ok;
                 try { job.get(); ok = true; } catch (Exception failure) { ok = false; }
                 boolean result = ok;
-                TrialLog.action(this,TrialJournal.Event.EQUIPMENT_SAVED,TrialJournal.Source.EQUIPEMENTS,result?TrialJournal.Outcome.ENREGISTRE:TrialJournal.Outcome.REFUSE,result?TrialJournal.Error.AUCUNE:TrialJournal.Error.COFFRE,0,0,null);
+                int kind=mode.equals("ipp")?1:mode.equals("igd")?2:mode.equals("meross")?3:0;
+                TrialLog.action(this,TrialJournal.Event.EQUIPMENT_SAVED,TrialJournal.Source.EQUIPEMENTS,result?TrialJournal.Outcome.ENREGISTRE:TrialJournal.Outcome.REFUSE,result?TrialJournal.Error.AUCUNE:TrialJournal.Error.COFFRE,kind,kind==1?(selected.has("printer")?1:0):kind==2?(selected.has("gateway")?1:0):0,kind==1?"android-printer":kind==2?"android-gateway":null);
                 runOnUiThread(() -> { if (!isDestroyed()) { busy = false; if (result) { savedRevision = savingRevision;storedConfig=selected.toString(); meross.clearKeys(); } message.setText(result ? R.string.equipment_saved : R.string.meross_save_failed); } });
             });
         } catch (Exception changed) { message.setText(R.string.equipment_stop_first); }
@@ -155,6 +162,8 @@ public final class EquipmentSettingsActivity extends Activity {
     private void edited() {
         if (ready) { revision++; start.setEnabled(false); message.setText(R.string.equipment_unsaved); }
     }
+    private LinearLayout group(LinearLayout parent){LinearLayout group=new LinearLayout(this);group.setOrientation(LinearLayout.VERTICAL);parent.addView(group);return group;}
+    void focus(String kind){mode=kind;manual.setVisibility(android.view.View.VISIBLE);printerGroup.setVisibility(kind.equals("ipp")?android.view.View.VISIBLE:android.view.View.GONE);gatewayGroup.setVisibility(kind.equals("igd")?android.view.View.VISIBLE:android.view.View.GONE);merossGroup.setVisibility(kind.equals("meross")?android.view.View.VISIBLE:android.view.View.GONE);message.setText(kind.equals("ipp")?R.string.ipp_unrecognized:kind.equals("igd")?R.string.gateway_setup_help:R.string.meross_help);}
     private TextView text(LinearLayout body,int id) { TextView t = new TextView(this); t.setText(id); t.setTextSize(16); body.addView(t); return t; }
     private EditText field(LinearLayout body,int id,boolean numeric) {
         text(body,id); EditText e = new EditText(this); e.setHint(id); e.setSingleLine(true);
@@ -173,6 +182,7 @@ public final class EquipmentSettingsActivity extends Activity {
         }catch(Exception invalid){runOnUiThread(()->{if(!isDestroyed())message.setText(R.string.equipment_initialize);});}});}
 
     }
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("mode",mode);}
     @Override public void onStop() { handler.removeCallbacks(refresh); meross.clearKeys(); super.onStop(); }
     @Override public void onDestroy() { handler.removeCallbacks(refresh); io.shutdown(); super.onDestroy(); }
 }

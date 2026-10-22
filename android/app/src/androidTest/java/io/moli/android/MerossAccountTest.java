@@ -34,6 +34,7 @@ public final class MerossAccountTest {
                     signins++;assertEquals("user@example.com",input.getString("email"));assertEquals("invented-password",input.getString("password"));assertEquals("eu",input.getString("region"));
                     if(signins==1)throw new ProfileStore.Rejected("account_mfa");if(signins==2)assertEquals("123456",input.getString("otp"));connected=true;return status();
                 case "inventory":connected=false;return new JSONObject().put("state","expired").put("items",new JSONArray());
+                case "identify":return new JSONObject().put("state","identified").put("results",new JSONArray().put(new JSONObject().put("host","192.168.1.20").put("uuid",UUID).put("result","matched")));
                 case "associate":
                     associations++;assertEquals(UUID,input.getString("uuid"));
                     if(input.getString("host").equals("192.168.1.22"))throw new ProfileStore.Rejected("account_local");
@@ -55,13 +56,14 @@ public final class MerossAccountTest {
         try{
             try(ActivityScenario<MerossAccountActivity> ui=ActivityScenario.launch(MerossAccountActivity.class)){
                 until(() -> {AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a -> done.set(a.loaded && !a.busy));return done.get();});
-                ui.onActivity(a -> {a.backend=fixture;a.cloudConsent.setChecked(true);assertFalse(a.password.isSaveEnabled());assertFalse(a.otp.isSaveEnabled());assertTrue(a.getString(R.string.account_help).contains("Meross"));});
+                ui.onActivity(a -> {a.backend=fixture;a.showManual();a.cloudConsent.setChecked(true);assertFalse(a.password.isSaveEnabled());assertFalse(a.otp.isSaveEnabled());assertTrue(a.getString(R.string.account_help).contains("Meross"));});
                 ready(ui);ui.onActivity(a -> {a.email.setText("user@example.com");a.password.setText("invented-password");a.connect.performClick();assertTrue(a.password.getText().toString().isEmpty());});message(ui,R.string.account_mfa);
                 ready(ui);ui.onActivity(a -> {a.password.setText("invented-password");a.otp.setText("123456");a.connect.performClick();});message(ui,R.string.account_connected);
                 ui.onActivity(a -> {assertEquals(4,a.inventory.length());assertFalse(a.readConsent.isChecked());a.pick.performClick();});
                 until(() -> {AtomicReference<Boolean> done=new AtomicReference<>(false);InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> done.set(picker()!=null));return done.get();});
+                until(()->{AtomicReference<Boolean> ready=new AtomicReference<>(false);InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{LocalNetworkActivity p=picker();ready.set(p!=null && p.consentDialog!=null && p.consentDialog.isShowing());});return ready.get();});
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
-                    LocalNetworkActivity p=picker();p.begin(new DiscoverySearch(){public void start(Listener listener){listener.found(new NetworkEvidence.Entry("192.168.1.20",80,"",NetworkEvidence.Kind.HTTP,NetworkEvidence.Proof.OPEN_PORT,"",""));listener.finished(End.COMPLETE);}public void close(){}});
+                    LocalNetworkActivity p=picker();p.consentDialog.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).performClick();p.begin(new DiscoverySearch(){public void start(Listener listener){listener.found(new NetworkEvidence.Entry("192.168.1.20",80,"",NetworkEvidence.Kind.HTTP,NetworkEvidence.Proof.OPEN_PORT,"",""));listener.finished(End.COMPLETE);}public void close(){}});
                 });
                 until(() -> {AtomicReference<Boolean> done=new AtomicReference<>(false);InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> done.set(picker()!=null && picker().cards.getChildCount()==1));return done.get();});
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {LocalNetworkActivity p=picker();Button use=button(p.cards,p.getString(R.string.account_pick_ip));assertNotNull(use);use.performClick();});

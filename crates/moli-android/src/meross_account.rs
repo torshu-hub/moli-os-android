@@ -253,7 +253,7 @@ async fn operate(store: &Store, input: &Value) -> Result<Value> {
             let device = items
                 .iter()
                 .find(|d| d.uuid == id)
-                .ok_or("account_identity")?;
+                .ok_or("account_inventory_missing")?;
             let host = input["host"].as_str().ok_or("equipment_ip")?;
             if !host
                 .parse::<std::net::Ipv4Addr>()
@@ -267,9 +267,9 @@ async fn operate(store: &Store, input: &Value) -> Result<Value> {
                 .ok_or("equipment_port")?;
             let found = moli_profile::mss310_identity(host, port, &c.key)
                 .await
-                .map_err(|_| "account_local")?;
+                .map_err(|e| moli_profile::mss310_identity_error(&e))?;
             if found != id {
-                return Err("account_identity");
+                return Err("account_uuid_different");
             }
             associate(store, input, device, &c).await
         }
@@ -293,7 +293,12 @@ async fn identify(store: &Store, input: &Value, session: &Value, c: &Credentials
                 json!({"host":host,"uuid":uuid,"result":"matched"})
             }
             Ok(Ok(_)) => json!({"host":host,"result":"different"}),
-            _ => json!({"host":host,"result":"unavailable"}),
+            Ok(Err(error)) => match moli_profile::mss310_identity_error(&error) {
+                "account_key" => json!({"host":host,"result":"key_rejected"}),
+                "account_local" => json!({"host":host,"result":"unavailable"}),
+                _ => json!({"host":host,"result":"incompatible"}),
+            },
+            Err(_) => json!({"host":host,"result":"unavailable"}),
         });
     }
     Ok(json!({"state":"identified","results":results}))
@@ -428,6 +433,14 @@ mod tests {
             .unwrap()
             .to_string();
         assert!(!safe.contains(&c.key) && !safe.contains(&c.token));
+        // A stale inventory choice is rejected before any candidate/host is even read.
+        assert_eq!(
+            operate(&store, &json!({"action":"associate","uuid":"f".repeat(32)}))
+                .await
+                .unwrap_err(),
+            "account_inventory_missing"
+        );
+        assert!(!root.join("android-equipment.json").exists());
         // A fresh Store/run reconstructs session and inventory from the encrypted file, without network.
         let input = json!({"data":root,"master":"a".repeat(64),"action":"status"});
         let reopened = std::thread::spawn(move || run(&input))
