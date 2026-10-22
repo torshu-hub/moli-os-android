@@ -55,7 +55,10 @@ final class MerossForm {
         if(password) {
             f.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
             f.setSaveEnabled(false); f.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
-            f.setImeOptions(EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING); f.setLongClickable(false);
+            f.setImeOptions(EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
+            // Keep explicit Paste available; masked password fields already
+            // suppress copying the secret. The app never writes a key to clipboard.
+            f.setLongClickable(true);
         }
         return f;
     }

@@ -102,6 +102,8 @@ public final class EquipmentSettingsActivity extends Activity {
             final org.json.JSONArray keys = meross.keys();
             Future<Void> job = EngineHost.maintain(() -> { EquipmentStore.save(this,selected,keys); return null; });
             busy = true; save.setEnabled(false); start.setEnabled(false);
+            meross.setEnabled(false);
+            for (android.view.View field : new android.view.View[]{printer,gateway,host,port,path,location}) field.setEnabled(false);
             io.execute(() -> {
                 boolean ok;
                 try { job.get(); ok = true; } catch (Exception failure) { ok = false; }

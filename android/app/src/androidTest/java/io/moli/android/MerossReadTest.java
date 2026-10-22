@@ -57,8 +57,9 @@ public final class MerossReadTest {
                 try(ActivityScenario<EquipmentSettingsActivity> ui=ActivityScenario.launch(EquipmentSettingsActivity.class)) {
                     until(()->{AtomicReference<Boolean> ready=new AtomicReference<>(false);ui.onActivity(a->ready.set(a.save.isEnabled()));return ready.get();});
                     ui.onActivity(a->{
-                        for(int i=0;i<4;i++) {a.meross.add.performClick();MerossForm.Row r=a.meross.entries.get(i);r.name.setText("Fixture "+(i+1));r.host.setText(ip);r.port.setText(String.valueOf(fixtures[i].port()));r.read.setChecked(true);r.key.setText((i==2?"b":"a").repeat(32));assertFalse(r.key.isSaveEnabled());}
-                        assertFalse(a.start.isEnabled());a.save.performClick();
+                        for(int i=0;i<4;i++) {a.meross.add.performClick();MerossForm.Row r=a.meross.entries.get(i);r.name.setText("Fixture "+(i+1));r.host.setText(ip);r.port.setText(String.valueOf(fixtures[i].port()));r.read.setChecked(true);r.key.setText((i==2?"b":"a").repeat(32));assertFalse(r.key.isSaveEnabled());assertTrue(r.key.isLongClickable());
+                            if(i==0){ClipboardManager clipboard=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);r.key.setText("");clipboard.setPrimaryClip(ClipData.newPlainText("synthetic","a".repeat(32)));assertTrue(r.key.onTextContextMenuItem(android.R.id.paste));assertEquals("a".repeat(32),r.key.getText().toString());clipboard.setPrimaryClip(ClipData.newPlainText("",""));}}
+                        assertFalse(a.start.isEnabled());a.save.performClick();assertFalse(a.meross.entries.get(0).key.isEnabled());
                     }); saved(ui);
                     for(Fixture f:fixtures)assertEquals(0,f.reads);
                     String config=ProfileStore.read(new File(ProfileStore.data(app),"android-equipment.json"),16384);
@@ -71,7 +72,13 @@ public final class MerossReadTest {
                     ui.onActivity(a->a.start.performClick());
                 }
                 until(()->EngineHost.state()==EngineHost.State.RUNNING);
-                until(()->device(1)!=null && device(2)!=null && device(4)!=null && wrong.errors>0);
+                try {
+                    until(()->{for(Fixture f:fixtures)f.check();return device(1)!=null && device(2)!=null && device(4)!=null && wrong.errors>0;});
+                } catch(AssertionError failed) {
+                    // Disposable fixture-only diagnostics, never credentials or headers.
+                    throw new AssertionError("Synthetic read counters="+one.reads+","+two.reads+","+wrong.reads+","+four.reads+
+                            " errors="+wrong.errors+" drivers="+get("/api/devices").getJSONArray("drivers"),failed);
+                }
                 JSONObject d=device(1);String stable=d.getString("id");JSONObject values=d.getJSONObject("state");
                 assertEquals("Fixture 1",d.getString("native_name"));
                 for(int i=0;i<d.getJSONArray("points").length();i++)assertFalse(d.getJSONArray("points").getJSONObject(i).getJSONObject("access").optBoolean("write"));

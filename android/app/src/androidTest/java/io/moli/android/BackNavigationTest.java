@@ -33,7 +33,14 @@ public final class BackNavigationTest {
         until(() -> result.get() != null);
         return result.get();
     }
-    private static void back() {
+    private static void back(ActivityScenario<MainActivity> ui) throws Exception {
+        // RESUMED alone does not mean the window can receive system keys,
+        // especially immediately after recreating/resuming it in CI.
+        until(() -> {
+            AtomicReference<Boolean> focused = new AtomicReference<>(false);
+            ui.onActivity(a -> focused.set(a.hasWindowFocus()));
+            return focused.get();
+        });
         InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
         InstrumentationRegistry.getInstrumentation().waitForIdleSync();
     }
@@ -76,25 +83,25 @@ public final class BackNavigationTest {
                 until(() -> EngineHost.state() == EngineHost.State.RUNNING);
                 long lease = EngineHost.currentLease();
                 home(ui);
-                open(ui, "dehors"); back(); home(ui);
-                back(); resumed(ui); // First Back at Home only warns.
+                open(ui, "dehors"); back(ui); home(ui);
+                back(ui); resumed(ui); // First Back at Home only warns.
                 open(ui, "pieces");
                 ui.onActivity(MainActivity::onBackPressed); // Legacy dispatch used before API 33.
                 home(ui);
-                back(); resumed(ui); // Changing page has cancelled the previous warning.
+                back(ui); resumed(ui); // Changing page has cancelled the previous warning.
                 Thread.sleep(2200);
-                back(); resumed(ui); // An expired warning cannot close the interface.
+                back(ui); resumed(ui); // An expired warning cannot close the interface.
                 ui.moveToState(Lifecycle.State.CREATED);
                 ui.moveToState(Lifecycle.State.RESUMED);
-                back(); resumed(ui); // Leaving the screen also cancels confirmation.
-                back(); until(() -> ui.getState() == Lifecycle.State.DESTROYED);
+                back(ui); resumed(ui); // Leaving the screen also cancels confirmation.
+                back(ui); until(() -> ui.getState() == Lifecycle.State.DESTROYED);
                 assertEquals(lease, EngineHost.currentLease());
                 assertEquals(EngineHost.State.RUNNING, EngineHost.state());
                 assertTrue("Real Rust HTTP still answers after closing UI", EngineHealth.request(EngineHost.origin(), EngineHost.token()));
             }
             try (ActivityScenario<MainActivity> reopened = ActivityScenario.launch(MainActivity.class)) {
                 home(reopened);
-                back(); resumed(reopened);
+                back(reopened); resumed(reopened);
                 assertTrue(EngineHealth.request(EngineHost.origin(), EngineHost.token()));
             }
         } finally {
