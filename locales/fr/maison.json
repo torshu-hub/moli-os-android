@@ -246,5 +246,18 @@
   "maison.equipment.idle": "Prête",
   "maison.equipment.processing": "Impression en cours",
   "maison.equipment.stopped": "Arrêtée / intervention nécessaire",
-  "maison.equipment.unavailable_help": "Ces données ne prouvent pas un état actuel. Vérifiez que le moteur et l’équipement sont allumés, sur le même réseau, et que l’adresse, le port et le chemin sont corrects."
+  "maison.equipment.unavailable_help": "Ces données ne prouvent pas un état actuel. Vérifiez que le moteur et l’équipement sont allumés, sur le même réseau, et que l’adresse, le port et le chemin sont corrects.",
+  "maison.equipment.mss_on": "État ON/OFF",
+  "maison.equipment.mss_power": "Puissance",
+  "maison.equipment.mss_current": "Intensité",
+  "maison.equipment.mss_voltage": "Tension",
+  "maison.equipment.mss_energy_recent": "Dernière consommation journalière rapportée",
+  "maison.equipment.mss_energy_date": "Date du relevé journalier",
+  "maison.equipment.mss_signal": "Signal Wi-Fi",
+  "maison.equipment.mss_reported_model": "Modèle annoncé",
+  "maison.equipment.mss_hardware": "Révision matérielle",
+  "maison.equipment.meross_help": "Lecture seule. La consommation correspond à la date indiquée, pas à un index total. Une valeur absente n’est pas un zéro.",
+  "maison.equipment.mss_on_state": "ON",
+  "maison.equipment.mss_off_state": "OFF",
+  "maison.equipment.meross_unavailable": "Lecture non confirmée. Vérifiez l’adresse locale, la clé enregistrée et la connexion de la prise ; un protocole différent peut aussi être refusé."
 }

@@ -83,6 +83,17 @@ pub async fn forget_secret(path: &Path, key: &MasterKey, name: &str) -> io::Resu
     store.remove(name).await
 }
 
+/// Checks presence without exposing a stored value (stopped-host configuration).
+pub fn has_secret(path: &Path, key: &MasterKey, name: &str) -> io::Result<bool> {
+    let store = SecretStore::open(path.to_path_buf(), &parse_master_key(&key.0)?)?;
+    let present = store
+        .values
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .contains_key(name);
+    Ok(present)
+}
+
 /// Stores one secret (operator tool: a device key the human provides).
 /// Safe while moli-os runs (each write starts from the file), but a running
 /// hub reads the new value only after its next write or a restart.

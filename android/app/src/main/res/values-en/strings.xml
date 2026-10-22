@@ -75,7 +75,7 @@
     <string name="integration_fresh">recently received</string>
     <string name="integration_stale">stale or unavailable</string>
     <string name="integration_waiting">Integration selected; waiting for data. Fresh values cannot be guaranteed during a network failure.</string>
-    <string name="app_name_integrations">Moli OS 0.7.0</string>
+    <string name="app_name_integrations">Moli OS 0.8.0</string>
     <string name="back_exit">Press Back again to close the interface.</string>
     <string name="back_exit_running">Press Back again to close the interface. The server stays active.</string>
     <string name="engine_not_observed">No recent check: monitor not scheduled or still pending</string>
@@ -143,4 +143,13 @@
     <string name="equipment_unsaved">Save changes before starting.</string>
     <string name="equipment_invalid">Invalid address: private IPv4 (10…, 172.16 to 31…, 192.168…), port 1–65535 and an IPP path listed above, without query parameters or credentials. Gateway: full http:// URL ending in .xml.</string>
     <string name="equipment_initialize">Start once from the main screen to initialize the app. If already initialized, check the backup and saved configuration.</string>
+    <string name="meross_title">Meross MSS310 plugs — read only</string>
+    <string name="meross_help">Add each plug with its name and local address. Approve its reads and save before starting. No ON/OFF commands. Keys are encrypted in the Moli vault; no cloud account is used.</string>
+    <string name="meross_add">Add an MSS310</string>
+    <string name="meross_read">Allow reading this plug</string>
+    <string name="meross_name">Plug name</string>
+    <string name="meross_key">Meross local key (32 hexadecimal characters)</string>
+    <string name="meross_key_hint">Leave blank to keep the stored key</string>
+    <string name="meross_remove">Remove this plug from the configuration</string>
+    <string name="meross_save_failed">Could not save. Check addresses, names and keys for enabled plugs. A new plug needs its local key.</string>
 </resources>

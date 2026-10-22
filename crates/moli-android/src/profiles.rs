@@ -77,17 +77,20 @@ pub fn configuration(input: &str) -> Result<String, &'static str> {
         .ok_or("configuration")?;
     // Preserve every unmanaged driver and all other engine settings.
     drivers.retain(|d| {
-        !matches!(
-            d.get("id").and_then(toml::Value::as_str),
-            Some(
-                "android-import"
-                    | "android-demo"
-                    | "android-weather"
-                    | "android-tablet"
-                    | "android-printer"
-                    | "android-gateway"
+        !d.get("id")
+            .and_then(toml::Value::as_str)
+            .is_some_and(|id| id.starts_with("android-meross-"))
+            && !matches!(
+                d.get("id").and_then(toml::Value::as_str),
+                Some(
+                    "android-import"
+                        | "android-demo"
+                        | "android-weather"
+                        | "android-tablet"
+                        | "android-printer"
+                        | "android-gateway"
+                )
             )
-        )
     });
     for driver in crate::equipment::drivers(input.get("equipment").unwrap_or(&json!({})))? {
         drivers.push(toml::Value::try_from(driver).map_err(|_| "configuration")?);
@@ -169,6 +172,8 @@ pub fn weather_probe(input: &str) -> Result<Value, &'static str> {
         host: Some("api.open-meteo.com".into()),
         port: Some(443),
         vars: serde_json::from_value(coordinates(&input)?).map_err(|_| "location")?,
+        discovery: false,
+        name: None,
     };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

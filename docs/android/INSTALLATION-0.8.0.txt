@@ -1,0 +1,34 @@
+Moli OS 0.8.0 — ARM64 — MSS310 en lecture seule
+
+Version finale d’essai, sans application de test intermédiaire. Signature debug temporaire :
+paquet .preview.meross.v080 distinct de 0.7.0, pas de mise à jour en place promise.
+Installer moli-os-android-0.8.0-arm64.apk. Conserver l’ancienne app si ses réglages sont utiles ;
+export chiffré puis restauration facultative dans l’application vierge, avant création du PIN.
+Aucune désinstallation automatique, aucun nouveau chantier de signature permanente.
+
+ESSAI DIFFÉRÉ — aucun test physique requis maintenant
+1. Initialiser normalement l’application. Ouvrir Équipements, puis Arrêter le moteur.
+2. Ajouter une MSS310 : nom libre, IPv4 privée, port habituel 80. Chaque prise a sa propre
+   ligne et son identité de configuration conservée après changement de nom/adresse.
+3. Saisir sa clé locale Meross déjà connue dans le champ masqué (32 caractères hexadécimaux).
+   Ne pas envoyer cette clé dans un rapport. Cette version ne récupère pas les clés d’un
+   compte Meross/Home Assistant. Sans clé disponible, laisser l’essai matériel pour plus tard.
+4. Cocher l’autorisation de lecture, Enregistrer. Répéter pour les autres prises (maximum 8).
+   Le champ de clé redevient vide après sauvegarde : cela conserve la clé chiffrée existante.
+5. Démarrer et afficher les données. À l’Accueil : une carte par prise, état ON/OFF observé,
+   puissance W, tension V, intensité A, signal %, consommation Wh/kWh et date si communiqués.
+   État/mesures électriques : 30 s ; signal : 60 s ; consommation : 5 min ; affichage : 15 s.
+6. Pour interrompre les lectures : Arrêter, décocher la prise, Enregistrer, puis redémarrer.
+   Les commandes ON/OFF et automatismes électriques sont absents de cette livraison.
+
+LIMITES
+Validation sur réponses fictives uniquement, aucune MSS310 matérielle 6.0.0 testée par Codex.
+Même réseau local accessible ; pas de scan, découverte, cloud, IPv6 ou noms .local.
+Clé incorrecte, équipement inaccessible ou protocole différent : indisponible ; une valeur
+ancienne est signalée. Une donnée manquante ne vaut pas zéro. La consommation indique le
+dernier relevé journalier et sa date, sans correction des anomalies de compteur du firmware,
+sans total historique garanti et sans recréer le moteur d’énergie Moli.
+Les clés vont dans le coffre chiffré existant, jamais dans la configuration ou le journal
+exportable. Écran protégé contre les captures ; sauvegarde uniquement par l’export chiffré.
+Météo/tablette, IPP/IGD et Retour Android conservés. Pas de commande d’appareil réel,
+de secret réel utilisé par Codex ou de nouvelle qualification de veille Samsung prolongée.

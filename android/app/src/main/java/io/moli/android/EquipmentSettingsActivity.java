@@ -19,6 +19,7 @@ public final class EquipmentSettingsActivity extends Activity {
     TextView message;
     Button save, start;
     private TextView stateText;
+    MerossForm meross;
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
             EngineHost.State state = EngineHost.state();
@@ -26,12 +27,14 @@ public final class EquipmentSettingsActivity extends Activity {
             save.setEnabled(ready && !busy && stopped);
             start.setEnabled(ready && !busy && stopped && revision == savedRevision);
             for (android.view.View field : new android.view.View[]{printer,gateway,host,port,path,location}) field.setEnabled(ready && !busy && stopped);
+            meross.setEnabled(ready && !busy && stopped);
             stateText.setText(stopped ? R.string.equipment_stopped : R.string.equipment_stop_first);
             handler.postDelayed(this, 500);
         }
     };
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         ScrollView scroll = new ScrollView(this);
         LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
         int pad = (int)(16 * getResources().getDisplayMetrics().density); body.setPadding(pad,pad,pad,pad);
@@ -48,6 +51,7 @@ public final class EquipmentSettingsActivity extends Activity {
         gateway = new CheckBox(this); gateway.setText(R.string.equipment_gateway); body.addView(gateway);
         location = field(body, R.string.equipment_location, false);
         text(body, R.string.equipment_gateway_help);
+        meross = new MerossForm(this,body,this::edited);
         message = text(body, R.string.equipment_consent);
         save = button(body, R.string.equipment_save, this::save); save.setEnabled(false);
         start = button(body, R.string.equipment_start, () -> {
@@ -76,7 +80,8 @@ public final class EquipmentSettingsActivity extends Activity {
                     printer.setChecked(p != null); gateway.setChecked(g != null);
                     if (p != null) { host.setText(p.optString("host")); port.setText(p.optString("port")); path.setText(p.optString("path")); }
                     if (g != null) location.setText(g.optString("location"));
-                    ready = true;
+                    try { meross.load(selected.optJSONArray("meross")); ready = true; }
+                    catch (Exception invalid) { message.setText(R.string.equipment_initialize); }
                 });
             } catch (Exception failure) { runOnUiThread(() -> { if (!isDestroyed()) message.setText(R.string.equipment_initialize); }); }
         });
@@ -90,18 +95,20 @@ public final class EquipmentSettingsActivity extends Activity {
                     .put("host",host.getText().toString().trim()).put("port",Integer.parseInt(port.getText().toString().trim()))
                     .put("path",path.getText().toString().trim()));
             if (gateway.isChecked()) selected.put("gateway",new JSONObject().put("location",location.getText().toString().trim()));
+            selected.put("meross",meross.settings());
             ProfileStore.nativeResult(selected.toString(),3); // Pure Rust validation, no network access.
         } catch (Exception invalid) { message.setText(R.string.equipment_invalid); return; }
         try {
-            Future<Void> job = EngineHost.maintain(() -> { EquipmentStore.save(this,selected); return null; });
+            final org.json.JSONArray keys = meross.keys();
+            Future<Void> job = EngineHost.maintain(() -> { EquipmentStore.save(this,selected,keys); return null; });
             busy = true; save.setEnabled(false); start.setEnabled(false);
             io.execute(() -> {
                 boolean ok;
                 try { job.get(); ok = true; } catch (Exception failure) { ok = false; }
                 boolean result = ok;
-                runOnUiThread(() -> { if (!isDestroyed()) { busy = false; if (result) savedRevision = savingRevision; message.setText(result ? R.string.equipment_saved : R.string.home_failed); } });
+                runOnUiThread(() -> { if (!isDestroyed()) { busy = false; if (result) { savedRevision = savingRevision; meross.clearKeys(); } message.setText(result ? R.string.equipment_saved : R.string.meross_save_failed); } });
             });
-        } catch (IllegalStateException changed) { message.setText(R.string.equipment_stop_first); }
+        } catch (Exception changed) { message.setText(R.string.equipment_stop_first); }
     }
     private void edited() {
         if (ready) { revision++; start.setEnabled(false); message.setText(R.string.equipment_unsaved); }
@@ -113,6 +120,6 @@ public final class EquipmentSettingsActivity extends Activity {
     }
     private Button button(LinearLayout body,int id,Runnable action) { Button b = new Button(this); b.setText(id); b.setOnClickListener(v -> action.run()); body.addView(b); return b; }
     @Override public void onStart() { super.onStart(); handler.post(refresh); }
-    @Override public void onStop() { handler.removeCallbacks(refresh); super.onStop(); }
+    @Override public void onStop() { handler.removeCallbacks(refresh); meross.clearKeys(); super.onStop(); }
     @Override public void onDestroy() { handler.removeCallbacks(refresh); io.shutdown(); super.onDestroy(); }
 }

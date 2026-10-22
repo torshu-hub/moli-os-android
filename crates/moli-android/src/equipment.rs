@@ -76,7 +76,40 @@ pub fn validate(input: &Value) -> Result<Value, &'static str> {
         }
         result["gateway"] = json!({"location":format!("http://{address}:{number}{tail}")});
     }
+    if let Some(entries) = input.get("meross") {
+        result["meross"] = meross(entries)?;
+    }
     Ok(result)
+}
+
+fn meross(entries: &Value) -> Result<Value, &'static str> {
+    let entries = entries
+        .as_array()
+        .filter(|a| a.len() <= 8)
+        .ok_or("meross_settings")?;
+    let mut ids = std::collections::HashSet::new();
+    let mut addresses = std::collections::HashSet::new();
+    let mut checked = vec![];
+    for entry in entries {
+        let id = entry["id"]
+            .as_str()
+            .filter(|s| valid_id(s))
+            .ok_or("meross_settings")?;
+        let name = entry["name"]
+            .as_str()
+            .filter(|s| !s.trim().is_empty() && s.len() <= 160 && !s.chars().any(char::is_control))
+            .ok_or("meross_settings")?;
+        let ip = host(entry["host"].as_str().ok_or("equipment_ip")?)?;
+        let number = port(match entry.get("port") {
+            Some(v) => v.as_u64().ok_or("equipment_port")?,
+            None => 80,
+        })?;
+        if !ids.insert(id) || !addresses.insert((ip.clone(), number)) {
+            return Err("meross_duplicate");
+        }
+        checked.push(json!({"id":id,"name":name.trim(),"host":ip,"port":number,"enabled":entry["enabled"].as_bool().unwrap_or(false)}));
+    }
+    Ok(json!(checked))
 }
 
 pub fn drivers(input: &Value) -> Result<Vec<Value>, &'static str> {
@@ -90,6 +123,12 @@ pub fn drivers(input: &Value) -> Result<Vec<Value>, &'static str> {
     if checked["gateway"].is_object() {
         result.push(json!({"id":"android-gateway","kind":"igd","options":{
             "location":checked["gateway"]["location"],"discovery":false}}));
+    }
+    if let Some(entries) = checked["meross"].as_array() {
+        for entry in entries.iter().filter(|e| e["enabled"] == true) {
+            result.push(json!({"id":format!("android-meross-{}",entry["id"].as_str().ok_or("meross_settings")?),"kind":"profile","options":{
+                "profile":"meross-mss310","host":entry["host"],"port":entry["port"],"name":entry["name"],"discovery":false}}));
+        }
     }
     Ok(result)
 }
@@ -140,5 +179,109 @@ mod tests {
         ] {
             assert!(drivers(&json!({"gateway":{"location":bad_url}})).is_err());
         }
+    }
+}
+
+fn valid_id(id: &str) -> bool {
+    id.len() == 32
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
+/// Values go directly into the existing portable encrypted vault, never config.
+/// Java serializes this operation with engine lifetime; the JNI guard also rejects a live engine.
+pub fn store_keys(input: &Value) -> Result<Value, &'static str> {
+    use moli_runtime::{MasterKey, has_secret, set_secret};
+    let data = std::path::Path::new(input["data"].as_str().ok_or("input")?);
+    let master = MasterKey::new(input["master"].as_str().ok_or("input")?.to_owned());
+    let updates = input["keys"]
+        .as_array()
+        .filter(|a| a.len() <= 8)
+        .ok_or("meross_key")?;
+    let mut checked = vec![];
+    let vault = data.join("secrets.enc");
+    for update in updates {
+        let id = update["id"]
+            .as_str()
+            .filter(|s| valid_id(s))
+            .ok_or("meross_key")?;
+        let value = update["key"].as_str().ok_or("meross_key")?;
+        if !value.is_empty() && (value.len() != 32 || !value.bytes().all(|b| b.is_ascii_hexdigit()))
+        {
+            return Err("meross_key");
+        }
+        let name = format!("android-meross-{id}/key");
+        if value.is_empty()
+            && update["required"] == true
+            && !has_secret(&vault, &master, &name).map_err(|_| "meross_key")?
+        {
+            return Err("meross_key");
+        }
+        checked.push((name, value));
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|_| "internal")?;
+    for (name, value) in checked.into_iter().filter(|(_, v)| !v.is_empty()) {
+        runtime
+            .block_on(set_secret(&vault, &master, &name, value))
+            .map_err(|_| "storage")?;
+    }
+    Ok(json!({"saved":true}))
+}
+
+#[cfg(test)]
+mod meross_tests {
+    use super::*;
+    #[test]
+    fn multiple_mss310_keep_ids_and_never_copy_key_or_control_flags_to_configuration() {
+        let mut plugs = vec![];
+        for i in 1..=4 {
+            plugs.push(json!({"id":format!("{i:032x}"),"name":format!("Fixture {i}"),"host":format!("192.168.1.{}",40+i),"enabled":true,"key":"never-copy-this","write":true,"discovery":true}));
+        }
+        let input = json!({"meross":plugs});
+        let checked = validate(&input).unwrap();
+        let ds = drivers(&checked).unwrap();
+        assert_eq!(ds.len(), 4);
+        for d in ds {
+            assert_eq!(d["options"]["profile"], "meross-mss310");
+            assert_eq!(d["options"]["discovery"], false);
+            assert!(d["options"].get("key").is_none());
+        }
+        assert!(!checked.to_string().contains("never-copy-this"));
+        let mut duplicate = input.clone();
+        duplicate["meross"][1]["id"] = duplicate["meross"][0]["id"].clone();
+        assert!(validate(&duplicate).is_err());
+        let mut duplicate = input.clone();
+        duplicate["meross"][1]["host"] = duplicate["meross"][0]["host"].clone();
+        assert!(validate(&duplicate).is_err());
+        let mut disabled = input;
+        disabled["meross"][0]["enabled"] = json!(false);
+        assert_eq!(drivers(&disabled).unwrap().len(), 3);
+    }
+    #[test]
+    fn keys_are_portable_encrypted_and_blank_only_keeps_an_existing_key() {
+        let dir =
+            std::env::temp_dir().join(format!("moli-android-mss-vault-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let master = moli_runtime::MasterKey::generate().unwrap();
+        let id = "00000000000000000000000000000001";
+        let key = "a".repeat(32); // Public synthetic test value, never a device key.
+        let mut input = json!({"data":dir,"master":master.expose_for_file(),"keys":[{"id":id,"key":"","required":true}]});
+        assert!(store_keys(&input).is_err());
+        input["keys"][0]["key"] = json!(key);
+        store_keys(&input).unwrap();
+        let raw = std::fs::read(dir.join("secrets.enc")).unwrap();
+        assert!(!raw.windows(32).any(|s| s == key.as_bytes()));
+        input["keys"][0]["key"] = json!("");
+        store_keys(&input).unwrap();
+        let name = format!("android-meross-{id}/key");
+        assert!(moli_runtime::has_secret(&dir.join("secrets.enc"), &master, &name).unwrap());
+        let wrong = moli_runtime::MasterKey::generate().unwrap();
+        input["master"] = json!(wrong.expose_for_file());
+        assert!(store_keys(&input).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

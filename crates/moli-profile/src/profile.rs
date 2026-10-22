@@ -1178,6 +1178,7 @@ pub const BUILTIN: &[(&str, &str)] = catalogue![
     "tempo",
     "iopool",
     "meross-em06",
+    "meross-mss310",
     "moonraker",
 ];
 

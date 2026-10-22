@@ -12,6 +12,7 @@
 //! on the same network, checks its identity there, and talks to it at its
 //! new address, journaled and remembered (`data/addresses.json`).
 
+mod mss310;
 mod profile;
 mod trust;
 
@@ -62,6 +63,16 @@ pub struct Config {
     /// Values for the profile's `{placeholders}` (`lat`, `lon`…).
     #[serde(default)]
     pub vars: std::collections::BTreeMap<String, String>,
+    /// Explicit destinations only when false; preserves Linux discovery by default.
+    #[serde(default = "discovery_default")]
+    pub discovery: bool,
+    /// Human label; identity continues to come from the device.
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+fn discovery_default() -> bool {
+    true
 }
 
 /// Where and how to reach the device.
@@ -266,7 +277,8 @@ enum Ended {
 /// built-in profile that says who the device is. A profile file reaches
 /// only the host a person gave it.
 fn followable(config: &Config, profile: &Compiled, lan: Lan) -> bool {
-    profile.source == Source::Builtin
+    config.discovery
+        && profile.source == Source::Builtin
         && profile.meta.identity.is_some()
         && profile.meta.host.is_none()
         && config
@@ -319,7 +331,16 @@ impl ProfileDriver {
     /// Given by the host program, never by the driver options: the driver
     /// and `moli-os profile trust` must read the same list.
     pub fn new(config: Config, trust_file: PathBuf) -> Result<Self, ProfileError> {
-        let (profile, file) = open(&config.profile)?;
+        let (mut profile, file) = open(&config.profile)?;
+        if let Some(name) = &config.name {
+            if name.trim().is_empty() || name.len() > 160 || name.chars().any(char::is_control) {
+                return Err(ProfileError {
+                    profile: config.profile.clone(),
+                    message: "invalid display name".into(),
+                });
+            }
+            profile.meta.name.clone_from(name);
+        }
         Target::of(&config, &profile)?;
         Ok(Self {
             config,
@@ -612,7 +633,7 @@ async fn fetch(
     if let (Call::Meross { namespace, .. }, Answer::Json(json)) = (&request.call, &answer) {
         let method = json["header"]["method"].as_str().unwrap_or_default();
         if method != "GETACK" {
-            bail!("{namespace}: device answered {method:?} (wrong key or namespace?)");
+            bail!("{namespace}: Meross response rejected (key or protocol)");
         }
     }
     Ok(answer)
@@ -747,7 +768,7 @@ impl<'a> Session<'a> {
         let profile = self.profile;
         let needed = identity_requests(profile);
         for (i, request) in profile.requests.iter().enumerate() {
-            match fetch(self.target, request, self.secret).await {
+            match mss310::fetch(self.target, request, self.secret, self.profile).await {
                 Ok(answer) => {
                     self.answers.insert(request.id.clone(), answer);
                     self.due[i] = Instant::now() + request.every;
@@ -776,7 +797,7 @@ impl<'a> Session<'a> {
     async fn poll(&mut self, ctx: &DriverCtx, device: &DeviceId, i: usize) -> anyhow::Result<()> {
         let profile = self.profile;
         let request = &profile.requests[i];
-        let result = match fetch(self.target, request, self.secret).await {
+        let result = match mss310::fetch(self.target, request, self.secret, self.profile).await {
             Ok(answer) => {
                 self.failures[i] = 0;
                 self.silent = 0;
@@ -1251,6 +1272,8 @@ mod tests {
             host: Some("127.0.0.1".into()),
             port: Some(port),
             vars: std::collections::BTreeMap::new(),
+            discovery: true,
+            name: None,
         };
         let result = read_only_once(&compiled, &config).await.unwrap();
         assert_eq!(result["temperature"].as_f64(), Some(42.5));
@@ -1272,6 +1295,8 @@ mod tests {
             host: Some("192.0.2.1".into()),
             port: None,
             vars: std::collections::BTreeMap::new(),
+            discovery: true,
+            name: None,
         }
     }
 
@@ -1549,6 +1574,8 @@ mod tests {
                 host: Some(CONFIGURED.to_string()),
                 port: Some(port),
                 vars: std::collections::BTreeMap::new(),
+                discovery: true,
+                name: None,
             };
             let driver = ProfileDriver {
                 lan,
@@ -1724,6 +1751,12 @@ mod tests {
             ..config("daikin-brp069")
         };
         assert!(followable(&home, &daikin, Lan::REAL));
+        home.discovery = false;
+        assert!(
+            !followable(&home, &daikin, Lan::REAL),
+            "explicit destination disables neighbour lookup and relocation"
+        );
+        home.discovery = true;
         let file = Profile::parse(builtin("daikin-brp069").unwrap())
             .unwrap()
             .compile(Source::File)

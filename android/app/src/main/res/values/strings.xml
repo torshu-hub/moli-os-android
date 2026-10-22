@@ -75,7 +75,7 @@
     <string name="integration_fresh">reçue récemment</string>
     <string name="integration_stale">ancienne ou indisponible</string>
     <string name="integration_waiting">Intégration sélectionnée ; attente de données. En cas de panne réseau, aucune valeur fraîche ne peut être garantie.</string>
-    <string name="app_name_integrations">Moli OS 0.7.0</string>
+    <string name="app_name_integrations">Moli OS 0.8.0</string>
     <string name="back_exit">Appuyez encore sur Retour pour fermer l’interface.</string>
     <string name="back_exit_running">Appuyez encore sur Retour pour fermer l’interface. Le serveur reste actif.</string>
     <string name="engine_not_observed">Aucun contrôle récent : moniteur non exécuté ou encore en attente</string>
@@ -143,4 +143,13 @@
     <string name="equipment_unsaved">Modifications à enregistrer avant de démarrer.</string>
     <string name="equipment_invalid">Adresse invalide : IPv4 privée (10…, 172.16 à 31…, 192.168…), port de 1 à 65535, chemin IPP indiqué ci-dessus, sans paramètres ni identifiants. Pour la box : URL http:// complète terminée par .xml.</string>
     <string name="equipment_initialize">Démarrez une première fois depuis l’écran principal pour initialiser l’application. Si elle est déjà initialisée, vérifiez votre sauvegarde et la configuration enregistrée.</string>
+    <string name="meross_title">Prises Meross MSS310 — lecture seule</string>
+    <string name="meross_help">Ajoutez chaque prise avec son nom et son adresse locale. Cochez les lectures à autoriser puis enregistrez avant de démarrer. Aucune commande ON/OFF. Les clés sont chiffrées dans le coffre Moli ; aucun compte cloud n’est utilisé.</string>
+    <string name="meross_add">Ajouter une MSS310</string>
+    <string name="meross_read">Autoriser la lecture de cette prise</string>
+    <string name="meross_name">Nom de la prise</string>
+    <string name="meross_key">Clé locale Meross (32 caractères hexadécimaux)</string>
+    <string name="meross_key_hint">Vide : conserver la clé déjà enregistrée</string>
+    <string name="meross_remove">Retirer cette prise de la configuration</string>
+    <string name="meross_save_failed">Enregistrement impossible. Vérifiez les adresses, les noms et la clé de chaque prise activée. Une nouvelle prise nécessite sa clé locale.</string>
 </resources>

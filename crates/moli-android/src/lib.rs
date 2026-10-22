@@ -102,6 +102,15 @@ pub extern "system" fn Java_io_moli_android_NativeServer_profile(
             1 => profiles::configuration(&text).map(|v| serde_json::json!({"config":v})),
             2 => profiles::weather_probe(&text),
             3 => equipment::validate(&serde_json::from_str(&text).map_err(|_| "input")?),
+            4 => {
+                let slot = engine()
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if slot.is_some() {
+                    return Err("running");
+                }
+                equipment::store_keys(&serde_json::from_str(&text).map_err(|_| "input")?)
+            }
             _ => Err("input"),
         }
     }));

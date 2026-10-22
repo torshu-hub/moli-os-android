@@ -111,6 +111,7 @@ final class ProfileStore {
         JSONObject equipment = EquipmentStore.read(c);
         android.put("printer", equipment.has("printer")); android.put("gateway", equipment.has("gateway"));
         android.put("printer_id", equipment.has("printer") ? "android-printer:" + equipment.getJSONObject("printer").getString("host") : JSONObject.NULL);
+        android.put("meross",equipment.optJSONArray("meross") == null ? new org.json.JSONArray() : equipment.getJSONArray("meross"));
         JSONObject weather = selected.optJSONObject("weather");
         android.put("weather", weather == null ? JSONObject.NULL : "android-weather:api.open-meteo.com:443");
         android.put("location", weather == null ? "" : weather.optJSONObject("location") == null ? "Paris (démo)" : weather.getJSONObject("location").getString("label"));
