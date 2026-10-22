@@ -38,13 +38,16 @@ public final class AutomaticMerossTest {
         Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(EngineHost.State.STOPPED,EngineHost.state());assertFalse("First class in a fresh emulator",ProtectedKey.exists(app));
         // Tablet-sized visual evidence on the disposable emulator; no real device settings.
         shell("wm size 1280x800");shell("wm density 160");
+        // Load the WebView provider before overriding the app language: its first
+        // initialization can replace resource configuration with the device locale.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{android.webkit.WebView provider=new android.webkit.WebView(app);provider.destroy();});
         if(android.os.Build.VERSION.SDK_INT>=33)app.getSystemService(android.app.LocaleManager.class).setApplicationLocales(android.os.LocaleList.forLanguageTags("fr"));
         InstrumentationRegistry.getInstrumentation().waitForIdleSync();
         try {
         app.getSharedPreferences("host",Context.MODE_PRIVATE).edit().putBoolean("wanted",false).commit();
         try(ActivityScenario<MainActivity> home=ActivityScenario.launch(MainActivity.class)){
-            home.onActivity(a->{assertFalse(ProtectedKey.exists(a));assertEquals(0,visibleOldControls(a.getWindow().getDecorView(),a));assertNotNull(MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(R.string.preview_search)));});
             capture(app,"01-accueil");
+            home.onActivity(a->{assertEquals("fr",a.getResources().getConfiguration().getLocales().get(0).getLanguage());assertFalse(ProtectedKey.exists(a));assertEquals(0,visibleOldControls(a.getWindow().getDecorView(),a));assertNotNull(MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(R.string.preview_search)));});
             // The first voluntary search creates a random Keystore bootstrap, without asking for a PIN.
             home.onActivity(a->MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(R.string.preview_search)).performClick());
             MerossAccountTest.until(()->ProtectedKey.exists(app));JSONObject keys=ProtectedKey.open(app);assertEquals(2,keys.getInt("format"));assertEquals(64,keys.getString("pin").length());assertNotEquals(keys.getString("master"),keys.getString("pin"));assertTrue(TrialLog.active());
