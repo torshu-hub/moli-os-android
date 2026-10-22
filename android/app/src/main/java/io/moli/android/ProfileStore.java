@@ -108,6 +108,9 @@ final class ProfileStore {
         JSONObject h = home(c), android = h.optJSONObject("android");
         if (android == null) android = new JSONObject();
         android.put("tablet", "android-tablet:tablet");
+        JSONObject equipment = EquipmentStore.read(c);
+        android.put("printer", equipment.has("printer")); android.put("gateway", equipment.has("gateway"));
+        android.put("printer_id", equipment.has("printer") ? "android-printer:" + equipment.getJSONObject("printer").getString("host") : JSONObject.NULL);
         JSONObject weather = selected.optJSONObject("weather");
         android.put("weather", weather == null ? JSONObject.NULL : "android-weather:api.open-meteo.com:443");
         android.put("location", weather == null ? "" : weather.optJSONObject("location") == null ? "Paris (démo)" : weather.getJSONObject("location").getString("label"));
@@ -158,6 +161,7 @@ final class ProfileStore {
         File dir = data(c);
         JSONObject selected = state(c), spec = new JSONObject();
         spec.put("data", dir.getAbsolutePath()).put("demo", selected.optBoolean("demo"));
+        spec.put("equipment", EquipmentStore.read(c));
         for (String item : new String[]{"import", "weather"}) if (selected.has(item)) {
             JSONObject checked = checked(c, selected.getJSONObject(item)); spec.put(item, checked);
         }

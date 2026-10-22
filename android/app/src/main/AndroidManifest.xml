@@ -20,6 +20,7 @@
             </intent-filter>
         </activity>
         <activity android:name=".HomeSettingsActivity" android:exported="false" />
+        <activity android:name=".EquipmentSettingsActivity" android:exported="false" />
         <activity android:name=".BackupActivity" android:exported="false" />
         <activity android:name=".IntegrationsActivity" android:exported="false" />
         <activity android:name=".AppInfoActivity" android:exported="false" />

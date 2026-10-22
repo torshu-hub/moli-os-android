@@ -75,7 +75,7 @@
     <string name="integration_fresh">reçue récemment</string>
     <string name="integration_stale">ancienne ou indisponible</string>
     <string name="integration_waiting">Intégration sélectionnée ; attente de données. En cas de panne réseau, aucune valeur fraîche ne peut être garantie.</string>
-    <string name="app_name_integrations">Moli OS 0.6.1</string>
+    <string name="app_name_integrations">Moli OS 0.7.0</string>
     <string name="back_exit">Appuyez encore sur Retour pour fermer l’interface.</string>
     <string name="back_exit_running">Appuyez encore sur Retour pour fermer l’interface. Le serveur reste actif.</string>
     <string name="engine_not_observed">Aucun contrôle récent : moniteur non exécuté ou encore en attente</string>
@@ -124,4 +124,23 @@
     <string name="home_invalid">Vérifiez le nom et les coordonnées ; 32 pièces maximum, 60 caractères par pièce.</string>
     <string name="home_failed">Enregistrement incomplet : vérifiez les réglages avant de démarrer, puis réessayez.</string>
     <string name="home_tools">Outils de diagnostic</string>
+    <string name="equipment_title">Équipements</string>
+    <string name="equipment_help">Lecture locale uniquement : même Wi-Fi que l’équipement, hors réseau invité isolé. Aucun document envoyé, aucune impression, annulation, commande ou modification des réglages.</string>
+    <string name="equipment_stop_first">Le moteur fonctionne ou change d’état. Arrêtez-le ici pour modifier les autorisations.</string>
+    <string name="equipment_stopped">Moteur arrêté : configurez, enregistrez puis démarrez pour lire.</string>
+    <string name="equipment_printer">Autoriser la lecture de cette imprimante IPP (toutes les 30 secondes)</string>
+    <string name="equipment_host">Adresse IPv4 locale de l’imprimante, sans http://</string>
+    <string name="equipment_port">Port IPP (habituellement 631)</string>
+    <string name="equipment_path">Chemin IPP (habituellement /ipp/print)</string>
+    <string name="equipment_printer_help">Retrouvez l’adresse dans la liste des appareils de votre box ou sur l’imprimante. Commencez avec le port 631 et /ipp/print. Autres chemins acceptés : /ipp, /ipp/printer, /printers/nom. La Canon MG6600 reste à vérifier : seules les informations réellement renvoyées seront affichées.</string>
+    <string name="equipment_gateway">Autoriser la lecture de cette box IGD (toutes les 10 secondes)</string>
+    <string name="equipment_location">URL HTTP locale du document de description UPnP</string>
+    <string name="equipment_gateway_help">Option avancée : URL exacte déjà connue, avec son chemin XML. L’adresse de l’interface d’administration seule ne suffit pas. Aucune recherche réseau automatique et aucune ouverture de port. Compatibilité SFR/Freebox non encore vérifiée.</string>
+    <string name="equipment_consent">Cocher puis enregistrer autorise ces lectures lors des prochains démarrages du moteur. Décochez puis enregistrez pour retirer une autorisation. Les adresses restent dans vos données locales et leur sauvegarde chiffrée.</string>
+    <string name="equipment_save">Enregistrer les autorisations</string>
+    <string name="equipment_start">Démarrer et afficher les données</string>
+    <string name="equipment_saved">Autorisations enregistrées. Démarrez pour voir les résultats sur l’Accueil.</string>
+    <string name="equipment_unsaved">Modifications à enregistrer avant de démarrer.</string>
+    <string name="equipment_invalid">Adresse invalide : IPv4 privée (10…, 172.16 à 31…, 192.168…), port de 1 à 65535, chemin IPP indiqué ci-dessus, sans paramètres ni identifiants. Pour la box : URL http:// complète terminée par .xml.</string>
+    <string name="equipment_initialize">Démarrez une première fois depuis l’écran principal pour initialiser l’application. Si elle est déjà initialisée, vérifiez votre sauvegarde et la configuration enregistrée.</string>
 </resources>

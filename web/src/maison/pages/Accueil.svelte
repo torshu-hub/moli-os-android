@@ -12,6 +12,7 @@
   import Routines from '../ui/Routines.svelte';
   import SkyHero from '../ui/SkyHero.svelte';
   import AndroidSources from '../ui/AndroidSources.svelte';
+  import AndroidEquipment from '../ui/AndroidEquipment.svelte';
 
   const cfg = $derived(home.config ?? {});
   const out = $derived(cfg.outdoor ?? {});
@@ -175,7 +176,7 @@
     {/each}
   </section>
 
-  {#if cfg.android}<AndroidSources />{/if}
+  {#if cfg.android}<AndroidSources /><AndroidEquipment />{/if}
   {#if !cfg.android || cfg.favorites}
   <div class="grid">
     <section class="card lights">

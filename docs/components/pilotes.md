@@ -353,7 +353,8 @@ name = "Bambu A1"              # optionnel
 id = "box"
 kind = "igd"
 [driver.options]
-location = "http://<box>:<port>/<chemin>/gatedesc.xml"   # optionnel : saute la découverte
+location = "http://<box>:<port>/<chemin>/gatedesc.xml"   # optionnel
+discovery = false  # lecture de cette seule URL ; pas de SSDP/annonces (défaut true)
 ```
 
 - **Secrets** : aucun.
@@ -372,6 +373,7 @@ location = "http://<box>:<port>/<chemin>/gatedesc.xml"   # optionnel : saute la 
 - **Points** : `state` (`idle`/`processing`/`stopped`), `status` (texte), `ink_N` (%, `null` = inconnu), `ink_low`, `jobs`, `job` ; boutons `identify`, `cancel` (Control : un agent passe par un humain).
 - **Impression** : `POST /api/devices/<id>/print` (JPEG, 16 Mo par page), tableau de bord de la maison seulement, vérifié avant de lire le corps, 40 pages / 10 s. File en mémoire bornée à 32 Mo (Moli vit dans 128 Mo), envoyée page par page par une tâche à part ; « Annuler » vide la file (époque) et annule la page en cours ; la file attend quand le papier manque ou bourre.
 - **Pièges** : une jet d'encre lit le document en imprimant (envoi jusqu'à 15 min) ; une Canon dont les cartouches sont rechargées annonce 0 % ; éteinte au bouton = hors ligne (normal), sauf « Auto power on ».
+- **Mode Android lecture seule** : `read_only = true` supprime les points de commande et le service d’impression ; le transport n’autorise que `Get-Printer-Attributes`. Point `responding` daté pour constater une vraie réponse IPP. Sans ce réglage (défaut false), les fonctions Linux existantes sont conservées. Configuration sans TOML dans Équipements sur Android.
 - **Tests** : réponse réelle d'une Canon MG3600 (`integrations/ipp/fixtures/`), file bornée, annulation, pause sans papier.
 
 ## `host` : la machine de Moli et les ordinateurs (`crates/moli-host`)

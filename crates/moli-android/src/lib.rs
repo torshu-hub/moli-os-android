@@ -1,6 +1,7 @@
-//! Narrow Java bridge for engine lifetime, profile onboarding and explicit weather checks.
+//! Narrow Java bridge for engine lifetime, profile onboarding, local equipment consent and explicit weather checks.
 //! Inputs are copied through the jni crate; panics never unwind into the JVM.
 
+mod equipment;
 mod profiles;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -100,6 +101,7 @@ pub extern "system" fn Java_io_moli_android_NativeServer_profile(
             0 => profiles::review(&text),
             1 => profiles::configuration(&text).map(|v| serde_json::json!({"config":v})),
             2 => profiles::weather_probe(&text),
+            3 => equipment::validate(&serde_json::from_str(&text).map_err(|_| "input")?),
             _ => Err("input"),
         }
     }));

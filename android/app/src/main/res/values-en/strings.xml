@@ -75,7 +75,7 @@
     <string name="integration_fresh">recently received</string>
     <string name="integration_stale">stale or unavailable</string>
     <string name="integration_waiting">Integration selected; waiting for data. Fresh values cannot be guaranteed during a network failure.</string>
-    <string name="app_name_integrations">Moli OS 0.6.1</string>
+    <string name="app_name_integrations">Moli OS 0.7.0</string>
     <string name="back_exit">Press Back again to close the interface.</string>
     <string name="back_exit_running">Press Back again to close the interface. The server stays active.</string>
     <string name="engine_not_observed">No recent check: monitor not scheduled or still pending</string>
@@ -124,4 +124,23 @@
     <string name="home_invalid">Check name and coordinates; up to 32 rooms, 60 characters each.</string>
     <string name="home_failed">Settings may be incomplete: check them before starting and retry.</string>
     <string name="home_tools">Diagnostic tools</string>
+    <string name="equipment_title">Equipment</string>
+    <string name="equipment_help">Local reads only: join the same network as the device, without guest isolation. No document upload, printing, cancellation, commands or setting changes.</string>
+    <string name="equipment_stop_first">The engine is running or changing state. Stop it here to change permissions.</string>
+    <string name="equipment_stopped">Engine stopped: configure, save, then start reading.</string>
+    <string name="equipment_printer">Allow reads from this IPP printer (every 30 seconds)</string>
+    <string name="equipment_host">Printer local IPv4 address, without http://</string>
+    <string name="equipment_port">IPP port (usually 631)</string>
+    <string name="equipment_path">IPP path (usually /ipp/print)</string>
+    <string name="equipment_printer_help">Find the address in the router device list or on the printer. Start with port 631 and /ipp/print. Other accepted paths: /ipp, /ipp/printer, /printers/name. Canon MG6600 support remains to be checked: only returned readings are displayed.</string>
+    <string name="equipment_gateway">Allow reads from this IGD gateway (every 10 seconds)</string>
+    <string name="equipment_location">Local HTTP URL of the UPnP description document</string>
+    <string name="equipment_gateway_help">Advanced: use an already known exact XML description URL. The administration page address alone is insufficient. No automatic network discovery or port mapping. SFR/Freebox compatibility is unverified.</string>
+    <string name="equipment_consent">Check and save to approve these reads on future engine starts. Uncheck and save to revoke permission. Addresses stay in local data and its encrypted backup.</string>
+    <string name="equipment_save">Save permissions</string>
+    <string name="equipment_start">Start and show readings</string>
+    <string name="equipment_saved">Permissions saved. Start to see results on Home.</string>
+    <string name="equipment_unsaved">Save changes before starting.</string>
+    <string name="equipment_invalid">Invalid address: private IPv4 (10…, 172.16 to 31…, 192.168…), port 1–65535 and an IPP path listed above, without query parameters or credentials. Gateway: full http:// URL ending in .xml.</string>
+    <string name="equipment_initialize">Start once from the main screen to initialize the app. If already initialized, check the backup and saved configuration.</string>
 </resources>

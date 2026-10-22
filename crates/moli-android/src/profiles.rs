@@ -79,9 +79,19 @@ pub fn configuration(input: &str) -> Result<String, &'static str> {
     drivers.retain(|d| {
         !matches!(
             d.get("id").and_then(toml::Value::as_str),
-            Some("android-import" | "android-demo" | "android-weather" | "android-tablet")
+            Some(
+                "android-import"
+                    | "android-demo"
+                    | "android-weather"
+                    | "android-tablet"
+                    | "android-printer"
+                    | "android-gateway"
+            )
         )
     });
+    for driver in crate::equipment::drivers(input.get("equipment").unwrap_or(&json!({})))? {
+        drivers.push(toml::Value::try_from(driver).map_err(|_| "configuration")?);
+    }
     if input["demo"].as_bool() == Some(true) {
         drivers.push(
             toml::Value::try_from(json!({"id":"android-demo","kind":"demo",

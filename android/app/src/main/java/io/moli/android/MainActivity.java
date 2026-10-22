@@ -25,6 +25,10 @@ public final class MainActivity extends Activity {
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
             EngineHost.State state = EngineHost.state();
+            // A settings screen may have started the service while this screen
+            // was stopped and unbound. Bind it without issuing another start.
+            if (!bound && (state == EngineHost.State.RUNNING || state == EngineHost.State.STARTING))
+                bound = bindService(new Intent(MainActivity.this, MoliService.class), connection, 0);
             // Binding can complete after the first UI refresh. Do not unbind a start
             // request before Android has delivered its command to the service.
             if (state == EngineHost.State.STOPPED && bound && (server == null || !server.hasCommand()))
@@ -85,7 +89,10 @@ public final class MainActivity extends Activity {
             PopupMenu menu = new PopupMenu(this,diagnostics);
             menu.getMenu().add(0,1,0,R.string.app_info); menu.getMenu().add(0,2,1,R.string.integration_title);
             menu.setOnMenuItemClickListener(item -> { startActivity(new Intent(this,item.getItemId()==1?AppInfoActivity.class:IntegrationsActivity.class)); return true; }); menu.show();
-        }); tools.addView(diagnostics); root.addView(tools);
+        }); tools.addView(diagnostics);
+        Button equipment = new Button(this); equipment.setText(R.string.equipment_title);
+        equipment.setOnClickListener(v -> startActivity(new Intent(this,EquipmentSettingsActivity.class)));
+        tools.addView(equipment); root.addView(tools);
         status = new TextView(this); status.setText(R.string.stopped); root.addView(status);
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);
@@ -101,6 +108,9 @@ public final class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String origin = loaded;
+                if (request.isForMainFrame() && origin != null && EngineHost.state() == EngineHost.State.RUNNING && origin.equals(EngineHost.origin()) && (origin+"/android/equipment").equals(uri.toString())) {
+                    startActivity(new Intent(MainActivity.this,EquipmentSettingsActivity.class)); return true;
+                }
                 if (request.isForMainFrame() && origin != null && EngineHost.state() == EngineHost.State.RUNNING && origin.equals(EngineHost.origin()) && (origin+"/android/settings").equals(uri.toString())) {
                     startActivity(new Intent(MainActivity.this,HomeSettingsActivity.class)); return true;
                 }

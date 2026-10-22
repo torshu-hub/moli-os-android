@@ -1,0 +1,45 @@
+Moli OS 0.7.0 — ARM64 — Android 9 minimum
+
+Installer moli-os-android-0.7.0-arm64.apk : application Moli OS 0.7.0.
+Signature debug temporaire, paquet .preview.equipment.v070 : installation distincte.
+La 0.6.1 reste intacte. Pour conserver des réglages utiles : export chiffré puis
+restauration dans la nouvelle application vierge avant de créer son PIN.
+Aucune désinstallation ni installation automatique ; signature durable suspendue.
+
+IMPRIMANTE — PREMIER ESSAI EN LECTURE SEULE
+1. Même Wi-Fi que l’imprimante, imprimante allumée ; éviter le Wi-Fi invité isolé.
+2. Première ouverture : Démarrer et choisir le PIN local. Ouvrir Équipements.
+3. Arrêter le moteur depuis cette page ; cocher la lecture IPP. Saisir l’IPv4
+   privée de l’imprimante trouvée sur son écran ou dans la liste des appareils
+   de la box. Port habituel 631, chemin initial /ipp/print.
+4. Enregistrer les autorisations, puis Démarrer et afficher les données.
+5. À l’Accueil : carte Imprimante IPP, disponibilité, date, modèle et points
+   effectivement communiqués. L’encre n’est pas estimée : une valeur inconnue
+   est indiquée Non communiqué. Un 0 % est la valeur renvoyée par l’imprimante.
+   La Canon MG6600 n’a pas encore été testée physiquement avec cette version.
+6. Lecture toutes les 30 s ; l’Accueil relit les données locales toutes les 15 s.
+   Aucun travail d’impression, annulation, identification lumineuse ou changement
+   de paramètres n’est possible avec ce pilote configuré depuis Android.
+7. Pour retirer l’autorisation : Équipements → Arrêter → décocher IPP → Enregistrer.
+   Redémarrer pour conserver météo/tablette sans lecture de l’imprimante.
+
+BOX IGD — FACULTATIF
+Dans Équipements, fournir une URL HTTP déjà connue du document de description
+UPnP de la box, incluant le chemin XML ; une page d’administration ne convient pas.
+Cocher la lecture, enregistrer puis démarrer. Connexion Internet, durée, IP publique
+et débits de ligne seulement si exposés par la box. Pas de débit instantané garanti.
+Pas de recherche SSDP/multicast, de scan d’adresses, d’ouverture de port ou reboot.
+SFR/Freebox restent à confirmer sur le matériel réel ; ne pas modifier leurs réglages
+pour réussir cet essai. Si l’URL est inconnue, laisser cette option décochée.
+
+LIMITES
+Chemins IPP autorisés : /ipp/print, /ipp/printer, /ipp, /printers/nom.
+Description de box : chemin terminé par .xml, sans paramètres.
+IPv4 privée uniquement, pas de nom .local, IPv6, IPPS/HTTPS ou authentification IPP
+pour ce premier parcours. IPP/IGD utilisent HTTP local non chiffré, sans identifiants.
+Une panne, un chemin erroné ou l’isolation réseau donne une source indisponible,
+pas une confirmation d’incompatibilité. Aucun test réel n’est exécuté par Codex.
+Les adresses et relevés restent sur la tablette ; sauvegarde existante chiffrée.
+Pas de commande électrique/chauffage, d’intégration Meross activée ou de secret demandé.
+La météo configurable, la carte tablette et Retour → Accueil/double appui sont conservés.
+Pas de nouvelle qualification de veille Samsung prolongée ou de garantie 24 h/24.

@@ -43,6 +43,11 @@ const MAX_QUEUED_BYTES: usize = 32 * 1024 * 1024;
 const QUEUE_FULL: &str = "file d'impression pleine";
 const MAX_COPIES: u32 = 20;
 const USER: &str = "Moli";
+const INK_PERCENT: Kind = Kind::Numeric {
+    min: Some(0.0),
+    max: Some(100.0),
+    step: None,
+};
 
 const STATUS_ATTRS: &[&str] = &[
     "printer-state",
@@ -67,6 +72,9 @@ pub struct Config {
     /// Where it answers IPP (`/ipp/print` for IPP Everywhere).
     #[serde(default = "default_path")]
     pub path: String,
+    /// Only Get-Printer-Attributes; no print sink or writable points.
+    #[serde(default)]
+    pub read_only: bool,
 }
 
 fn default_port() -> u16 {
@@ -107,6 +115,7 @@ struct Printer {
     port: u16,
     path: String,
     uri: String,
+    read_only: bool,
     ids: AtomicU32,
 }
 
@@ -117,6 +126,7 @@ impl Printer {
             port: config.port,
             path: config.path.clone(),
             uri: format!("ipp://{}:{}{}", config.host, config.port, config.path),
+            read_only: config.read_only,
             ids: AtomicU32::new(1),
         }
     }
@@ -131,6 +141,9 @@ impl Printer {
         document: &[u8],
         limit: Duration,
     ) -> anyhow::Result<Response> {
+        if self.read_only && (request.op != proto::GET_PRINTER_ATTRIBUTES || !document.is_empty()) {
+            bail!(moli_i18n::tr!("pilotes.ipp.lecture_seule", point = "IPP"));
+        }
         let body = request.encode(document);
         let http = http::Request::builder()
             .method(Method::POST)
@@ -310,15 +323,16 @@ fn spec(
     }
 }
 
-fn device(ctx: &DriverCtx, id: &DeviceId, model: Option<&str>, inks: &[String]) -> Device {
+fn device(
+    ctx: &DriverCtx,
+    id: &DeviceId,
+    model: Option<&str>,
+    inks: &[String],
+    read_only: bool,
+) -> Device {
     let (manufacturer, model) = match model.and_then(|m| m.split_once(' ')) {
         Some((brand, rest)) => (Some(brand.into()), Some(rest.into())),
         None => (None, model.map(Into::into)),
-    };
-    let percent = Kind::Numeric {
-        min: Some(0.0),
-        max: Some(100.0),
-        step: None,
     };
     let mut points = vec![
         spec(
@@ -389,10 +403,21 @@ fn device(ctx: &DriverCtx, id: &DeviceId, model: Option<&str>, inks: &[String]) 
         points.push(spec(
             &format!("ink_{}", i + 1),
             &ink_name(name),
-            percent.clone(),
+            INK_PERCENT,
             false,
             Semantic::Other,
             Some(Unit::Percent),
+        ));
+    }
+    if read_only {
+        points.retain(|p| !p.access.write && &*p.key != "job");
+        points.push(spec(
+            "responding",
+            &moli_i18n::tr!("pilotes.ipp.reponse"),
+            Kind::Binary,
+            false,
+            Semantic::Other,
+            None,
         ));
     }
     Device {
@@ -579,8 +604,28 @@ async fn cancel(printer: &Printer, spool: &Spool, printing: &mut Printing) -> Re
 async fn run(config: &Config, ctx: &mut DriverCtx) -> anyhow::Result<()> {
     let printer = Arc::new(Printer::new(config));
     let id = ctx.device_id(&config.host);
-    ctx.upsert_device(device(ctx, &id, None, &[]));
+    ctx.upsert_device(device(ctx, &id, None, &[], config.read_only));
     let spool = Arc::new(Spool::default());
+    if config.read_only {
+        // No worker and no PrintSink exist in this mode, including after a
+        // supervisor restart. The transport independently rejects write opcodes.
+        ctx.ready();
+        let mut seen = Seen::default();
+        let mut tick = tokio::time::interval(POLL);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                command = ctx.next_command() => match command {
+                    Some(command) => {
+                        let reason = moli_i18n::tr!("pilotes.ipp.lecture_seule", point = &*command.key);
+                        command.reply(Err(reason));
+                    },
+                    None => return Ok(()),
+                },
+                _ = tick.tick() => poll(&printer, ctx, &id, &mut seen, &spool).await,
+            }
+        }
+    }
     let (queue, queued) = mpsc::channel(QUEUE);
     let (news_tx, mut news) = mpsc::channel(16);
     worker(Arc::clone(&printer), Arc::clone(&spool), queued, news_tx);
@@ -722,7 +767,7 @@ async fn poll(printer: &Printer, ctx: &DriverCtx, id: &DeviceId, seen: &mut Seen
         .map(str::to_owned)
         .collect();
     if model != seen.model || inks != seen.inks {
-        ctx.upsert_device(device(ctx, id, model.as_deref(), &inks));
+        ctx.upsert_device(device(ctx, id, model.as_deref(), &inks, printer.read_only));
         seen.model = model;
         seen.inks = inks;
     }
@@ -744,23 +789,49 @@ async fn poll(printer: &Printer, ctx: &DriverCtx, id: &DeviceId, seen: &mut Seen
     spool
         .stopped
         .store(waits_for_a_person(state, &reasons), Ordering::Relaxed);
-    if let Some(word) = state_word(state) {
-        ctx.set_state(id, "state", Value::Text(word.into()));
-    }
+    ctx.set_state(
+        id,
+        "state",
+        state_word(state).map_or(Value::Null, |word| Value::Text(word.into())),
+    );
     ctx.set_state(
         id,
         "status",
-        Value::Text(status_words(state, &reasons).into()),
+        if state.is_none() && reasons.is_empty() {
+            Value::Null
+        } else {
+            Value::Text(status_words(state, &reasons).into())
+        },
     );
     let low = reasons
         .iter()
         .any(|r| r.starts_with("marker-supply-low") || r.starts_with("marker-supply-empty"));
-    ctx.set_state(id, "ink_low", Value::Bool(low));
-    for (i, v) in answer.ints("marker-levels").into_iter().enumerate() {
-        ctx.set_state(id, &format!("ink_{}", i + 1), level(v));
+    ctx.set_state(
+        id,
+        "ink_low",
+        if reasons.is_empty() {
+            Value::Null
+        } else {
+            Value::Bool(low)
+        },
+    );
+    let levels = answer.ints("marker-levels");
+    for i in 0..seen.inks.len() {
+        ctx.set_state(
+            id,
+            &format!("ink_{}", i + 1),
+            levels.get(i).copied().map_or(Value::Null, level),
+        );
     }
-    if let Some(n) = answer.int("queued-job-count") {
-        ctx.set_state(id, "jobs", Value::Int(i64::from(n)));
+    ctx.set_state(
+        id,
+        "jobs",
+        answer
+            .int("queued-job-count")
+            .map_or(Value::Null, |n| Value::Int(i64::from(n))),
+    );
+    if printer.read_only {
+        ctx.set_state(id, "responding", Value::Bool(true));
     }
 }
 
@@ -778,6 +849,47 @@ fn waits_for_a_person(state: Option<i32>, reasons: &[&str]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn read_only_transport_rejects_every_operation_except_status_before_network() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let printer = Printer::new(&Config {
+            host: "127.0.0.1".into(),
+            port: listener.local_addr().unwrap().port(),
+            path: "/ipp/print".into(),
+            read_only: true,
+        });
+        for op in [
+            proto::PRINT_JOB,
+            proto::CANCEL_JOB,
+            proto::IDENTIFY_PRINTER,
+            proto::GET_JOB_ATTRIBUTES,
+        ] {
+            let result = printer
+                .call(&printer.request(op), &[], ASK)
+                .await
+                .unwrap_err();
+            assert_eq!(
+                result.to_string(),
+                moli_i18n::tr!("pilotes.ipp.lecture_seule", point = "IPP")
+            );
+        }
+        assert!(
+            printer
+                .call(
+                    &printer.request(proto::GET_PRINTER_ATTRIBUTES),
+                    b"document",
+                    ASK
+                )
+                .await
+                .is_err()
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), listener.accept())
+                .await
+                .is_err()
+        );
+    }
 
     #[test]
     fn says_the_printers_state_in_words() {
@@ -862,6 +974,7 @@ mod tests {
             host: "192.0.2.1".into(),
             port: 631,
             path: "/ipp/print".into(),
+            read_only: false,
         });
         let spool = Spool::default();
         let mut printing = Printing::default();
