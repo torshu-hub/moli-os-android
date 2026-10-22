@@ -247,4 +247,5 @@
     <string name="account_candidate_select">Identity candidate (model not verified)</string>
     <string name="account_candidate_limit">At most 8 candidates. Uncheck an address before selecting another.</string>
     <string name="equipment_reloaded">Saved configuration from another page reloaded. Previous unsaved changes on this screen were discarded; review before editing.</string>
+    <string name="account_offline">Offline: the vault session and cached inventory are retained. No automatic reconnection.</string>
 </resources>

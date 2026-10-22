@@ -162,14 +162,16 @@ public final class EquipmentSettingsActivity extends Activity {
     }
     private Button button(LinearLayout body,int id,Runnable action) { Button b = new Button(this); b.setText(id); b.setOnClickListener(v -> action.run()); body.addView(b); return b; }
     @Override public void onStart() { super.onStart(); handler.post(refresh);
-        if(ready && !busy)io.execute(()->{try{
-            JSONObject selected=EquipmentStore.read(this);if(selected.toString().equals(storedConfig))return;
+        if(ready && !busy){ready=false;io.execute(()->{try{
+            JSONObject selected=EquipmentStore.read(this);
             runOnUiThread(()->{if(isDestroyed() || busy)return;try{
-                ready=false;JSONObject p=selected.optJSONObject("printer"),g=selected.optJSONObject("gateway");
+                if(selected.toString().equals(storedConfig)){ready=true;return;}
+                JSONObject p=selected.optJSONObject("printer"),g=selected.optJSONObject("gateway");
                 printer.setChecked(p!=null);gateway.setChecked(g!=null);if(p!=null){host.setText(p.optString("host"));port.setText(p.optString("port"));path.setText(p.optString("path"));}if(g!=null)location.setText(g.optString("location"));
                 meross.load(selected.optJSONArray("meross"));storedConfig=selected.toString();revision=savedRevision=0;ready=true;message.setText(R.string.equipment_reloaded);
             }catch(Exception invalid){message.setText(R.string.equipment_initialize);}});
-        }catch(Exception invalid){runOnUiThread(()->{if(!isDestroyed())message.setText(R.string.equipment_initialize);});}});
+        }catch(Exception invalid){runOnUiThread(()->{if(!isDestroyed())message.setText(R.string.equipment_initialize);});}});}
+
     }
     @Override public void onStop() { handler.removeCallbacks(refresh); meross.clearKeys(); super.onStop(); }
     @Override public void onDestroy() { handler.removeCallbacks(refresh); io.shutdown(); super.onDestroy(); }

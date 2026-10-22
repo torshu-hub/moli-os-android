@@ -48,6 +48,7 @@ public final class MerossAccountActivity extends Activity {
             // Cache status is read-only and works while the engine runs. No cloud request on navigation.
             if(!busy && ProtectedKey.exists(MerossAccountActivity.this) && !loaded) {loaded=true;submit("status",new JSONObject());}
             session.setText(getString(connected?R.string.account_session_cached:R.string.account_disconnected)
+                + (connected && getSystemService(android.net.ConnectivityManager.class).getActiveNetwork()==null?"\n"+getString(R.string.account_offline):"")
                 + (stopped?"":"\n"+getString(R.string.account_stop))
                 + (connected?"\n"+getString(R.string.account_budget,inventoryUsed,Math.max(0,(refreshAt-SystemClock.elapsedRealtime()+999)/1000)):""));
             handler.postDelayed(this,400);
@@ -108,6 +109,8 @@ public final class MerossAccountActivity extends Activity {
         });
         button(body,R.string.equipment_title,() -> {startActivity(new Intent(this,EquipmentSettingsActivity.class));finish();});
         button(body,R.string.back,this::finish);
+        TextWatcher unsaved=new TextWatcher(){public void beforeTextChanged(CharSequence text,int start,int count,int after){}public void afterTextChanged(Editable text){}public void onTextChanged(CharSequence text,int start,int before,int count){if(associated){associated=false;startRead.setEnabled(false);message.setText(R.string.equipment_unsaved);}}};
+        for(EditText field:new EditText[]{host,port,name})field.addTextChangedListener(unsaved);
         if(saved==null){android.content.SharedPreferences draft=getSharedPreferences("meross-draft",MODE_PRIVATE);displayedUuid=draft.getString("uuid",null);host.setText(draft.getString("host",""));port.setText(draft.getString("port","80"));name.setText(draft.getString("name",""));}
         if(saved!=null){displayedUuid=saved.getString("uuid");host.setText(saved.getString("host",""));port.setText(saved.getString("port","80"));name.setText(saved.getString("name",""));readConsent.setChecked(saved.getBoolean("read"));pendingUuid=saved.getString("pending");candidates=saved.getStringArrayList("candidates");if(candidates==null)candidates=new ArrayList<>();}
     }
@@ -161,7 +164,7 @@ public final class MerossAccountActivity extends Activity {
     private void recordResponse(String action,JSONObject input,JSONObject response,String error){
         String state=response==null?"":response.optString("state");
         String warning=response!=null && response.has("warning")?response.optString("warning"):null;
-        TrialJournal.Outcome outcome=error!=null?error.equals("account_expired")?TrialJournal.Outcome.EXPIRE:TrialJournal.Outcome.REFUSE:state.equals("expired")?TrialJournal.Outcome.EXPIRE:state.equals("associated")?TrialJournal.Outcome.ENREGISTRE:action.equals("status")?TrialJournal.Outcome.CACHE:TrialJournal.Outcome.REUSSI;
+        TrialJournal.Outcome outcome=error!=null?error.equals("account_expired")?TrialJournal.Outcome.EXPIRE:TrialJournal.Outcome.REFUSE:state.equals("expired")?TrialJournal.Outcome.EXPIRE:state.equals("associated")?TrialJournal.Outcome.ENREGISTRE:action.equals("status")?(state.equals("connected")?TrialJournal.Outcome.CACHE:TrialJournal.Outcome.ABSENT):TrialJournal.Outcome.REUSSI;
         JSONArray items=response==null?null:response.optJSONArray("items");long a=items==null?0:items.length(),b=0;
         if(action.equals("forget"))b=response!=null && response.optBoolean("revoked")?1:0;
         if(action.equals("associate"))a=input.optBoolean("enabled")?1:0;

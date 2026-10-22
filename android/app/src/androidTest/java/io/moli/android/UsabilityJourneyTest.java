@@ -37,8 +37,17 @@ public final class UsabilityJourneyTest {
                 ui.onActivity(a->{try{a.submit("identify",new JSONObject().put("candidates",new JSONArray().put("192.168.1.21")));}catch(Exception e){throw new AssertionError(e);}});
                 MerossAccountTest.until(()->{AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a->done.set(!a.busy && a.host.getText().toString().equals("192.168.1.21") && a.associate.isEnabled()));return done.get();});
                 ui.onActivity(a->{a.readConsent.setChecked(true);a.associate.performClick();});MerossAccountTest.message(ui,R.string.account_associated);
+                ui.onActivity(a->{android.widget.Button start=MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(R.string.equipment_start));assertTrue(start.isEnabled());String saved=a.name.getText().toString();a.name.setText("Unsaved edit");assertFalse(start.isEnabled());a.name.setText(saved);});
                 ui.recreate();resumed(ui,backend);ui.onActivity(a->{assertEquals(4,a.inventory.length());assertFalse(a.password.isShown());});
                 assertEquals(0,fixture.signins);
+            }
+            // Returning from a child must reload saved changes rather than overwrite them with a stale parent form.
+            try(ActivityScenario<EquipmentSettingsActivity> ui=ActivityScenario.launch(EquipmentSettingsActivity.class)){
+                MerossAccountTest.until(()->{AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a->done.set(a.save.isEnabled() && a.meross.entries.size()==1));return done.get();});
+                ui.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
+                JSONObject changed=EquipmentStore.read(app);changed.getJSONArray("meross").getJSONObject(0).put("name","Saved from child");EngineHost.maintain(()->{EquipmentStore.save(app,changed);return null;}).get();
+                ui.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
+                MerossAccountTest.until(()->{AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a->done.set(a.save.isEnabled() && a.meross.entries.size()==1 && a.meross.entries.get(0).name.getText().toString().equals("Saved from child")));return done.get();});
             }
             // Group service evidence by the same IP, without claiming a port identifies a manufacturer.
             try(ActivityScenario<LocalNetworkActivity> ui=ActivityScenario.launch(LocalNetworkActivity.class)){
@@ -55,6 +64,15 @@ public final class UsabilityJourneyTest {
             try(ActivityScenario<TrialJournalActivity> ui=ActivityScenario.launch(TrialJournalActivity.class)){
                 ui.onActivity(a->{assertTrue(TrialLog.active());a.end.performClick();});
                 ui.recreate();assertFalse(TrialLog.active());assertTrue(TrialLog.export(app).contains("Fin de session"));
+                android.app.Instrumentation instrumentation=InstrumentationRegistry.getInstrumentation();
+                IntentFilter filter=new IntentFilter(Intent.ACTION_CREATE_DOCUMENT);filter.addCategory(Intent.CATEGORY_OPENABLE);filter.addDataType("text/plain");
+                android.net.Uri output=android.net.Uri.parse("content://io.moli.synthetic.documents/trial-export");
+                android.app.Instrumentation.ActivityMonitor save=instrumentation.addMonitor(filter,new android.app.Instrumentation.ActivityResult(android.app.Activity.RESULT_OK,new Intent().setData(output)),true);
+                try {
+                    ui.onActivity(a->{android.widget.Button export=MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(R.string.trial_export));assertNotNull(export);export.performClick();});
+                    MerossAccountTest.until(()->{AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a->done.set(a.message.getText().toString().equals(a.getString(R.string.trial_exported))));return done.get();});
+                    assertEquals(1,save.getHits());String saved=ProfileStore.bounded(app.getContentResolver().openInputStream(output),65536);assertTrue(saved.contains("UUID_CHECK"));assertTrue(saved.contains("EQUIPMENT_READ"));assertFalse(saved.contains("192.168."));assertFalse(saved.contains(MerossAccountTest.KEY));
+                }finally{instrumentation.removeMonitor(save);}
             }
         }finally{TrialLog.end(app);EngineHost.maintain(()->{EquipmentStore.save(app,new JSONObject());return null;}).get();app.getSharedPreferences("meross-draft",Context.MODE_PRIVATE).edit().clear().commit();}
     }

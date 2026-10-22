@@ -247,4 +247,5 @@
     <string name="account_candidate_select">Candidate à identifier (aucune preuve de modèle)</string>
     <string name="account_candidate_limit">8 candidates maximum. Décochez une adresse avant d’en choisir une autre.</string>
     <string name="equipment_reloaded">Configuration enregistrée depuis une autre page rechargée. Les modifications précédentes non enregistrées de cet écran ont été abandonnées ; vérifiez avant de modifier.</string>
+    <string name="account_offline">Hors ligne : la session est conservée au coffre et le cache reste consultable. Aucune reconnexion automatique.</string>
 </resources>

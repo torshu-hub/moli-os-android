@@ -56,7 +56,7 @@ final class TrialJournal {
         for(int i=0;i<events.length();i++) { JSONObject e=events.getJSONObject(i);
             java.time.Instant time=java.time.Instant.ofEpochMilli(e.getLong("time"));
             s.append(local.format(time)).append(" [").append(time).append("] ");
-            s.append(e.optString("source","DIAGNOSTICS")).append(" | ").append(label(Event.valueOf(e.getString("event"))));
+            s.append(e.optString("source","DIAGNOSTICS")).append(" | ").append(label(Event.valueOf(e.getString("event")))).append(" [").append(e.getString("event")).append("]");
             if(e.has("result"))s.append(" | ").append(e.getString("result")).append(" | catégorie=").append(e.getString("error"));
             if(!e.optString("subject").isEmpty())s.append(" | appareil#").append(e.getString("subject"));
             s.append(" | a=").append(e.getLong("a")).append(" b=").append(e.getLong("b")).append('\n');
