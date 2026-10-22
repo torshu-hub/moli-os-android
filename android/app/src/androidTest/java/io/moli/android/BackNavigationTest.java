@@ -74,11 +74,11 @@ public final class BackNavigationTest {
         ProfileStore.remove(app, "weather"); // No remote call is needed for navigation.
         try {
             try (ActivityScenario<MainActivity> ui = ActivityScenario.launch(MainActivity.class)) {
-                // Use the real Start control: it both starts AND binds the UI.
+                // Use My devices: the real preview control starts and binds the UI.
                 // Sending a service intent alone leaves this initially stopped UI unbound.
                 ui.onActivity(a -> {
-                    Button start = button(a.getWindow().getDecorView(), a.getString(R.string.start));
-                    assertNotNull(start); assertTrue(start.isEnabled()); start.performClick();a.showDevices();
+                    Button start = button(a.getWindow().getDecorView(), a.getString(R.string.preview_devices));
+                    assertNotNull(start); assertTrue(start.isEnabled()); start.performClick();
                 });
                 until(() -> EngineHost.state() == EngineHost.State.RUNNING);
                 long lease = EngineHost.currentLease();

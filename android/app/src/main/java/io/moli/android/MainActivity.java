@@ -18,7 +18,6 @@ public final class MainActivity extends Activity {
     private LinearLayout dashboard;
     private boolean viewing;
     private ReportExport report;
-    private Button start, stop, backup;
     private MoliService server;
     private boolean bound;
     private volatile String loaded;
@@ -37,9 +36,6 @@ public final class MainActivity extends Activity {
             // request before Android has delivered its command to the service.
             if (state == EngineHost.State.STOPPED && bound && (server == null || !server.hasCommand()))
                 state = EngineHost.State.STARTING;
-            start.setEnabled(state == EngineHost.State.STOPPED);
-            stop.setEnabled(state == EngineHost.State.RUNNING || state == EngineHost.State.STARTING || state == EngineHost.State.ERROR);
-            backup.setEnabled(state == EngineHost.State.STOPPED);
             if(state==EngineHost.State.RUNNING)status.setText(R.string.preview_engine_ready);
             if (state != EngineHost.State.RUNNING) {
                 if (loaded != null) {
@@ -94,11 +90,6 @@ public final class MainActivity extends Activity {
         TrialUi.button(this,front,R.string.preview_settings,false,()->startActivity(new Intent(this,PreviewSettingsActivity.class)));
         dashboard=new LinearLayout(this);dashboard.setOrientation(LinearLayout.VERTICAL);root.addView(dashboard);dashboard.setVisibility(View.GONE);
         TrialUi.button(this,dashboard,R.string.preview_home_title,false,this::showHome);
-        // Kept as internal controls for lifecycle checks, never an extra toolbar.
-        LinearLayout controls=new LinearLayout(this);controls.setVisibility(View.GONE);root.addView(controls);
-        start=new Button(this);start.setText(R.string.start);start.setOnClickListener(v->prepare());controls.addView(start);
-        stop=new Button(this);stop.setText(R.string.stop);stop.setOnClickListener(v->stopServer());controls.addView(stop);
-        backup=new Button(this);controls.addView(backup);
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
@@ -165,13 +156,6 @@ public final class MainActivity extends Activity {
         Intent intent = new Intent(this, MoliService.class);
         startForegroundService(intent);
         bound = bindService(intent, connection, BIND_AUTO_CREATE);
-    }
-    private void stopServer() {
-        getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", false).apply();
-        // Keep the binding until the worker confirms that persistence/shutdown finished.
-        startService(new Intent(this, MoliService.class).setAction(MoliService.STOP));
-        web.loadUrl("about:blank"); web.setVisibility(View.GONE);
-        status.setText(R.string.stopping); status.setVisibility(View.VISIBLE);
     }
     // Return to the dashboard root, rather than traversing WebView history (which
     // also contains loading/stopped pages). Closing the UI never stops the service.

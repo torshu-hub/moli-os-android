@@ -318,4 +318,5 @@
     <string name="report_saved_help">%1$s\n\nText file saved at the location chosen in the Android picker (Downloads or Documents, depending on your choice). Attach this .txt file to the chat, not the APK. No password or automatic upload.</string>
     <string name="report_share">Share report</string>
     <string name="report_fallback_name">Moli OS trial report (.txt)</string>
+    <string name="auto_save_partial">%1$d plugs saved before the addition stopped. %2$s Other settings were preserved.</string>
 </resources>

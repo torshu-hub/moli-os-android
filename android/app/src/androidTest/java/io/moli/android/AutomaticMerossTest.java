@@ -43,7 +43,7 @@ public final class AutomaticMerossTest {
         }
         EngineHost.maintain(()->{EquipmentStore.save(app,new JSONObject());return null;}).get();String own=MerossReadTest.address();
         try(MerossReadTest.Fixture one=new MerossReadTest.Fixture(1);MerossReadTest.Fixture three=new MerossReadTest.Fixture(3);MerossReadTest.Fixture four=new MerossReadTest.Fixture(4)){
-            MerossAccountTest.Fixture account=new MerossAccountTest.Fixture(app);account.connected=true;int[] operations={0,0,0};
+            MerossAccountTest.Fixture account=new MerossAccountTest.Fixture(app);account.connected=true;int[] operations={0,0,0};long[] lastAssociation={-1000};
             MerossAccountStore.Backend backend=r->{switch(r.getString("action")){
                 case "status":return account.status().put("inventory_wait_ms",0);
                 case "inventory":operations[0]++;return account.status();
@@ -56,6 +56,7 @@ public final class AutomaticMerossTest {
                     }return new JSONObject().put("state","identified").put("results",rows);
                 }
                 case "associate":{
+                    long now=android.os.SystemClock.elapsedRealtime();if(now-lastAssociation[0]<1000)throw new ProfileStore.Rejected("account_rate");lastAssociation[0]=now;
                     operations[2]++;assertTrue(r.getBoolean("enabled"));int id=Integer.parseInt(r.getString("uuid"),16);assertNotEquals("Ambiguous plug must never be saved",2,id);
                     int port=id==1?one.port():id==3?three.port():four.port();String uuid=r.getString("uuid");JSONObject config=EquipmentStore.read(app);JSONArray rows=config.optJSONArray("meross");if(rows==null)rows=new JSONArray();rows.put(new JSONObject().put("id",uuid).put("uuid",uuid).put("host",own).put("port",port).put("name","Synthetic plug "+id).put("enabled",true));config.put("meross",rows);
                     EngineHost.maintain(()->{EquipmentStore.save(app,config,new JSONArray().put(new JSONObject().put("id",uuid).put("key","a".repeat(32)).put("required",true)));return null;}).get();return new JSONObject().put("state","associated").put("uuid",uuid);

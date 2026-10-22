@@ -318,4 +318,5 @@
     <string name="report_saved_help">%1$s\n\nFichier texte enregistré à l’emplacement choisi dans le sélecteur Android (Téléchargements ou Documents, selon votre choix). Pour le joindre au chat, choisissez ce fichier .txt, pas l’APK. Aucun mot de passe ni envoi automatique.</string>
     <string name="report_share">Partager le rapport</string>
     <string name="report_fallback_name">Rapport d’essai Moli OS (.txt)</string>
+    <string name="auto_save_partial">%1$d prises enregistrées avant l’arrêt de l’ajout. %2$s Les autres réglages sont conservés.</string>
 </resources>
