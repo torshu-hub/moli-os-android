@@ -115,13 +115,14 @@ pub extern "system" fn Java_io_moli_android_NativeServer_profile(
             }
             5 => discovery::review(&serde_json::from_str(&text).map_err(|_| "input")?),
             6 => {
+                let input: serde_json::Value = serde_json::from_str(&text).map_err(|_| "input")?;
                 let slot = engine()
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if slot.is_some() {
+                if slot.is_some() && input["action"] != "status" {
                     return Err("running");
                 }
-                meross_account::run(&serde_json::from_str(&text).map_err(|_| "input")?)
+                meross_account::run(&input)
             }
             _ => Err("input"),
         }

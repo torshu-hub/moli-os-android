@@ -35,6 +35,10 @@ public final class EngineDiagnosticsTest {
         try (ActivityScenario<MainActivity> activity = ActivityScenario.launch(MainActivity.class)) {
             activity.onActivity(a -> context.startForegroundService(new Intent(context, MoliService.class)));
             state(EngineHost.State.RUNNING);
+            // Cached account status must not stop a running engine or demand a password.
+            assertEquals("disconnected",MerossAccountStore.request(context,new org.json.JSONObject().put("action","status")).getString("state"));
+            assertEquals(EngineHost.State.RUNNING,EngineHost.state());
+
             assertEquals(1, check()[0]);
             assertFalse(EngineHealth.request(EngineHost.origin(), "synthetic-wrong-token"));
             long lease = EngineHost.currentLease();

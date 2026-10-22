@@ -73,7 +73,7 @@ public final class MainActivity extends Activity {
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override public void onCreate(Bundle saved) {
-        super.onCreate(saved);
+        super.onCreate(saved); TrialLog.attach(this);
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         LinearLayout controls = new LinearLayout(this);
         start = new Button(this); start.setText(R.string.start); start.setOnClickListener(v -> prepare());
@@ -94,6 +94,7 @@ public final class MainActivity extends Activity {
         Button equipment = new Button(this); equipment.setText(R.string.equipment_title);
         equipment.setOnClickListener(v -> startActivity(new Intent(this,EquipmentSettingsActivity.class)));
         tools.addView(equipment); root.addView(tools);
+        Button journal=new Button(this);journal.setText(R.string.journal_title);journal.setOnClickListener(v->startActivity(new Intent(this,TrialJournalActivity.class)));root.addView(journal);
         status = new TextView(this); status.setText(R.string.stopped); root.addView(status);
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);

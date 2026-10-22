@@ -25,17 +25,31 @@ public final class MerossAccountActivity extends Activity {
     JSONArray inventory=new JSONArray();
     boolean busy,loaded,connected;
     private String pendingUuid,displayedUuid;
+    private LinearLayout login;
+    private TextView session;
+    private Button identify,startRead;
+    private boolean associated;
+    private ArrayList<String> candidates=new ArrayList<>();
+    private final HashMap<String,String> identified=new HashMap<>();
+    private long refreshAt,signinAt,identifyAt;
+    private int inventoryUsed;
     private final Runnable state=new Runnable() {
         @Override public void run() {
             boolean stopped=EngineHost.state()==EngineHost.State.STOPPED;
             boolean ready=stopped && ProtectedKey.exists(MerossAccountActivity.this) && !busy;
-            connect.setEnabled(ready && !connected && cloudConsent.isChecked());
-            refresh.setEnabled(ready && connected); forget.setEnabled(ready && connected);
-            associate.setEnabled(ready && connected && inventory.length()>0); pick.setEnabled(ready && connected && inventory.length()>0);
+            connect.setEnabled(ready && !connected && cloudConsent.isChecked() && SystemClock.elapsedRealtime()>=signinAt);
+            refresh.setEnabled(ready && connected && SystemClock.elapsedRealtime()>=refreshAt); forget.setEnabled(ready && connected);
+            associate.setEnabled(ready && connected && inventory.length()>0); pick.setEnabled(!busy && connected && inventory.length()>0);
+            identify.setEnabled(ready && connected && !candidates.isEmpty() && SystemClock.elapsedRealtime()>=identifyAt);
+            startRead.setEnabled(ready && associated);
             for(View field:new View[]{email,password,otp,region,cloudConsent,host,port,name,readConsent,devices}) field.setEnabled(ready);
-            if(!stopped && !busy) message.setText(R.string.account_stop);
+            devices.setEnabled(!busy && connected);
             if(!ProtectedKey.exists(MerossAccountActivity.this)) message.setText(R.string.account_initialize);
-            if(ready && !loaded) { loaded=true; submit("status",new JSONObject()); }
+            // Cache status is read-only and works while the engine runs. No cloud request on navigation.
+            if(!busy && ProtectedKey.exists(MerossAccountActivity.this) && !loaded) {loaded=true;submit("status",new JSONObject());}
+            session.setText(getString(connected?R.string.account_session_cached:R.string.account_disconnected)
+                + (stopped?"":"\n"+getString(R.string.account_stop))
+                + (connected?"\n"+getString(R.string.account_budget,inventoryUsed,Math.max(0,(refreshAt-SystemClock.elapsedRealtime()+999)/1000)):""));
             handler.postDelayed(this,400);
         }
     };
@@ -44,12 +58,15 @@ public final class MerossAccountActivity extends Activity {
         LinearLayout body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);int pad=(int)(16*getResources().getDisplayMetrics().density);body.setPadding(pad,pad,pad,pad);
         ScrollView scroll=new ScrollView(this);scroll.addView(body);setContentView(scroll);
         text(body,R.string.account_title);text(body,R.string.account_help);
+        button(body,R.string.journal_title,()->startActivity(new Intent(this,TrialJournalActivity.class)));
+        session=text(body,R.string.account_wait);
+        login=new LinearLayout(this);login.setOrientation(LinearLayout.VERTICAL);login.setVisibility(View.GONE);body.addView(login);
         button(body,R.string.stop,() -> startService(new Intent(this,MoliService.class).setAction(MoliService.STOP)));
-        cloudConsent=new CheckBox(this);cloudConsent.setText(R.string.account_consent);body.addView(cloudConsent);
-        region=new Spinner(this); region.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"EU","US","AP","Global"}));body.addView(region);
-        email=field(body,R.string.account_email,false);email.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        password=field(body,R.string.account_password,true);otp=field(body,R.string.account_otp,true);otp.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        connect=button(body,R.string.account_connect,() -> {
+        cloudConsent=new CheckBox(this);cloudConsent.setText(R.string.account_consent);login.addView(cloudConsent);
+        region=new Spinner(this); region.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"EU","US","AP","Global"}));login.addView(region);
+        email=field(login,R.string.account_email,false);email.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        password=field(login,R.string.account_password,true);otp=field(login,R.string.account_otp,true);otp.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        connect=button(login,R.string.account_connect,() -> {
             if(!cloudConsent.isChecked()) return;
             try {
                 JSONObject input=new JSONObject().put("email",email.getText().toString().trim()).put("password",password.getText().toString())
@@ -65,7 +82,7 @@ public final class MerossAccountActivity extends Activity {
             public void onNothingSelected(AdapterView<?> p) {}
             public void onItemSelected(AdapterView<?> p,View view,int position,long id) {
                 JSONObject item=inventory.optJSONObject(position);
-                if(item!=null && !item.optString("uuid").equals(displayedUuid)) {displayedUuid=item.optString("uuid");name.setText(item.optString("name"));host.setText("");}
+                if(item!=null && !item.optString("uuid").equals(displayedUuid)) {displayedUuid=item.optString("uuid");name.setText(item.optString("name"));host.setText(identified.getOrDefault(displayedUuid,""));associated=false;}
             }
         });
         name=field(body,R.string.meross_name,false);host=field(body,R.string.equipment_host,false);port=field(body,R.string.equipment_port,false);port.setInputType(InputType.TYPE_CLASS_NUMBER);port.setText("80");
@@ -73,6 +90,10 @@ public final class MerossAccountActivity extends Activity {
             JSONObject selected=selected();if(selected==null)return;pendingUuid=selected.optString("uuid");
             startActivityForResult(new Intent(this,LocalNetworkActivity.class).putExtra("pick_meross_ip",true),41);
         });
+        identify=button(body,R.string.account_identify,()-> {
+            try {submit("identify",new JSONObject().put("candidates",new JSONArray(candidates)));}catch(Exception invalid){message.setText(R.string.account_input);}
+        });
+        text(body,R.string.network_mac_unavailable);
         readConsent=new CheckBox(this);readConsent.setText(R.string.account_read_consent);body.addView(readConsent);
         associate=button(body,R.string.account_associate,() -> {
             JSONObject item=selected();if(item==null)return;
@@ -80,13 +101,22 @@ public final class MerossAccountActivity extends Activity {
                 .put("port",Integer.parseInt(port.getText().toString().trim())).put("name",name.getText().toString().trim()).put("enabled",readConsent.isChecked()));}
             catch(Exception invalid){message.setText(R.string.account_input);}
         });
+        startRead=button(body,R.string.equipment_start,()->{
+            if(!associated || busy || EngineHost.state()!=EngineHost.State.STOPPED)return;
+            getSharedPreferences("host",MODE_PRIVATE).edit().putBoolean("wanted",true).apply();startForegroundService(new Intent(this,MoliService.class));
+            startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP));finish();
+        });
         button(body,R.string.equipment_title,() -> {startActivity(new Intent(this,EquipmentSettingsActivity.class));finish();});
         button(body,R.string.back,this::finish);
+        if(saved==null){android.content.SharedPreferences draft=getSharedPreferences("meross-draft",MODE_PRIVATE);displayedUuid=draft.getString("uuid",null);host.setText(draft.getString("host",""));port.setText(draft.getString("port","80"));name.setText(draft.getString("name",""));}
+        if(saved!=null){displayedUuid=saved.getString("uuid");host.setText(saved.getString("host",""));port.setText(saved.getString("port","80"));name.setText(saved.getString("name",""));readConsent.setChecked(saved.getBoolean("read"));pendingUuid=saved.getString("pending");candidates=saved.getStringArrayList("candidates");if(candidates==null)candidates=new ArrayList<>();}
     }
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("uuid",displayedUuid);out.putString("host",host.getText().toString());out.putString("port",port.getText().toString());out.putString("name",name.getText().toString());out.putBoolean("read",readConsent.isChecked());out.putString("pending",pendingUuid);out.putStringArrayList("candidates",candidates);}
     private JSONObject selected(){return inventory.optJSONObject(devices.getSelectedItemPosition());}
     void submit(String action,JSONObject input) {
-        if(busy || EngineHost.state()!=EngineHost.State.STOPPED)return;
+        if(busy || (!action.equals("status") && EngineHost.state()!=EngineHost.State.STOPPED)){message.setText(R.string.account_stop);return;}
         try {input.put("action",action);}catch(JSONException ignored){return;}
+        TrialLog.action(this,event(action),TrialJournal.Source.COMPTE,TrialJournal.Outcome.DEBUT,TrialJournal.Error.AUCUNE,0,0,input.optString("uuid"));
         busy=true;message.setText(R.string.account_wait);connect.setEnabled(false);refresh.setEnabled(false);forget.setEnabled(false);associate.setEnabled(false);pick.setEnabled(false);
         for(View f:new View[]{email,password,otp,region,devices,host,port,name,cloudConsent,readConsent})f.setEnabled(false);
         io.execute(() -> {
@@ -96,15 +126,30 @@ public final class MerossAccountActivity extends Activity {
                 code=cause instanceof ProfileStore.Rejected?cause.getMessage():"account_network";
             }finally{for(String f:new String[]{"password","otp","master","email"})input.remove(f);}
             JSONObject response=result;String error=code;
+            recordResponse(action,input,response,error);
             runOnUiThread(() -> {
                 if(isDestroyed())return;busy=false;
-                if(error!=null){if(error.equals("account_expired")){connected=false;inventory=new JSONArray();devices.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new ArrayList<>()));}message.setText(errorText(error));return;}
+                if(error!=null){
+                    if(error.equals("account_expired")){connected=false;inventory=new JSONArray();devices.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,new ArrayList<>()));}message.setText(errorText(error));login.setVisibility(connected?View.GONE:View.VISIBLE);return;}
                 String status=response.optString("state");
-                if(status.equals("associated")){message.setText(R.string.account_associated);readConsent.setChecked(false);return;}
+                if(status.equals("identified")){
+                    JSONArray rows=response.optJSONArray("results");int matches=0;boolean chosen=false;JSONObject target=selected();
+                    if(rows!=null)for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row!=null && "matched".equals(row.optString("result"))){matches++;identified.put(row.optString("uuid"),row.optString("host"));if(target!=null && target.optString("uuid").equals(row.optString("uuid"))){host.setText(row.optString("host"));chosen=true;}}}
+                    identifyAt=SystemClock.elapsedRealtime()+10000;
+                    message.setText(getString(chosen?R.string.account_candidate_match:R.string.account_candidate_none,matches,rows==null?0:rows.length()));
+                    return;
+                }
+                if(status.equals("associated")){associated=readConsent.isChecked();message.setText(associated?R.string.account_associated:R.string.account_associated_disabled);readConsent.setChecked(false);
+                    return;}
                 connected=status.equals("connected");inventory=response.optJSONArray("items");if(inventory==null)inventory=new JSONArray();
                 ArrayList<String> labels=new ArrayList<>();
                 for(int i=0;i<inventory.length();i++){JSONObject item=inventory.optJSONObject(i);if(item!=null)labels.add(item.optString("name")+" — "+item.optString("model")+" / "+item.optString("hardware")+"\nUUID : "+item.optString("uuid"));}
-                devices.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));
+                String preserve=displayedUuid; devices.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));
+                for(int i=0;i<inventory.length();i++)if(inventory.optJSONObject(i)!=null && inventory.optJSONObject(i).optString("uuid").equals(preserve))devices.setSelection(i);
+                login.setVisibility(connected?View.GONE:View.VISIBLE);
+                long clock=SystemClock.elapsedRealtime();
+                refreshAt=clock+response.optLong("inventory_wait_ms");signinAt=clock+response.optLong("signin_wait_ms");identifyAt=clock+response.optLong("identify_wait_ms");inventoryUsed=response.optInt("inventory_used",inventoryUsed);
+                if(action.equals("signin")||action.equals("inventory")){refreshAt=clock+60000;inventoryUsed++;}
                 long received=response.optLong("cached_ms");inventoryTime.setText(received>0?getString(R.string.account_inventory_time,DateFormat.getDateTimeInstance().format(new Date(received))):getString(R.string.account_no_inventory));
                 int label=status.equals("expired")?R.string.account_expired:connected?(received<=0?R.string.account_no_inventory:inventory.length()==0?R.string.account_empty:R.string.account_connected):R.string.account_disconnected;
                 if(action.equals("forget"))label=response.optBoolean("revoked")?R.string.account_forgotten:R.string.account_forgotten_offline;
@@ -112,6 +157,16 @@ public final class MerossAccountActivity extends Activity {
                 message.setText(label);
             });
         });
+    }
+    private void recordResponse(String action,JSONObject input,JSONObject response,String error){
+        String state=response==null?"":response.optString("state");
+        String warning=response!=null && response.has("warning")?response.optString("warning"):null;
+        TrialJournal.Outcome outcome=error!=null?error.equals("account_expired")?TrialJournal.Outcome.EXPIRE:TrialJournal.Outcome.REFUSE:state.equals("expired")?TrialJournal.Outcome.EXPIRE:state.equals("associated")?TrialJournal.Outcome.ENREGISTRE:action.equals("status")?TrialJournal.Outcome.CACHE:TrialJournal.Outcome.REUSSI;
+        JSONArray items=response==null?null:response.optJSONArray("items");long a=items==null?0:items.length(),b=0;
+        if(action.equals("forget"))b=response!=null && response.optBoolean("revoked")?1:0;
+        if(action.equals("associate"))a=input.optBoolean("enabled")?1:0;
+        if(action.equals("identify") && response!=null){JSONArray rows=response.optJSONArray("results");a=0;b=rows==null?0:rows.length();if(rows!=null)for(int i=0;i<rows.length();i++)if(rows.optJSONObject(i)!=null && rows.optJSONObject(i).optString("result").equals("matched"))a++;if(a==0 && error==null)outcome=TrialJournal.Outcome.INDISPONIBLE;}
+        TrialLog.action(this,event(action),TrialJournal.Source.COMPTE,outcome,TrialLog.error(error!=null?error:warning),a,b,input.optString("uuid"));
     }
     static int errorText(String code) {
         return switch(code){
@@ -136,13 +191,18 @@ public final class MerossAccountActivity extends Activity {
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
         JSONObject selected=selected();
-        if(request==41 && result==RESULT_OK && data!=null && selected!=null && selected.optString("uuid").equals(pendingUuid))host.setText(data.getStringExtra("ip"));
+        if(request==41 && result==RESULT_OK && data!=null && selected!=null && selected.optString("uuid").equals(pendingUuid)){
+            if(data.hasExtra("ip"))host.setText(data.getStringExtra("ip"));
+            ArrayList<String> found=data.getStringArrayListExtra("candidates");candidates=found==null?new ArrayList<>():found;
+            if(!candidates.isEmpty())message.setText(R.string.account_candidates_ready);
+        }
         pendingUuid=null;
     }
     private TextView text(LinearLayout body,int label){TextView t=new TextView(this);t.setText(label);t.setTextSize(16);body.addView(t);return t;}
     private Button button(LinearLayout body,int label,Runnable task){Button b=new Button(this);b.setText(label);b.setOnClickListener(v -> task.run());body.addView(b);return b;}
     private EditText field(LinearLayout body,int label,boolean secret){text(body,label);EditText f=new EditText(this);f.setHint(label);f.setSingleLine(true);f.setSaveEnabled(false);f.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);f.setImeOptions(EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);f.setFilters(new InputFilter[]{new InputFilter.LengthFilter(secret?1024:254)});if(secret)f.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);body.addView(f);return f;}
-    @Override public void onStart(){super.onStart();handler.post(state);}
-    @Override public void onStop(){handler.removeCallbacks(state);password.setText("");otp.setText("");email.setText("");super.onStop();}
+    private static TrialJournal.Event event(String action){return switch(action){case "signin"->TrialJournal.Event.ACCOUNT_SIGNIN;case "inventory"->TrialJournal.Event.ACCOUNT_INVENTORY;case "forget"->TrialJournal.Event.ACCOUNT_FORGET;case "associate"->TrialJournal.Event.UUID_CHECK;case "identify"->TrialJournal.Event.CANDIDATE_CHECK;default->TrialJournal.Event.ACCOUNT_STATUS;};}
+    @Override public void onStart(){super.onStart();loaded=false;handler.post(state);}
+    @Override public void onStop(){getSharedPreferences("meross-draft",MODE_PRIVATE).edit().putString("uuid",displayedUuid).putString("host",host.getText().toString()).putString("port",port.getText().toString()).putString("name",name.getText().toString()).apply();handler.removeCallbacks(state);password.setText("");otp.setText("");email.setText("");super.onStop();}
     @Override public void onDestroy(){handler.removeCallbacks(state);io.shutdown();super.onDestroy();}
 }

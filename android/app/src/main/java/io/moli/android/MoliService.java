@@ -30,6 +30,7 @@ public final class MoliService extends Service {
                 startForeground(1, notification(state)); notified = state; notifiedHealthy = healthy;
             }
             if (state == EngineHost.State.RUNNING) EngineHealth.check();
+            if(TrialLog.active())EquipmentMonitor.poll(MoliService.this,null,false);
             handler.postDelayed(this, state == EngineHost.State.RUNNING ? EngineHealth.INTERVAL : 250);
         }
     };

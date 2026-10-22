@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
+        android:name=".MoliApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -24,6 +25,7 @@
         <activity android:name=".EquipmentSettingsActivity" android:exported="false" />
         <activity android:name=".MerossAccountActivity" android:exported="false" />
         <activity android:name=".LocalNetworkActivity" android:exported="false" />
+        <activity android:name=".TrialJournalActivity" android:exported="false" />
         <activity android:name=".BackupActivity" android:exported="false" />
         <activity android:name=".IntegrationsActivity" android:exported="false" />
         <activity android:name=".AppInfoActivity" android:exported="false" />

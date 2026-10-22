@@ -66,6 +66,8 @@ final class EngineHost {
             }
         });
     }
+    // Read-only vault snapshots share the engine queue without changing its lifecycle.
+    static <T> Future<T> inspect(Callable<T> task) { return WORK.submit(task); }
     static synchronized <T> Future<T> maintain(Callable<T> task) {
         if (state != State.STOPPED) throw new IllegalStateException("Stop the engine first");
         state = State.MAINTENANCE;

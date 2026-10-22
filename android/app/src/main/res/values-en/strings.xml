@@ -46,7 +46,7 @@
     <string name="engine_check">Check engine now</string>
     <string name="engine_diagnostic">\n%1$s\nLast success: %2$s s\nSuccesses / failures this session: %3$d / %4$d\nLongest interval without a check: %5$d s\nSuccessful starts in this installation: %6$d</string>
     <string name="engine_help">Each success comes from an authenticated local HTTP request to the Rust engine. A notification alone proves nothing. Checks run every 30 s when Android allows it. A long gap can indicate suspension; success after waking does not prove continuous operation during sleep. Record counters before and after. No forced wake or battery changes.</string>
-    <string name="integration_title">Integrations / data</string>
+    <string name="integration_title">Advanced — profiles and technical trials</string>
     <string name="integration_help">Initialize Moli with a test PIN, then stop the engine before changing integrations. Imports are limited to the internal synthetic source and Open-Meteo HTTPS: no physical devices, secrets or writes. Start the engine to see values here and in the dashboard.</string>
     <string name="integration_import">Choose a TOML profile…</string>
     <string name="integration_example">Synthetic 42.5 °C example</string>
@@ -75,7 +75,7 @@
     <string name="integration_fresh">recently received</string>
     <string name="integration_stale">stale or unavailable</string>
     <string name="integration_waiting">Integration selected; waiting for data. Fresh values cannot be guaranteed during a network failure.</string>
-    <string name="app_name_integrations">Moli OS 0.10.0</string>
+    <string name="app_name_integrations">Moli OS 0.11.0</string>
     <string name="back_exit">Press Back again to close the interface.</string>
     <string name="back_exit_running">Press Back again to close the interface. The server stays active.</string>
     <string name="engine_not_observed">No recent check: monitor not scheduled or still pending</string>
@@ -185,8 +185,8 @@
     <string name="network_continue">Prefill without activating</string>
     <string name="network_duplicate">This address is already listed, or the eight-plug limit has been reached. No plug added.</string>
     <string name="network_suggestion">Unsaved suggestion with reading disabled. Check fields, fill in the name/key or missing IPP path, then explicitly approve and save reading while the server is stopped.</string>
-    <string name="account_title">Add through Meross account (optional)</string>
-    <string name="account_help">Experimental client: verified against a fake server only. Real Meross service login and physical plugs are unverified. The account retrieves names, UUIDs and the key when supplied; it does not guarantee a current LAN IP. No automatic cloud access. Local reads remain after disconnecting. Password never stored; token/key stay in the encrypted vault. No ON/OFF commands.</string>
+    <string name="account_title">Meross account and plug setup</string>
+    <string name="account_help">The Meross account supplies inventory and keys when available. The token stays encrypted in the vault; passwords are never stored. Cached inventory is reused on navigation. Exact UUID verification is required before saving a local association. No ON/OFF commands.</string>
     <string name="account_consent">Allow this voluntary connection to Meross cloud</string>
     <string name="account_email">Meross account email</string>
     <string name="account_password">Password (never stored)</string>
@@ -224,4 +224,27 @@
     <string name="account_protocol">Unsupported Meross response. This community API may change; confidential details are not displayed.</string>
     <string name="account_network">Exchange unavailable or interrupted. Check Internet; no automatic retry.</string>
     <string name="account_uuid_bound">Bound hardware UUID: %1$s. Another plug at this IP will be refused.</string>
+    <string name="journal_title">Trial journal</string>
+    <string name="journal_help">Start a trial before discovering and configuring equipment. Return here to finish and export TXT. Sessions survive navigation and reopening. Only actions, results and counters are recorded; no raw IP/MAC, personal names or credentials. No automatic upload.</string>
+    <string name="journal_replace">A new journal replaces the previous one. Export it first if you want to keep it.</string>
+    <string name="account_session_cached">Connected — encrypted session and cached inventory. Opening this page makes no cloud request. The token is checked on the next explicit cloud operation.</string>
+    <string name="account_budget">Inventory: %1$d / 20 calls this hour; next refresh in %2$d s.</string>
+    <string name="account_identify">Identify candidates (identity GET only)</string>
+    <string name="account_use_candidates">Choose up to 8 port-80 IPs for Meross verification</string>
+    <string name="account_candidates_ready">Candidates selected, identity not checked yet. Press Identify candidates. Nothing is saved automatically.</string>
+    <string name="account_candidate_match">%1$d identities recognized among %2$d candidates. The selected plug’s IP was suggested. Review the name, enable reads if wanted, then Verify and save.</string>
+    <string name="account_candidate_none">%1$d identities recognized among %2$d candidates; none matches the selected plug. Select another inventory item or IP. No association saved.</string>
+    <string name="account_associated_disabled">UUID verified and plug saved with reads disabled. Enable it in Equipment → Manual configuration, then Save.</string>
+    <string name="network_mac_unavailable">MAC unavailable from these sources. Android 10+ restricts the ARP table without root. An open port identifies neither manufacturer nor model. Meross association requires a matching UUID identity response.</string>
+    <string name="network_unknown">Unknown manufacturer and model</string>
+    <string name="equipment_steps">1. Discover or choose Meross account. 2. Verify and save. 3. Explicitly enable reads and view results. A suggestion is neither a saved association nor a successful test.</string>
+    <string name="equipment_manual">Manual configuration / IPP / IGD / local mode</string>
+    <string name="equipment_test">Test approved reads and view results</string>
+    <string name="equipment_read_pending">Start requested. Awaiting responses: IPP 30 s, IGD 10 s, MSS310 30–300 s depending on the measurement.</string>
+    <string name="equipment_read_ok">response and fresh data confirmed</string>
+    <string name="equipment_read_unavailable">no fresh response confirmed. Check address, path/service, key or network; no specific hardware cause established.</string>
+    <string name="equipment_no_reads">No read observed. Save an authorization, then start reads. Results appear here and on Home.</string>
+    <string name="account_candidate_select">Identity candidate (model not verified)</string>
+    <string name="account_candidate_limit">At most 8 candidates. Uncheck an address before selecting another.</string>
+    <string name="equipment_reloaded">Saved configuration from another page reloaded. Previous unsaved changes on this screen were discarded; review before editing.</string>
 </resources>

@@ -26,7 +26,7 @@ public final class MerossAccountTest {
     static final class Fixture implements MerossAccountStore.Backend {
         final Context app;int signins,associations;boolean connected;
         Fixture(Context app){this.app=app;}
-        JSONObject status()throws Exception{JSONArray items=new JSONArray();if(connected)for(int i=1;i<=4;i++)items.put(new JSONObject().put("uuid",String.format(java.util.Locale.ROOT,"%032x",i)).put("name","Invented plug "+i).put("model","MSS310").put("hardware","6.0.0"));return new JSONObject().put("state",connected?"connected":"disconnected").put("items",items).put("cached_ms",System.currentTimeMillis());}
+        JSONObject status()throws Exception{JSONArray items=new JSONArray();if(connected)for(int i=1;i<=4;i++)items.put(new JSONObject().put("uuid",String.format(java.util.Locale.ROOT,"%032x",i)).put("name","Invented plug "+i).put("model","MSS310").put("hardware","6.0.0"));return new JSONObject().put("state",connected?"connected":"disconnected").put("items",items).put("cached_ms",System.currentTimeMillis()).put("inventory_wait_ms",connected?60000:0);}
         public JSONObject call(JSONObject input)throws Exception{
             switch(input.getString("action")){
                 case "status":return status();
@@ -70,7 +70,7 @@ public final class MerossAccountTest {
                 ui.onActivity(a -> {a.host.setText("192.168.1.22");a.associate.performClick();});message(ui,R.string.account_local);
                 ui.onActivity(a -> {a.host.setText("192.168.1.21");a.readConsent.setChecked(true);a.associate.performClick();});message(ui,R.string.account_associated);
                 assertEquals(UUID,EquipmentStore.read(app).getJSONArray("meross").getJSONObject(0).getString("uuid"));
-                ui.onActivity(a -> a.refresh.performClick());message(ui,R.string.account_expired);ready(ui);
+                ui.onActivity(a -> {assertFalse(a.refresh.isEnabled());a.submit("inventory",new JSONObject());});message(ui,R.string.account_expired);ready(ui);
                 ui.onActivity(a -> {a.email.setText("user@example.com");a.password.setText("invented-password");a.connect.performClick();});message(ui,R.string.account_connected);
                 ui.onActivity(a -> {try{a.submit("forget",new JSONObject().put("revoke",true));}catch(Exception e){throw new AssertionError(e);}});message(ui,R.string.account_forgotten_offline);
                 assertEquals(3,fixture.signins);assertEquals(3,fixture.associations);

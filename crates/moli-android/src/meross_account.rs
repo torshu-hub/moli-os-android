@@ -56,6 +56,7 @@ impl Store {
             "signin" => (10_000, 10),
             "inventory" => (60_000, 20),
             "associate" => (1_000, 120),
+            "identify" => (10_000, 6),
             _ => return Err("input"),
         };
         if history.len() >= limit
@@ -135,10 +136,50 @@ pub fn run(input: &Value) -> Result<Value> {
             .map_err(|_| "account_network")?
     })
 }
+fn status(store: &Store) -> Result<Value> {
+    let mut result = view(store.read()?.as_ref());
+    let budget = read_json(
+        &store.data.join("android-meross-account-budget.json"),
+        16_384,
+    )?
+    .unwrap_or_else(|| json!({}));
+    let time = now()?;
+    for (name, gap, limit) in [
+        ("signin", 10_000, 10),
+        ("inventory", 60_000, 20),
+        ("identify", 10_000, 6),
+    ] {
+        let history: Vec<u64> = budget[name]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_u64)
+            .filter(|t| time.saturating_sub(*t) < 3_600_000)
+            .collect();
+        let wait = if history.len() >= limit {
+            history
+                .first()
+                .copied()
+                .unwrap_or(time)
+                .saturating_add(3_600_000)
+                .saturating_sub(time)
+        } else {
+            history
+                .last()
+                .copied()
+                .unwrap_or(0)
+                .saturating_add(gap)
+                .saturating_sub(time)
+        };
+        result[format!("{name}_wait_ms")] = json!(wait);
+        result[format!("{name}_used")] = json!(history.len());
+    }
+    Ok(result)
+}
 async fn operate(store: &Store, input: &Value) -> Result<Value> {
     let action = input["action"].as_str().ok_or("input")?;
     if action == "status" {
-        return Ok(view(store.read()?.as_ref()));
+        return status(store);
     }
     if action == "signin" {
         store.budget(action)?;
@@ -199,6 +240,7 @@ async fn operate(store: &Store, input: &Value) -> Result<Value> {
                 Err(code) => Err(code),
             }
         }
+        "identify" => identify(store, input, &session, &c).await,
         "associate" => {
             store.budget(action)?;
             let id = input["uuid"]
@@ -233,6 +275,50 @@ async fn operate(store: &Store, input: &Value) -> Result<Value> {
         }
         _ => Err("input"),
     }
+}
+async fn identify(store: &Store, input: &Value, session: &Value, c: &Credentials) -> Result<Value> {
+    let candidates = candidate_hosts(input)?;
+    store.budget("identify")?;
+    let items: Vec<Device> =
+        serde_json::from_value(session["items"].clone()).map_err(|_| "storage")?;
+    let mut results = Vec::new();
+    for host in candidates {
+        let found = tokio::time::timeout(
+            std::time::Duration::from_millis(2500),
+            moli_profile::mss310_identity(&host, 80, &c.key),
+        )
+        .await;
+        results.push(match found {
+            Ok(Ok(uuid)) if items.iter().any(|d| d.uuid == uuid) => {
+                json!({"host":host,"uuid":uuid,"result":"matched"})
+            }
+            Ok(Ok(_)) => json!({"host":host,"result":"different"}),
+            _ => json!({"host":host,"result":"unavailable"}),
+        });
+    }
+    Ok(json!({"state":"identified","results":results}))
+}
+// An explicit, bounded list, never a subnet scan or an IP/model inference.
+fn candidate_hosts(input: &Value) -> Result<Vec<String>> {
+    let hosts = input["candidates"]
+        .as_array()
+        .filter(|h| !h.is_empty() && h.len() <= 8)
+        .ok_or("account_input")?;
+    let mut checked = Vec::new();
+    for host in hosts {
+        let host = host
+            .as_str()
+            .filter(|s| {
+                s.parse::<std::net::Ipv4Addr>()
+                    .is_ok_and(|ip| ip.is_private())
+            })
+            .ok_or("equipment_ip")?;
+        if checked.iter().any(|s| s == host) {
+            return Err("account_input");
+        }
+        checked.push(host.to_owned());
+    }
+    Ok(checked)
 }
 async fn associate(
     store: &Store,
@@ -298,6 +384,25 @@ async fn associate(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn candidates_are_explicit_bounded_private_and_unique() {
+        assert_eq!(
+            candidate_hosts(&json!({"candidates":["192.168.1.20","10.0.0.2"]}))
+                .unwrap()
+                .len(),
+            2
+        );
+        for input in [
+            json!({"candidates":[]}),
+            json!({"candidates":["8.8.8.8"]}),
+            json!({"candidates":["127.0.0.1"]}),
+            json!({"candidates":["example.org"]}),
+            json!({"candidates":["192.168.1.20","192.168.1.20"]}),
+            json!({"candidates":vec!["192.168.1.20";9]}),
+        ] {
+            assert!(candidate_hosts(&input).is_err());
+        }
+    }
     #[tokio::test]
     async fn encrypted_session_safe_view_uuid_binding_and_forget_keep_local_keys() {
         let root = std::env::temp_dir().join(format!("moli-account-{}", std::process::id()));
@@ -323,6 +428,16 @@ mod tests {
             .unwrap()
             .to_string();
         assert!(!safe.contains(&c.key) && !safe.contains(&c.token));
+        // A fresh Store/run reconstructs session and inventory from the encrypted file, without network.
+        let input = json!({"data":root,"master":"a".repeat(64),"action":"status"});
+        let reopened = std::thread::spawn(move || run(&input))
+            .join()
+            .unwrap()
+            .unwrap();
+        assert_eq!(reopened["state"], "connected");
+        assert_eq!(reopened["items"][0]["uuid"], device.uuid);
+        assert!(!reopened.to_string().contains(&c.key));
+        assert!(!reopened.to_string().contains(&c.token));
         let bytes = std::fs::read(store.path()).unwrap();
         assert!(
             !bytes
