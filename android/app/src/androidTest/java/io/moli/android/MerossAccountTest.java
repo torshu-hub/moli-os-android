@@ -36,6 +36,7 @@ public final class MerossAccountTest {
                 case "inventory":connected=false;return new JSONObject().put("state","expired").put("items",new JSONArray());
                 case "associate":
                     associations++;assertEquals(UUID,input.getString("uuid"));
+                    if(input.getString("host").equals("192.168.1.22"))throw new ProfileStore.Rejected("account_local");
                     if(input.getString("host").equals("192.168.1.20"))throw new ProfileStore.Rejected("account_identity");
                     JSONObject config=EquipmentStore.read(app);config.put("meross",new JSONArray().put(new JSONObject().put("id",UUID).put("uuid",UUID).put("name",input.getString("name")).put("host",input.getString("host")).put("port",80).put("enabled",input.getBoolean("enabled"))));
                     EngineHost.maintain(() -> {EquipmentStore.save(app,config,new JSONArray().put(new JSONObject().put("id",UUID).put("key",KEY).put("required",true)));return null;}).get();
@@ -66,12 +67,13 @@ public final class MerossAccountTest {
                 InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {LocalNetworkActivity p=picker();Button use=button(p.cards,p.getString(R.string.account_pick_ip));assertNotNull(use);use.performClick();});
                 until(() -> {AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a -> done.set(a.host.getText().toString().equals("192.168.1.20") && a.associate.isEnabled()));return done.get();});
                 ui.onActivity(a -> a.associate.performClick());message(ui,R.string.account_identity);assertEquals(0,EquipmentStore.read(app).optJSONArray("meross")==null?0:EquipmentStore.read(app).getJSONArray("meross").length());
+                ui.onActivity(a -> {a.host.setText("192.168.1.22");a.associate.performClick();});message(ui,R.string.account_local);
                 ui.onActivity(a -> {a.host.setText("192.168.1.21");a.readConsent.setChecked(true);a.associate.performClick();});message(ui,R.string.account_associated);
                 assertEquals(UUID,EquipmentStore.read(app).getJSONArray("meross").getJSONObject(0).getString("uuid"));
                 ui.onActivity(a -> a.refresh.performClick());message(ui,R.string.account_expired);ready(ui);
                 ui.onActivity(a -> {a.email.setText("user@example.com");a.password.setText("invented-password");a.connect.performClick();});message(ui,R.string.account_connected);
                 ui.onActivity(a -> {try{a.submit("forget",new JSONObject().put("revoke",true));}catch(Exception e){throw new AssertionError(e);}});message(ui,R.string.account_forgotten_offline);
-                assertEquals(3,fixture.signins);assertEquals(2,fixture.associations);
+                assertEquals(3,fixture.signins);assertEquals(3,fixture.associations);
             }
             try(ActivityScenario<EquipmentSettingsActivity> ui=ActivityScenario.launch(EquipmentSettingsActivity.class)){
                 until(() -> {AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a -> done.set(a.meross.entries.size()==1 && a.save.isEnabled()));return done.get();});

@@ -55,7 +55,7 @@ public final class MerossReadTest {
             Fixture[] fixtures={one,two,wrong,four};
             try {
                 try(ActivityScenario<EquipmentSettingsActivity> ui=ActivityScenario.launch(EquipmentSettingsActivity.class)) {
-                    until(()->{AtomicReference<Boolean> ready=new AtomicReference<>(false);ui.onActivity(a->ready.set(a.save.isEnabled()));return ready.get();});
+                    until(()->{AtomicReference<Boolean> ready=new AtomicReference<>(false);ui.onActivity(a->ready.set(a.save.isEnabled() && a.hasWindowFocus()));return ready.get();});
                     ui.onActivity(a->{
                         for(int i=0;i<4;i++) {a.meross.add.performClick();MerossForm.Row r=a.meross.entries.get(i);r.name.setText("Fixture "+(i+1));r.host.setText(ip);r.port.setText(String.valueOf(fixtures[i].port()));r.read.setChecked(true);r.key.setText((i==2?"b":"a").repeat(32));assertFalse(r.key.isSaveEnabled());assertTrue(r.key.isLongClickable());
                             if(i==0){ClipboardManager clipboard=(ClipboardManager)a.getSystemService(Context.CLIPBOARD_SERVICE);r.key.setText("");clipboard.setPrimaryClip(ClipData.newPlainText("synthetic","a".repeat(32)));assertTrue(r.key.onTextContextMenuItem(android.R.id.paste));assertEquals("a".repeat(32),r.key.getText().toString());clipboard.setPrimaryClip(ClipData.newPlainText("",""));}}

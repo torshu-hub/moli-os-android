@@ -29,10 +29,20 @@ adb shell pm grant "$app" android.permission.POST_NOTIFICATIONS
 failed=0
 for class in ProfileImportTest EngineDiagnosticsTest WeatherObservationTest BackNavigationTest HomeSetupTest EquipmentReadTest MerossReadTest NetworkDiscoveryTest MerossAccountTest; do
     log=../android-artifacts/reports/$class.txt
+    # System Back and clipboard APIs require an interactive, unlocked display.
+    # Keep each independent class on that same documented precondition.
+    adb shell input keyevent KEYCODE_WAKEUP
+    adb shell wm dismiss-keyguard
+    adb shell input keyevent KEYCODE_HOME
     # Collect independent results without turning a failed assertion green.
     if ! adb shell am instrument -w -r -e class "io.moli.android.$class" "$app.test/androidx.test.runner.AndroidJUnitRunner" > "$log"; then failed=1; fi
     cat "$log"
-    if ! grep -Fq 'OK (1 test)' "$log"; then failed=1; fi
+    if ! grep -Fq 'OK (1 test)' "$log"; then
+        failed=1
+        # Bounded system-state evidence only; no app data, credentials or screenshots.
+        { adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp|mShowingLockscreen|isKeyguardShowing';
+          adb shell dumpsys power | grep -E 'mWakefulness=|mInteractive='; } > "../android-artifacts/reports/$class-focus.txt" || true
+    fi
 done
 
 adb exec-out run-as "$app" cat files/weather-evidence.txt > ../android-artifacts/reports/weather-evidence.txt

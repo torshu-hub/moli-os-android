@@ -50,7 +50,7 @@ public final class NetworkDiscoveryTest {
         try(ActivityScenario<LocalNetworkActivity> ui=ActivityScenario.launch(LocalNetworkActivity.class)) {
             ui.onActivity(a -> { assertTrue(a.results.list().isEmpty()); assertFalse(a.cancel.isEnabled()); a.begin(first); });
             first.listener.found(ipp); first.listener.found(ipp); first.listener.found(http); first.listener.found(igd);
-            until(() -> { AtomicReference<Boolean> done=new AtomicReference<>(false); ui.onActivity(a -> done.set(a.cards.getChildCount()==3)); return done.get(); });
+            until(() -> { AtomicReference<Boolean> done=new AtomicReference<>(false); ui.onActivity(a -> done.set(a.cards.getChildCount()==3 && a.hasWindowFocus())); return done.get(); });
             ui.onActivity(a -> {
                 assertFalse(a.search.isEnabled()); assertTrue(a.cancel.isEnabled());
                 Button copy=button(a.cards,a.getString(R.string.network_copy)); assertNotNull(copy); copy.performClick();
