@@ -102,7 +102,6 @@ public final class EquipmentReadTest {
                     ui.onActivity(a -> { a.printer.setChecked(false); a.gateway.setChecked(false); a.save.performClick(); });
                     saved(ui); int before=fixture.count(); ui.onActivity(a -> a.start.performClick());
                     until(() -> EngineHost.state()==EngineHost.State.RUNNING);
-                home.onActivity(MainActivity::showDevices);
                     JSONArray drivers=get("/api/devices").getJSONArray("drivers");
                     for(int i=0;i<drivers.length();i++) assertFalse(drivers.getJSONObject(i).getString("instance").startsWith("android-printer") || drivers.getJSONObject(i).getString("instance").equals("android-gateway"));
                     Thread.sleep(1200); assertEquals(before,fixture.count());
@@ -149,8 +148,10 @@ public final class EquipmentReadTest {
                 return changed.get();
             });
         }
-        @Override public void close() {
+        @Override public void close() throws Exception {
             InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> { EquipmentSettingsActivity activity=current(); if(activity!=null) activity.finish(); });
+            until(()->{AtomicReference<Boolean> resumed=new AtomicReference<>(false);
+                InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{for(Activity a:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))if(a instanceof MainActivity)resumed.set(true);});return resumed.get();});
             InstrumentationRegistry.getInstrumentation().waitForIdleSync();
         }
     }

@@ -19,6 +19,9 @@ import static org.junit.Assert.*;
 /** Disposable, synthetic account/discovery with real Rust fixture measurements; screenshots contain fixture data only. */
 @RunWith(AndroidJUnit4.class)
 public final class AutomaticMerossTest {
+    private static void shell(String command)throws Exception{
+        try(android.os.ParcelFileDescriptor fd=InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command);FileInputStream in=new FileInputStream(fd.getFileDescriptor())){byte[] bytes=new byte[1024];while(in.read(bytes)!=-1){ /* Fixed display commands, no app data. */ }}
+    }
     private interface Inspect{boolean read(MerossAccountActivity a);}
     private static void waitUi(ActivityScenario<MerossAccountActivity> ui,Inspect check)throws Exception{
         MerossAccountTest.until(()->{AtomicReference<Boolean> ok=new AtomicReference<>(false);ui.onActivity(a->ok.set(check.read(a)));return ok.get();});
@@ -33,6 +36,11 @@ public final class AutomaticMerossTest {
     @Test public void freshPreviewAutomaticSixteenCandidatesMultipleConsentReadAndReport()throws Exception{
         assertTrue(android.os.Build.FINGERPRINT.contains("generic")||android.os.Build.MODEL.contains("sdk"));
         Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(EngineHost.State.STOPPED,EngineHost.state());assertFalse("First class in a fresh emulator",ProtectedKey.exists(app));
+        // Tablet-sized visual evidence on the disposable emulator; no real device settings.
+        shell("wm size 1280x800");shell("wm density 160");
+        if(android.os.Build.VERSION.SDK_INT>=33)app.getSystemService(android.app.LocaleManager.class).setApplicationLocales(android.os.LocaleList.forLanguageTags("fr"));
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+        try {
         app.getSharedPreferences("host",Context.MODE_PRIVATE).edit().putBoolean("wanted",false).commit();
         try(ActivityScenario<MainActivity> home=ActivityScenario.launch(MainActivity.class)){
             home.onActivity(a->{assertFalse(ProtectedKey.exists(a));assertEquals(0,visibleOldControls(a.getWindow().getDecorView(),a));assertNotNull(MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(R.string.preview_search)));});
@@ -90,5 +98,6 @@ public final class AutomaticMerossTest {
                 }finally{instrumentation.removeMonitor(monitor);}
             }
         }finally{app.startService(new Intent(app,MoliService.class).setAction(MoliService.STOP));MerossAccountTest.until(()->EngineHost.state()==EngineHost.State.STOPPED);EngineHost.maintain(()->{EquipmentStore.save(app,new JSONObject());return null;}).get();TrialLog.end(app);}
+        }finally{shell("wm size reset");shell("wm density reset");if(android.os.Build.VERSION.SDK_INT>=33)app.getSystemService(android.app.LocaleManager.class).setApplicationLocales(android.os.LocaleList.getEmptyLocaleList());}
     }
 }

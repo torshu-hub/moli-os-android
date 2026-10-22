@@ -11,9 +11,13 @@ final class TrialUi {
     static final int INK=Color.rgb(28,47,55), TEAL=Color.rgb(17,100,105);
     static int dp(Activity a,int n){return Math.round(n*a.getResources().getDisplayMetrics().density);}
     static LinearLayout page(Activity a){
+        a.getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         a.getWindow().setStatusBarColor(Color.rgb(240,245,244));a.getWindow().setNavigationBarColor(Color.rgb(240,245,244));
         ScrollView scroll=new ScrollView(a);scroll.setFillViewport(true);scroll.setBackgroundColor(Color.rgb(240,245,244));
-        LinearLayout body=new LinearLayout(a);body.setOrientation(LinearLayout.VERTICAL);int p=dp(a,24);body.setPadding(p,p,p,p);scroll.addView(body);a.setContentView(scroll);return body;
+        FrameLayout frame=new FrameLayout(a);scroll.addView(frame);
+        LinearLayout body=new LinearLayout(a);body.setOrientation(LinearLayout.VERTICAL);int p=dp(a,24);body.setPadding(p,p,p,p);
+        FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.min(a.getResources().getDisplayMetrics().widthPixels,dp(a,840)),-2);lp.gravity=android.view.Gravity.TOP|android.view.Gravity.CENTER_HORIZONTAL;
+        frame.addView(body,lp);a.setContentView(scroll);return body;
     }
     static TextView text(Activity a,LinearLayout parent,int key){return text(a,parent,a.getString(key),16);}
     static TextView text(Activity a,LinearLayout parent,String value,int size){TextView t=new TextView(a);t.setText(value);t.setTextSize(size);t.setTextColor(INK);t.setPadding(0,dp(a,6),0,dp(a,10));parent.addView(t);return t;}

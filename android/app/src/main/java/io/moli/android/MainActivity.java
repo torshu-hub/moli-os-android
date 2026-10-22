@@ -13,7 +13,7 @@ import android.widget.*;
 
 public final class MainActivity extends Activity {
     WebView web; // Package-visible to the isolated instrumentation smoke test.
-    private TextView status;
+    private TextView status,dashboardStatus;
     private android.view.View home;
     private LinearLayout dashboard;
     private boolean viewing;
@@ -60,6 +60,7 @@ public final class MainActivity extends Activity {
                     }
                 });
             }
+            dashboardStatus.setText(status.getText());dashboardStatus.setVisibility(state==EngineHost.State.RUNNING?View.GONE:View.VISIBLE);
             handler.postDelayed(this, 500);
         }
     };
@@ -90,6 +91,7 @@ public final class MainActivity extends Activity {
         TrialUi.button(this,front,R.string.preview_settings,false,()->startActivity(new Intent(this,PreviewSettingsActivity.class)));
         dashboard=new LinearLayout(this);dashboard.setOrientation(LinearLayout.VERTICAL);root.addView(dashboard);dashboard.setVisibility(View.GONE);
         TrialUi.button(this,dashboard,R.string.preview_home_title,false,this::showHome);
+        dashboardStatus=TrialUi.text(this,dashboard,R.string.starting);
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
@@ -124,7 +126,7 @@ public final class MainActivity extends Activity {
         dashboard.addView(web,new LinearLayout.LayoutParams(-1,Math.max(TrialUi.dp(this,480),getResources().getDisplayMetrics().heightPixels-TrialUi.dp(this,160))));
         if (Build.VERSION.SDK_INT >= 33) unregisterBack = ModernBack.register(this);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
-        if(getIntent().getBooleanExtra("devices",false))showDevices();
+        if(saved==null && getIntent().getBooleanExtra("devices",false))showDevices();
         if(saved!=null && saved.getBoolean("viewing")){viewing=true;home.setVisibility(View.GONE);dashboard.setVisibility(View.VISIBLE);}
         handler.post(refresh);
         if (EngineHost.state() == EngineHost.State.RUNNING || EngineHost.state() == EngineHost.State.STARTING ||
@@ -148,7 +150,7 @@ public final class MainActivity extends Activity {
     void showHome(){viewing=false;dashboard.setVisibility(View.GONE);home.setVisibility(View.VISIBLE);web.setVisibility(View.GONE);resetExitBack();}
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putBoolean("viewing",viewing);}
     @Override protected void onActivityResult(int request,int result,Intent intent){super.onActivityResult(request,result,intent);report.result(request,result,intent);}
-    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(intent.getBooleanExtra("devices",false))showDevices();}
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);if(intent.getBooleanExtra("devices",false))showDevices();}
     private void startServer() {
         if (bound) return;
         getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", true).apply();
