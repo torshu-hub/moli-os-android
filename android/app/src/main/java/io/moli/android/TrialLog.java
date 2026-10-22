@@ -4,7 +4,7 @@ import android.content.Context;
 import android.util.AtomicFile;
 import java.io.File;
 
-/** Explicit trial sessions only. Latest bounded journal, private file, voluntary export. */
+/** Automatically started preview sessions. Latest bounded journal, private file, voluntary export. */
 final class TrialLog {
     private static Context app;
     private static TrialJournal journal;

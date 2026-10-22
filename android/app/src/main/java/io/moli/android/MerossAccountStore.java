@@ -9,7 +9,7 @@ final class MerossAccountStore {
     interface Backend { JSONObject call(JSONObject request) throws Exception; }
     static JSONObject request(Context context,JSONObject request) throws Exception {
         if(!ProtectedKey.exists(context)) throw new ProfileStore.Rejected("account_initialize");
-        if("associate".equals(request.optString("action")) || "identify".equals(request.optString("action"))) {
+        if("associate".equals(request.optString("action")) || "identify".equals(request.optString("action")) || "identify_start".equals(request.optString("action"))) {
             ConnectivityManager cm=context.getSystemService(ConnectivityManager.class); Network network=cm.getActiveNetwork();
             NetworkCapabilities cap=cm.getNetworkCapabilities(network);
             if(cap==null || !cap.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
@@ -19,7 +19,7 @@ final class MerossAccountStore {
                 JSONArray candidates=request.optJSONArray("candidates");
                 if(candidates==null || candidates.length()<1 || candidates.length()>8) throw new ProfileStore.Rejected("account_input");
                 for(int i=0;i<candidates.length();i++) if(!scope.contains(candidates.optString(i))) throw new ProfileStore.Rejected("account_wifi");
-            } else if(!scope.contains(request.optString("host"))) throw new ProfileStore.Rejected("account_wifi");
+            } else if("associate".equals(request.optString("action")) && !scope.contains(request.optString("host"))) throw new ProfileStore.Rejected("account_wifi");
         }
         java.util.concurrent.Callable<JSONObject> work=() -> {
             JSONObject keys=ProtectedKey.open(context);

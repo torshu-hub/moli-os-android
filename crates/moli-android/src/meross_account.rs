@@ -228,6 +228,7 @@ async fn operate(store: &Store, input: &Value) -> Result<Value> {
     let session = session.ok_or("account_expired")?;
     let c = saved_credentials(&session)?;
     match action {
+        "identify_start" | "identify_cancel" => scan_control(store, input, action),
         "inventory" => {
             store.budget(action)?;
             let client = Client::saved(&c)?;
@@ -241,67 +242,154 @@ async fn operate(store: &Store, input: &Value) -> Result<Value> {
             }
         }
         "identify" => identify(store, input, &session, &c).await,
-        "associate" => {
-            store.budget(action)?;
-            let id = input["uuid"]
-                .as_str()
-                .filter(|s| cloud::uuid(s))
-                .ok_or("account_input")?
-                .to_ascii_lowercase();
-            let items: Vec<Device> =
-                serde_json::from_value(session["items"].clone()).map_err(|_| "storage")?;
-            let device = items
-                .iter()
-                .find(|d| d.uuid == id)
-                .ok_or("account_inventory_missing")?;
-            let host = input["host"].as_str().ok_or("equipment_ip")?;
-            if !host
-                .parse::<std::net::Ipv4Addr>()
-                .is_ok_and(|ip| ip.is_private())
+        "associate" => verify_association(store, input, &session, &c).await,
+        _ => Err("input"),
+    }
+}
+async fn verify_association(
+    store: &Store,
+    input: &Value,
+    session: &Value,
+    c: &Credentials,
+) -> Result<Value> {
+    store.budget("associate")?;
+    let id = input["uuid"]
+        .as_str()
+        .filter(|s| cloud::uuid(s))
+        .ok_or("account_input")?
+        .to_ascii_lowercase();
+    let items: Vec<Device> =
+        serde_json::from_value(session["items"].clone()).map_err(|_| "storage")?;
+    let device = items
+        .iter()
+        .find(|d| d.uuid == id)
+        .ok_or("account_inventory_missing")?;
+    let host = input["host"].as_str().ok_or("equipment_ip")?;
+    if !host
+        .parse::<std::net::Ipv4Addr>()
+        .is_ok_and(|ip| ip.is_private())
+    {
+        return Err("equipment_ip");
+    }
+    let port = u16::try_from(input["port"].as_u64().ok_or("equipment_port")?)
+        .ok()
+        .filter(|n| *n != 0)
+        .ok_or("equipment_port")?;
+    let found = moli_profile::mss310_identity(host, port, &c.key)
+        .await
+        .map_err(|e| moli_profile::mss310_identity_error(&e))?;
+    if found != id {
+        return Err("account_uuid_different");
+    }
+    associate(store, input, device, c).await
+}
+fn scan_control(store: &Store, input: &Value, action: &str) -> Result<Value> {
+    match action {
+        "identify_start" => {
+            store.budget("identify")?;
+            let mut token = [0u8; 16];
+            SystemRandom::new()
+                .fill(&mut token)
+                .map_err(|_| "internal")?;
+            let token = token.iter().fold(String::with_capacity(32), |mut text, b| {
+                use std::fmt::Write as _;
+                let _ = write!(text, "{b:02x}");
+                text
+            });
+            write(
+                &store.data.join("android-meross-scan.json"),
+                &json!({"token":token,"expires":now()?+120_000,"remaining":64}),
+            )?;
+            Ok(json!({"state":"scan_ready","scan":token,"limit":64}))
+        }
+        "identify_cancel" => {
+            let path = store.data.join("android-meross-scan.json");
+            if let Some(scan) = read_json(&path, 4096)?
+                && scan["token"] == input["scan"]
             {
-                return Err("equipment_ip");
+                write(&path, &json!({}))?;
             }
-            let port = u16::try_from(input["port"].as_u64().ok_or("equipment_port")?)
-                .ok()
-                .filter(|n| *n != 0)
-                .ok_or("equipment_port")?;
-            let found = moli_profile::mss310_identity(host, port, &c.key)
-                .await
-                .map_err(|e| moli_profile::mss310_identity_error(&e))?;
-            if found != id {
-                return Err("account_uuid_different");
-            }
-            associate(store, input, device, &c).await
+            Ok(json!({"state":"cancelled"}))
         }
         _ => Err("input"),
     }
 }
+fn charge_scan(store: &Store, input: &Value, count: usize) -> Result<()> {
+    if let Some(token) = input["scan"].as_str() {
+        let path = store.data.join("android-meross-scan.json");
+        let mut scan = read_json(&path, 4096)?.ok_or("account_rate")?;
+        let remaining = scan["remaining"].as_u64().ok_or("account_rate")?;
+        if scan["token"] != token
+            || scan["expires"]
+                .as_u64()
+                .is_none_or(|t| t < now().unwrap_or(u64::MAX))
+            || remaining < count as u64
+            || count > 4
+        {
+            return Err("account_rate");
+        }
+        scan["remaining"] = json!(remaining - count as u64);
+        write(&path, &scan)?;
+    } else {
+        store.budget("identify")?;
+    }
+    Ok(())
+}
 async fn identify(store: &Store, input: &Value, session: &Value, c: &Credentials) -> Result<Value> {
     let candidates = candidate_hosts(input)?;
-    store.budget("identify")?;
+    charge_scan(store, input, candidates.len())?;
     let items: Vec<Device> =
         serde_json::from_value(session["items"].clone()).map_err(|_| "storage")?;
     let mut results = Vec::new();
+    let mut pending = tokio::task::JoinSet::new();
     for host in candidates {
-        let found = tokio::time::timeout(
-            std::time::Duration::from_millis(2500),
-            moli_profile::mss310_identity(&host, 80, &c.key),
-        )
-        .await;
-        results.push(match found {
-            Ok(Ok(uuid)) if items.iter().any(|d| d.uuid == uuid) => {
+        let key = c.key.clone();
+        pending.spawn(async move {
+            let found = tokio::time::timeout(
+                std::time::Duration::from_millis(2500),
+                moli_profile::mss310_identity(&host, 80, &key),
+            )
+            .await;
+            let (uuid, result) = match found {
+                Ok(Ok(uuid)) => (Some(uuid), "identity"),
+                Ok(Err(e)) => (
+                    None,
+                    match moli_profile::mss310_identity_error(&e) {
+                        "account_key" => "key_rejected",
+                        "account_local" => "unavailable",
+                        _ => "incompatible",
+                    },
+                ),
+                Err(_) => (None, "unavailable"),
+            };
+            (host, uuid, result)
+        });
+        // The legacy manual endpoint still accepts eight, but never runs more than four at once.
+        if pending.len() == 4 {
+            collect_identity(&mut pending, &items, &mut results).await?;
+        }
+    }
+    collect_identity(&mut pending, &items, &mut results).await?;
+    Ok(json!({"state":"identified","results":results}))
+}
+async fn collect_identity(
+    pending: &mut tokio::task::JoinSet<(String, Option<String>, &'static str)>,
+    items: &[Device],
+    results: &mut Vec<Value>,
+) -> Result<()> {
+    while let Some(row) = pending.join_next().await {
+        let (host, uuid, result) = row.map_err(|_| "internal")?;
+        results.push(if let Some(uuid) = uuid {
+            if items.iter().any(|d| d.uuid == uuid) {
                 json!({"host":host,"uuid":uuid,"result":"matched"})
+            } else {
+                json!({"host":host,"result":"different"})
             }
-            Ok(Ok(_)) => json!({"host":host,"result":"different"}),
-            Ok(Err(error)) => match moli_profile::mss310_identity_error(&error) {
-                "account_key" => json!({"host":host,"result":"key_rejected"}),
-                "account_local" => json!({"host":host,"result":"unavailable"}),
-                _ => json!({"host":host,"result":"incompatible"}),
-            },
-            Err(_) => json!({"host":host,"result":"unavailable"}),
+        } else {
+            json!({"host":host,"result":result})
         });
     }
-    Ok(json!({"state":"identified","results":results}))
+    Ok(())
 }
 // An explicit, bounded list, never a subnet scan or an IP/model inference.
 fn candidate_hosts(input: &Value) -> Result<Vec<String>> {
@@ -407,6 +495,48 @@ mod tests {
         ] {
             assert!(candidate_hosts(&input).is_err());
         }
+    }
+    #[test]
+    fn automatic_scan_lease_is_bounded_expires_and_cannot_be_reused_after_cancel() {
+        let root = std::env::temp_dir().join(format!("moli-scan-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let store = Store {
+            data: root.clone(),
+            master: MasterKey::new("a".repeat(64)),
+        };
+        let started = scan_control(&store, &json!({}), "identify_start").unwrap();
+        let request = json!({"scan":started["scan"]});
+        assert_eq!(
+            charge_scan(&store, &request, 5).unwrap_err(),
+            "account_rate"
+        );
+        assert_eq!(
+            charge_scan(&store, &json!({"scan":"other"}), 4).unwrap_err(),
+            "account_rate"
+        );
+        for _ in 0..16 {
+            charge_scan(&store, &request, 4).unwrap();
+        }
+        assert_eq!(
+            charge_scan(&store, &request, 1).unwrap_err(),
+            "account_rate"
+        );
+        write(
+            &root.join("android-meross-scan.json"),
+            &json!({"token":started["scan"],"expires":0,"remaining":64}),
+        )
+        .unwrap();
+        assert_eq!(
+            charge_scan(&store, &request, 4).unwrap_err(),
+            "account_rate"
+        );
+        scan_control(&store, &request, "identify_cancel").unwrap();
+        assert!(charge_scan(&store, &request, 1).is_err());
+        assert_eq!(
+            scan_control(&store, &json!({}), "identify_start").unwrap_err(),
+            "account_rate"
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[tokio::test]
     async fn encrypted_session_safe_view_uuid_binding_and_forget_keep_local_keys() {

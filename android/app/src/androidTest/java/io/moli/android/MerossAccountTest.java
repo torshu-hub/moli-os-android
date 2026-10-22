@@ -47,14 +47,14 @@ public final class MerossAccountTest {
             }
         }
     }
-    static void message(ActivityScenario<MerossAccountActivity> ui,int id)throws Exception{until(() -> {AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a -> done.set(!a.busy && a.cloudConsent.isEnabled() && a.message.getText().toString().equals(a.getString(id))));return done.get();});}
-    static void ready(ActivityScenario<MerossAccountActivity> ui)throws Exception{until(() -> {AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a -> done.set(!a.busy && a.connect.isEnabled()));return done.get();});}
+    static void message(ActivityScenario<MerossManualActivity> ui,int id)throws Exception{until(() -> {AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a -> done.set(!a.busy && a.cloudConsent.isEnabled() && a.message.getText().toString().equals(a.getString(id))));return done.get();});}
+    static void ready(ActivityScenario<MerossManualActivity> ui)throws Exception{until(() -> {AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a -> done.set(!a.busy && a.connect.isEnabled()));return done.get();});}
     @Test public void voluntaryMfaPreviewDiscoveryUuidRefusalExpiryAndForgetPreserveLocalSetup()throws Exception{
         assertTrue("Disposable emulator only",android.os.Build.FINGERPRINT.contains("generic")||android.os.Build.MODEL.contains("sdk"));
         Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(EngineHost.State.STOPPED,EngineHost.state());if(!ProtectedKey.exists(app))ProtectedKey.create(app,"4826");
         Fixture fixture=new Fixture(app);
         try{
-            try(ActivityScenario<MerossAccountActivity> ui=ActivityScenario.launch(MerossAccountActivity.class)){
+            try(ActivityScenario<MerossManualActivity> ui=ActivityScenario.launch(MerossManualActivity.class)){
                 until(() -> {AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a -> done.set(a.loaded && !a.busy));return done.get();});
                 ui.onActivity(a -> {a.backend=fixture;a.showManual();a.cloudConsent.setChecked(true);assertFalse(a.password.isSaveEnabled());assertFalse(a.otp.isSaveEnabled());assertTrue(a.getString(R.string.account_help).contains("Meross"));});
                 ready(ui);ui.onActivity(a -> {a.email.setText("user@example.com");a.password.setText("invented-password");a.connect.performClick();assertTrue(a.password.getText().toString().isEmpty());});message(ui,R.string.account_mfa);

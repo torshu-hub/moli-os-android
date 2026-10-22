@@ -69,6 +69,7 @@ public final class EquipmentReadTest {
                     ui.onActivity(a -> a.start.performClick());
                 }
                 until(() -> EngineHost.state()==EngineHost.State.RUNNING);
+                home.onActivity(MainActivity::showDevices);
                 until(() -> {
                     fixture.check(); JSONArray devices = get("/api/devices").getJSONArray("devices"); boolean printer=false,gateway=false;
                     for (int i=0;i<devices.length();i++) {
@@ -101,6 +102,7 @@ public final class EquipmentReadTest {
                     ui.onActivity(a -> { a.printer.setChecked(false); a.gateway.setChecked(false); a.save.performClick(); });
                     saved(ui); int before=fixture.count(); ui.onActivity(a -> a.start.performClick());
                     until(() -> EngineHost.state()==EngineHost.State.RUNNING);
+                home.onActivity(MainActivity::showDevices);
                     JSONArray drivers=get("/api/devices").getJSONArray("drivers");
                     for(int i=0;i<drivers.length();i++) assertFalse(drivers.getJSONObject(i).getString("instance").startsWith("android-printer") || drivers.getJSONObject(i).getString("instance").equals("android-gateway"));
                     Thread.sleep(1200); assertEquals(before,fixture.count());

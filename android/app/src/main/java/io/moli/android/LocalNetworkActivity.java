@@ -51,7 +51,7 @@ public final class LocalNetworkActivity extends Activity {
         });useCandidates.setVisibility(getIntent().getBooleanExtra("pick_meross_ip",false)?android.view.View.VISIBLE:android.view.View.GONE);useCandidates.setEnabled(false);
         cards=new LinearLayout(this); cards.setOrientation(LinearLayout.VERTICAL); body.addView(cards);
         text(body,getString(R.string.network_mac_unavailable));
-        button(body,R.string.journal_title,()->startActivity(new Intent(this,TrialJournalActivity.class)));
+
         button(body,R.string.back,this::finish);
         if(getIntent().getBooleanExtra("identify_meross",false))main.post(()->search.performClick());
     }

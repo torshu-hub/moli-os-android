@@ -92,6 +92,7 @@ public final class MerossReadTest {
                 assertEquals(246.912,device(2).getJSONObject("state").getJSONObject("power").getDouble("value"),0.0001);
                 assertFalse(device(2).getJSONObject("state").getJSONObject("on").getBoolean("value"));assertNull(device(3));
                 try(ActivityScenario<MainActivity> home=ActivityScenario.launch(MainActivity.class)) {
+                home.onActivity(MainActivity::showDevices);
                     until(()->"true".equals(js(home,"document.querySelectorAll('[data-equipment=meross]').length===4 && document.querySelectorAll('[data-equipment=meross][data-equipment-status=fresh]').length===3")));
                     long lease=EngineHost.currentLease();four.available=false;
                     until(()->"true".equals(js(home,"document.querySelectorAll('[data-equipment=meross][data-equipment-status=fresh]').length===2")));

@@ -1,0 +1,45 @@
+Moli OS 0.13.0 — recherche automatique et rapport d’essai
+
+Android ARM64 / Android 9+. Une seule APK, signature debug temporaire.
+Cette version s’installe séparément : io.moli.android.app.preview.automatic.v0130.
+Le nouveau parcours est testé avec des appareils fictifs en émulateur ;
+ces tests ne constituent pas une preuve de compatibilité matérielle. Aucune commande ON/OFF ni impression.
+
+1. Installer et ouvrir : l’accueil « Moli OS — Essais » propose Recherche,
+   Mes appareils, Exporter le rapport. Aucun PIN à créer. Pour reprendre une
+   sauvegarde utile de 0.12, choisir AVANT toute recherche/consultation :
+   Paramètres → Sauvegarde/transfert. Arrêter le moteur de l’ancienne app pour
+   exporter. Le mot de passe de cette sauvegarde contenant les secrets reste requis.
+   Un essai neuf ne nécessite ni sauvegarde ni ce mot de passe. Pas de transfert
+   non chiffré ou de clé permanente. Garder les anciennes données utiles jusqu’à
+   récupération vérifiée. Un seul moteur actif à la fois.
+2. Rechercher mes appareils → Mes prises Meross. Le cache restauré évite de se
+   reconnecter. Sinon, se connecter volontairement au compte (région / MFA si requis).
+   Appuyer sur Identifier mes prises Meross sur ce Wi-Fi, puis autoriser la recherche.
+   Les candidates sont contrôlées automatiquement ; aucune sélection d’IP/prise.
+3. Lire « X prises trouvées sur 4 ». Cocher les lectures souhaitées puis Ajouter
+   les prises reconnues et confirmer le détail. Plusieurs IP pour une même identité :
+   aucun ajout automatique. Le moteur repart après les ajouts ; ouvrir Mes appareils
+   pour les valeurs, l’heure et l’âge. Attendre le premier cycle (jusqu’à 30 s) :
+   une configuration enregistrée et un premier cycle sans données ne prouvent pas
+   une mesure reçue ou une prise introuvable. Les autres réglages sont conservés.
+4. Revenir à l’accueil → Exporter le rapport d’essai. Choisir Téléchargements ou
+   Documents dans Android, puis retrouver le fichier Rapport-essai-Moli-OS_DATE_HEURE_v0.13.0.txt.
+   La confirmation rappelle le nom ; Partager ouvre la feuille Android si souhaité.
+   Joindre le TXT au chat, pas l’APK. Aucun mot de passe pour ce TXT expurgé,
+   aucun envoi automatique. Le rapport est actif sans Commencer/Terminer.
+
+Limites : recherche volontaire au premier plan, sur Wi-Fi privé sans VPN. Annonces
+et port 80 ; sondes seulement sur un sous-réseau /24 ou plus petit, jusqu’à 254 IP.
+Identités GET seules, 4 simultanées, 2,5 s au plus chacune, jusqu’à 64 candidates
+par autorisation ; au-delà, une continuation explicite. Six lots autorisés/heure,
+10 s minimum entre eux ; chaque lot expire après 120 s. Quitter/Annuler empêche
+les prochains groupes ; les GET déjà envoyés expirent sous 2,5 s. Aucun scan Internet
+ou permanent. Une adresse silencieuse n’est pas une preuve d’absence. Une clé est
+classée refusée uniquement sur la réponse explicite correspondante du protocole.
+L’inventaire cloud est en cache ; Actualiser est volontaire et limité.
+
+Mes appareils conserve le vrai dashboard Moli (météo, tablette, box, prises configurées).
+Retour ramène à l’accueil d’essais ; deux appuis à l’accueil ferment l’interface,
+pas le moteur. Les réglages météo/pièces et les anciens profils restent dans
+Paramètres → Avancé. La veille continue Samsung n’est pas démontrée par cet essai.

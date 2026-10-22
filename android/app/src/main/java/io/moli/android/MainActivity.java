@@ -14,6 +14,10 @@ import android.widget.*;
 public final class MainActivity extends Activity {
     WebView web; // Package-visible to the isolated instrumentation smoke test.
     private TextView status;
+    private android.view.View home;
+    private LinearLayout dashboard;
+    private boolean viewing;
+    private ReportExport report;
     private Button start, stop, backup;
     private MoliService server;
     private boolean bound;
@@ -36,6 +40,7 @@ public final class MainActivity extends Activity {
             start.setEnabled(state == EngineHost.State.STOPPED);
             stop.setEnabled(state == EngineHost.State.RUNNING || state == EngineHost.State.STARTING || state == EngineHost.State.ERROR);
             backup.setEnabled(state == EngineHost.State.STOPPED);
+            if(state==EngineHost.State.RUNNING)status.setText(R.string.preview_engine_ready);
             if (state != EngineHost.State.RUNNING) {
                 if (loaded != null) {
                     loaded = null; web.stopLoading(); web.loadUrl("about:blank");
@@ -55,8 +60,7 @@ public final class MainActivity extends Activity {
                     if (!isDestroyed() && EngineHost.state() == EngineHost.State.RUNNING && origin.equals(EngineHost.origin()) && Boolean.TRUE.equals(accepted)) {
                         loaded = origin;
                         web.loadUrl(origin + "/");
-                        web.setVisibility(View.VISIBLE);
-                        status.setVisibility(View.GONE);
+                        web.setVisibility(viewing?View.VISIBLE:View.GONE);
                     }
                 });
             }
@@ -74,28 +78,27 @@ public final class MainActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled")
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved); TrialLog.attach(this);
-        LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout controls = new LinearLayout(this);
-        start = new Button(this); start.setText(R.string.start); start.setOnClickListener(v -> prepare());
-        stop = new Button(this); stop.setText(R.string.stop); stop.setOnClickListener(v -> stopServer());
-        controls.addView(start); controls.addView(stop); root.addView(controls);
-        Button settings = new Button(this); settings.setText(R.string.home_settings);
-        settings.setOnClickListener(v -> startActivity(new Intent(this,HomeSettingsActivity.class))); controls.addView(settings);
-        backup = new Button(this); backup.setText(R.string.backup_title);
-        backup.setOnClickListener(v -> startActivity(new Intent(this, BackupActivity.class)));
-        LinearLayout tools = new LinearLayout(this); tools.addView(backup);
-        Button diagnostics = new Button(this); diagnostics.setText(R.string.home_tools);
-        diagnostics.setOnClickListener(v -> {
-            PopupMenu menu = new PopupMenu(this,diagnostics);
-            menu.getMenu().add(0,1,0,R.string.app_info);
-            menu.getMenu().addSubMenu(R.string.advanced_tools).add(0,2,0,R.string.integration_title);
-            menu.setOnMenuItemClickListener(item -> { startActivity(new Intent(this,item.getItemId()==1?AppInfoActivity.class:item.getItemId()==3?LocalNetworkActivity.class:IntegrationsActivity.class)); return true; }); menu.show();
-        }); tools.addView(diagnostics);
-        Button equipment = new Button(this); equipment.setText(R.string.equipment_title);
-        equipment.setOnClickListener(v -> startActivity(new Intent(this,EquipmentSettingsActivity.class)));
-        tools.addView(equipment); root.addView(tools);
-        Button journal=new Button(this);journal.setText(R.string.journal_title);journal.setOnClickListener(v->startActivity(new Intent(this,TrialJournalActivity.class)));root.addView(journal);
-        status = new TextView(this); status.setText(R.string.stopped); root.addView(status);
+        TrialLog.begin(this);
+        LinearLayout root = TrialUi.page(this);
+        home=new LinearLayout(this);((LinearLayout)home).setOrientation(LinearLayout.VERTICAL);root.addView(home);
+        LinearLayout front=(LinearLayout)home;
+        TrialUi.title(this,front,R.string.preview_home_title);
+        TrialUi.text(this,front,R.string.preview_home_help);
+        LinearLayout actions=TrialUi.card(this,front);
+        TrialUi.button(this,actions,R.string.preview_search,true,()->{if(ensureKeys())startActivity(new Intent(this,SearchHomeActivity.class));});
+        TrialUi.button(this,actions,R.string.preview_devices,false,this::showDevices);
+        report=new ReportExport(this);
+        TrialUi.button(this,actions,R.string.report_export,false,report::choose);
+        status=TrialUi.text(this,front,R.string.stopped);
+        TrialUi.text(this,front,R.string.preview_report_auto);
+        TrialUi.button(this,front,R.string.preview_settings,false,()->startActivity(new Intent(this,PreviewSettingsActivity.class)));
+        dashboard=new LinearLayout(this);dashboard.setOrientation(LinearLayout.VERTICAL);root.addView(dashboard);dashboard.setVisibility(View.GONE);
+        TrialUi.button(this,dashboard,R.string.preview_home_title,false,this::showHome);
+        // Kept as internal controls for lifecycle checks, never an extra toolbar.
+        LinearLayout controls=new LinearLayout(this);controls.setVisibility(View.GONE);root.addView(controls);
+        start=new Button(this);start.setText(R.string.start);start.setOnClickListener(v->prepare());controls.addView(start);
+        stop=new Button(this);stop.setText(R.string.stop);stop.setOnClickListener(v->stopServer());controls.addView(stop);
+        backup=new Button(this);controls.addView(backup);
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
@@ -127,10 +130,11 @@ public final class MainActivity extends Activity {
                 return new WebResourceResponse("text/plain", "UTF-8", 403, "Blocked", java.util.Collections.emptyMap(), new java.io.ByteArrayInputStream(new byte[0]));
             }
         });
-        root.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(root);
+        dashboard.addView(web,new LinearLayout.LayoutParams(-1,Math.max(TrialUi.dp(this,480),getResources().getDisplayMetrics().heightPixels-TrialUi.dp(this,160))));
         if (Build.VERSION.SDK_INT >= 33) unregisterBack = ModernBack.register(this);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
+        if(getIntent().getBooleanExtra("devices",false))showDevices();
+        if(saved!=null && saved.getBoolean("viewing")){viewing=true;home.setVisibility(View.GONE);dashboard.setVisibility(View.VISIBLE);}
         handler.post(refresh);
         if (EngineHost.state() == EngineHost.State.RUNNING || EngineHost.state() == EngineHost.State.STARTING ||
                 (getSharedPreferences("host", MODE_PRIVATE).getBoolean("wanted", true) && ProtectedKey.exists(this))) startServer();
@@ -138,20 +142,22 @@ public final class MainActivity extends Activity {
     private void prepare() {
         if (EngineHost.state() != EngineHost.State.STOPPED) return;
         if (ProtectedKey.exists(this)) { startServer(); return; }
-        EditText pin = new EditText(this);
-        pin.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
-        pin.setHint(R.string.pin_hint);
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle(R.string.pin_title).setMessage(R.string.preview_warning).setView(pin)
-                .setNegativeButton(android.R.string.cancel, null).setPositiveButton(R.string.start, null).create();
-        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            String code = pin.getText().toString();
-            if (!code.matches("[0-9]{4,32}")) { pin.setError(getString(R.string.pin_invalid)); return; }
-            if (EngineHost.state() != EngineHost.State.STOPPED) { dialog.dismiss(); return; }
-            try { ProtectedKey.create(this, code); dialog.dismiss(); startServer(); }
-            catch (Exception failure) { status.setText(R.string.key_unavailable); dialog.dismiss(); }
-        }));
-        dialog.show();
+        if(ensureKeys())startServer();
     }
+    private boolean ensureKeys(){
+        if(ProtectedKey.exists(this))return true;
+        try{ProtectedKey.createPreview(this);return true;}catch(Exception failure){status.setText(R.string.key_unavailable);return false;}
+    }
+    void showDevices(){
+        if(!ensureKeys())return;
+        viewing=true;home.setVisibility(View.GONE);dashboard.setVisibility(View.VISIBLE);web.setVisibility(View.VISIBLE);
+        if(EngineHost.state()==EngineHost.State.STOPPED)prepare();
+        else if(loaded!=null)web.loadUrl(loaded+"/#/");
+    }
+    void showHome(){viewing=false;dashboard.setVisibility(View.GONE);home.setVisibility(View.VISIBLE);web.setVisibility(View.GONE);resetExitBack();}
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putBoolean("viewing",viewing);}
+    @Override protected void onActivityResult(int request,int result,Intent intent){super.onActivityResult(request,result,intent);report.result(request,result,intent);}
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);if(intent.getBooleanExtra("devices",false))showDevices();}
     private void startServer() {
         if (bound) return;
         getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", true).apply();
@@ -171,7 +177,7 @@ public final class MainActivity extends Activity {
     // also contains loading/stopped pages). Closing the UI never stops the service.
     private void dashboardBack() {
         String origin = loaded;
-        String url = web.getUrl();
+        String url = viewing?web.getUrl():null;
         if (origin != null && url != null && url.startsWith(origin + "/")) {
             Uri page = Uri.parse(url);
             String fragment = page.getFragment();
@@ -181,6 +187,7 @@ public final class MainActivity extends Activity {
                 return;
             }
         }
+        if(viewing){showHome();return;}
         long now = SystemClock.elapsedRealtime();
         if (exitBackAt >= 0 && now - exitBackAt <= 2000) {
             resetExitBack();

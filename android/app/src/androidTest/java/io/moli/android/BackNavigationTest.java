@@ -78,17 +78,19 @@ public final class BackNavigationTest {
                 // Sending a service intent alone leaves this initially stopped UI unbound.
                 ui.onActivity(a -> {
                     Button start = button(a.getWindow().getDecorView(), a.getString(R.string.start));
-                    assertNotNull(start); assertTrue(start.isEnabled()); start.performClick();
+                    assertNotNull(start); assertTrue(start.isEnabled()); start.performClick();a.showDevices();
                 });
                 until(() -> EngineHost.state() == EngineHost.State.RUNNING);
                 long lease = EngineHost.currentLease();
                 home(ui);
                 open(ui, "dehors"); back(ui); home(ui);
-                back(ui); resumed(ui); // First Back at Home only warns.
+                back(ui); resumed(ui); // Dashboard root returns to the single native trial home.
+                ui.onActivity(MainActivity::showDevices);
                 open(ui, "pieces");
                 ui.onActivity(MainActivity::onBackPressed); // Legacy dispatch used before API 33.
                 home(ui);
-                back(ui); resumed(ui); // Changing page has cancelled the previous warning.
+                back(ui); resumed(ui); // Dashboard root returns to trial home.
+                back(ui); resumed(ui); // First Back at trial home warns.
                 Thread.sleep(2200);
                 back(ui); resumed(ui); // An expired warning cannot close the interface.
                 ui.moveToState(Lifecycle.State.CREATED);
@@ -100,7 +102,7 @@ public final class BackNavigationTest {
                 assertTrue("Real Rust HTTP still answers after closing UI", EngineHealth.request(EngineHost.origin(), EngineHost.token()));
             }
             try (ActivityScenario<MainActivity> reopened = ActivityScenario.launch(MainActivity.class)) {
-                home(reopened);
+                reopened.onActivity(MainActivity::showDevices);home(reopened);
                 back(reopened); resumed(reopened);
                 assertTrue(EngineHealth.request(EngineHost.origin(), EngineHost.token()));
             }

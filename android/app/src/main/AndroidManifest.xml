@@ -21,6 +21,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".SearchHomeActivity" android:exported="false" />
+        <activity android:name=".PreviewSettingsActivity" android:exported="false" />
+        <activity android:name=".MerossManualActivity" android:exported="false" />
         <activity android:name=".HomeSettingsActivity" android:exported="false" />
         <activity android:name=".EquipmentSettingsActivity" android:exported="false" />
         <activity android:name=".MerossAccountActivity" android:exported="false" />

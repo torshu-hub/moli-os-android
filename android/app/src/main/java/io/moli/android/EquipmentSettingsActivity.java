@@ -19,7 +19,7 @@ public final class EquipmentSettingsActivity extends Activity {
     TextView message;
     Button save, start, test;
     private TextView reading;
-    private LinearLayout manual,printerGroup,gatewayGroup,merossGroup;
+    private LinearLayout manual,printerGroup,gatewayGroup,merossGroup,chooser;
     private String mode="";
     private String storedConfig="";
     private TextView stateText;
@@ -42,22 +42,16 @@ public final class EquipmentSettingsActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
-        int pad = (int)(16 * getResources().getDisplayMetrics().density); body.setPadding(pad,pad,pad,pad);
-        scroll.addView(body);
-        text(body, R.string.equipment_title);
-        text(body, R.string.equipment_help);
-        text(body,R.string.equipment_steps);
-        button(body,R.string.journal_title,()->startActivity(new Intent(this,TrialJournalActivity.class)));
-        button(body, R.string.network_title, () -> startActivity(new Intent(this,LocalNetworkActivity.class)));
-        button(body,R.string.equipment_add_printer,()->focus("ipp"));
-        button(body,R.string.equipment_add_gateway,()->focus("igd"));
-        button(body, R.string.account_title, () -> startActivity(new Intent(this,MerossAccountActivity.class)));
+        LinearLayout body=TrialUi.page(this);
+        TrialUi.title(this,body,R.string.equipment_title);
+        chooser=TrialUi.card(this,body);
+        button(chooser,R.string.equipment_add_printer,()->focus("ipp"));
+        button(chooser,R.string.equipment_add_gateway,()->focus("igd"));
+        button(chooser,R.string.account_title,()->startActivity(new Intent(this,MerossAccountActivity.class)));
         stateText = text(body, R.string.equipment_stop_first);
         button(body, R.string.stop, () -> startService(new Intent(this, MoliService.class).setAction(MoliService.STOP)));
         manual=new LinearLayout(this);manual.setOrientation(LinearLayout.VERTICAL);body.addView(manual);manual.setVisibility(android.view.View.GONE);
-        button(body,R.string.equipment_manual,()->new android.app.AlertDialog.Builder(this).setTitle(R.string.advanced_tools).setItems(new String[]{getString(R.string.meross_title),getString(R.string.integration_title)},(d,w)->{if(w==0)focus("meross");else startActivity(new Intent(this,IntegrationsActivity.class));}).show());
+        button(chooser,R.string.equipment_manual,()->new android.app.AlertDialog.Builder(this).setTitle(R.string.advanced_tools).setItems(new String[]{getString(R.string.meross_title),getString(R.string.integration_title)},(d,w)->{if(w==0)focus("meross");else startActivity(new Intent(this,IntegrationsActivity.class));}).show());
         printerGroup=group(manual);gatewayGroup=group(manual);merossGroup=group(manual);
         printer = new CheckBox(this); printer.setText(R.string.equipment_printer); printerGroup.addView(printer);
         host = field(printerGroup, R.string.equipment_host, false);
@@ -84,7 +78,7 @@ public final class EquipmentSettingsActivity extends Activity {
             }else if(EngineHost.state()==EngineHost.State.RUNNING)EquipmentMonitor.poll(this,value->runOnUiThread(()->{if(!isDestroyed())reading.setText(value);}),true);
         });
         button(body, R.string.home_dashboard, this::finish);
-        setContentView(scroll);
+
         android.text.TextWatcher changed = new android.text.TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s,int a,int count,int after) {}
             @Override public void onTextChanged(CharSequence s,int a,int before,int count) { edited(); }
@@ -162,14 +156,14 @@ public final class EquipmentSettingsActivity extends Activity {
     private void edited() {
         if (ready) { revision++; start.setEnabled(false); message.setText(R.string.equipment_unsaved); }
     }
-    private LinearLayout group(LinearLayout parent){LinearLayout group=new LinearLayout(this);group.setOrientation(LinearLayout.VERTICAL);parent.addView(group);return group;}
-    void focus(String kind){mode=kind;manual.setVisibility(android.view.View.VISIBLE);printerGroup.setVisibility(kind.equals("ipp")?android.view.View.VISIBLE:android.view.View.GONE);gatewayGroup.setVisibility(kind.equals("igd")?android.view.View.VISIBLE:android.view.View.GONE);merossGroup.setVisibility(kind.equals("meross")?android.view.View.VISIBLE:android.view.View.GONE);message.setText(kind.equals("ipp")?R.string.ipp_unrecognized:kind.equals("igd")?R.string.gateway_setup_help:R.string.meross_help);}
-    private TextView text(LinearLayout body,int id) { TextView t = new TextView(this); t.setText(id); t.setTextSize(16); body.addView(t); return t; }
+    private LinearLayout group(LinearLayout parent){return TrialUi.card(this,parent);}
+    void focus(String kind){mode=kind;chooser.setVisibility(android.view.View.GONE);manual.setVisibility(android.view.View.VISIBLE);printerGroup.setVisibility(kind.equals("ipp")?android.view.View.VISIBLE:android.view.View.GONE);gatewayGroup.setVisibility(kind.equals("igd")?android.view.View.VISIBLE:android.view.View.GONE);merossGroup.setVisibility(kind.equals("meross")?android.view.View.VISIBLE:android.view.View.GONE);message.setText(kind.equals("ipp")?R.string.ipp_unrecognized:kind.equals("igd")?R.string.gateway_setup_help:R.string.meross_help);}
+    private TextView text(LinearLayout body,int id) { return TrialUi.text(this,body,id); }
     private EditText field(LinearLayout body,int id,boolean numeric) {
         text(body,id); EditText e = new EditText(this); e.setHint(id); e.setSingleLine(true);
         if (numeric) e.setInputType(InputType.TYPE_CLASS_NUMBER); body.addView(e); return e;
     }
-    private Button button(LinearLayout body,int id,Runnable action) { Button b = new Button(this); b.setText(id); b.setOnClickListener(v -> action.run()); body.addView(b); return b; }
+    private Button button(LinearLayout body,int id,Runnable action) { return TrialUi.button(this,body,id,id==R.string.equipment_save,action); }
     @Override public void onStart() { super.onStart(); handler.post(refresh);
         if(ready && !busy){ready=false;io.execute(()->{try{
             JSONObject selected=EquipmentStore.read(this);

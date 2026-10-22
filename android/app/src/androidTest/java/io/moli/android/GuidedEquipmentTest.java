@@ -45,7 +45,7 @@ public final class GuidedEquipmentTest {
                     default:throw new AssertionError("Only cache, explicit inventory, identity and association allowed");
                 }
             };
-            try(ActivityScenario<MerossAccountActivity> ui=ActivityScenario.launch(MerossAccountActivity.class)){
+            try(ActivityScenario<MerossManualActivity> ui=ActivityScenario.launch(MerossManualActivity.class)){
                 MerossAccountTest.until(()->{AtomicReference<Boolean> ready=new AtomicReference<>(false);ui.onActivity(a->ready.set(a.loaded&&!a.busy));return ready.get();});
                 ui.onActivity(a->{a.backend=backend;a.loaded=false;});MerossAccountTest.message(ui,R.string.account_connected);
                 ui.onActivity(a->{assertEquals(4,a.inventory.length());assertFalse(a.password.isShown());a.refresh.performClick();});MerossAccountTest.message(ui,R.string.account_connected);assertEquals(1,calls[0]);

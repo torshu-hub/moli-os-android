@@ -18,6 +18,7 @@ final class LocalDiscovery implements DiscoverySearch {
     static final int DURATION_MS=20000;
     private final Context app;
     private final boolean probes;
+    private final boolean identityOnly;
     private final Handler main=new Handler(Looper.getMainLooper());
     private final ExecutorService io=Executors.newFixedThreadPool(8);
     private final ExecutorService announcements=Executors.newSingleThreadExecutor();
@@ -37,7 +38,8 @@ final class LocalDiscovery implements DiscoverySearch {
     private NsdManager.ResolveListener resolver;
     private long deadline;
     private final Runnable expiry=() -> finish(End.COMPLETE);
-    LocalDiscovery(Context context,boolean probes) { app=context.getApplicationContext(); this.probes=probes; }
+    LocalDiscovery(Context context,boolean probes) {this(context,probes,false);}
+    LocalDiscovery(Context context,boolean probes,boolean identityOnly) { app=context.getApplicationContext(); this.probes=probes; this.identityOnly=identityOnly; }
     @Override public void start(Listener l) {
         listener=l;
         try {
@@ -67,7 +69,7 @@ final class LocalDiscovery implements DiscoverySearch {
             if(probes) {
                 List<String> hosts=scope.probeHosts();
                 if(hosts.isEmpty()) listener.warning();
-                for(String host:hosts) for(int port:new int[]{80,631}) io.execute(() -> probe(host,port));
+                for(String host:hosts) for(int port:identityOnly?new int[]{80}:new int[]{80,631}) io.execute(() -> probe(host,port));
             }
         } catch(Exception failure) { finish(End.UNAVAILABLE); }
     }

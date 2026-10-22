@@ -41,6 +41,13 @@ final class ProtectedKey {
         return result;
     }
     static synchronized void create(Context context, String pin) throws Exception {
+        create(context,new JSONObject().put("master",randomHex()).put("pin",pin));
+    }
+    static synchronized void createPreview(Context context) throws Exception {
+        // Independent random bootstrap credential, never a fixed/weak substitute PIN.
+        create(context,new JSONObject().put("format",2).put("master",randomHex()).put("pin",randomHex()));
+    }
+    private static void create(Context context, JSONObject credentials) throws Exception {
         if (exists(context)) throw new IllegalStateException("Key already exists");
         File data = new File(context.getFilesDir(), "moli");
         // Missing wrapping material beside an existing vault must never rekey it.
@@ -49,7 +56,7 @@ final class ProtectedKey {
         if (generations == null) throw new IllegalStateException("Cannot inspect existing data");
         for (File generation : generations)
             if (new File(generation, "secrets.enc").exists()) throw new IllegalStateException("Existing recovered vault");
-        install(context, new JSONObject().put("master", randomHex()).put("pin", pin));
+        install(context, credentials);
     }
     static File dataDirectory(Context context, JSONObject keys) throws Exception {
         String directory = keys.optString("directory", "moli");
@@ -88,7 +95,7 @@ final class ProtectedKey {
     }
     static void validate(JSONObject credentials) throws Exception {
         if (!credentials.getString("master").matches("[a-f0-9]{64}") ||
-                !credentials.getString("pin").matches("[0-9]{4,32}"))
+                !(credentials.optInt("format",1)==1 ? credentials.getString("pin").matches("[0-9]{4,32}") : credentials.optInt("format")==2 && credentials.getString("pin").matches("[a-f0-9]{64}")))
             throw new IllegalStateException("Invalid recovery credentials");
     }
     static synchronized JSONObject open(Context context) throws Exception {

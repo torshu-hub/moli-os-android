@@ -14,7 +14,7 @@ import static org.junit.Assert.*;
 /** Transversal fixture journey; no real login, scan, printer, router or plug is contacted. */
 @RunWith(AndroidJUnit4.class)
 public final class UsabilityJourneyTest {
-    private static void resumed(ActivityScenario<MerossAccountActivity> ui,MerossAccountStore.Backend backend)throws Exception {
+    private static void resumed(ActivityScenario<MerossManualActivity> ui,MerossAccountStore.Backend backend)throws Exception {
         MerossAccountTest.until(()->{AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a->done.set(a.loaded && !a.busy));return done.get();});
         ui.onActivity(a->{a.backend=backend;a.showManual();a.loaded=false;});MerossAccountTest.message(ui,R.string.account_connected);
     }
@@ -29,7 +29,7 @@ public final class UsabilityJourneyTest {
             return fixture.call(input);
         };
         try {
-            try(ActivityScenario<MerossAccountActivity> ui=ActivityScenario.launch(MerossAccountActivity.class)){
+            try(ActivityScenario<MerossManualActivity> ui=ActivityScenario.launch(MerossManualActivity.class)){
                 resumed(ui,backend);
                 ui.onActivity(a->{assertEquals(4,a.inventory.length());assertFalse(a.password.isShown());a.host.setText("192.168.1.20");a.name.setText("Private personal name");});
                 ui.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);ui.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);MerossAccountTest.message(ui,R.string.account_connected);

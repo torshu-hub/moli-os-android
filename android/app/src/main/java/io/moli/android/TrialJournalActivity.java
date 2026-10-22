@@ -20,7 +20,7 @@ public final class TrialJournalActivity extends Activity {
         status=new TextView(this);body.addView(status);message=new TextView(this);message.setText(R.string.journal_help);body.addView(message);
         begin=button(body,R.string.trial_begin,() -> {if(TrialLog.count()==0)TrialLog.begin(this);else new AlertDialog.Builder(this).setMessage(R.string.journal_replace).setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.trial_begin,(d,w)->TrialLog.begin(this)).show();});
         end=button(body,R.string.trial_end,()->TrialLog.end(this));
-        button(body,R.string.trial_export,()->startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"moli-os-essai-"+BuildConfig.VERSION_NAME+".txt"),72));
+        button(body,R.string.trial_export,()->startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,ReportExport.fileName(System.currentTimeMillis(),BuildConfig.VERSION_NAME)),72));
         button(body,R.string.back,this::finish);
     }
     private Button button(LinearLayout body,int label,Runnable task){Button b=new Button(this);b.setText(label);b.setOnClickListener(v->task.run());body.addView(b);return b;}

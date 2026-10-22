@@ -12,11 +12,11 @@ public final class SyntheticDocumentProvider extends ContentProvider {
     @Override public String getType(Uri uri) { return "application/toml"; }
     @Override public Cursor query(Uri uri,String[] projection,String selection,String[] args,String sort) {
         MatrixCursor c = new MatrixCursor(new String[]{OpenableColumns.DISPLAY_NAME});
-        c.addRow(new Object[]{"synthetic-temperature.toml"}); return c;
+        c.addRow(new Object[]{"/automatic-trial-export".equals(uri.getPath())?"Rapport-essai-Moli-OS_fixture_v0.13.0.txt":"synthetic-temperature.toml"}); return c;
     }
     @Override public ParcelFileDescriptor openFile(Uri uri,String mode) throws FileNotFoundException {
-        if ("/trial-export".equals(uri.getPath())) {
-            return ParcelFileDescriptor.open(new File(getContext().getCacheDir(),"trial-export.txt"),ParcelFileDescriptor.parseMode(mode));
+        if ("/trial-export".equals(uri.getPath()) || "/automatic-trial-export".equals(uri.getPath())) {
+            return ParcelFileDescriptor.open(new File(getContext().getCacheDir(),"/automatic-trial-export".equals(uri.getPath())?"automatic-trial-export.txt":"trial-export.txt"),ParcelFileDescriptor.parseMode(mode));
         }
         if (!"r".equals(mode) || !"/profile".equals(uri.getPath())) throw new FileNotFoundException();
         File document = new File(getContext().getCacheDir(),"synthetic-document.toml");

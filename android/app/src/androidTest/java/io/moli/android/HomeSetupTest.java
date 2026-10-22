@@ -72,6 +72,7 @@ public final class HomeSetupTest {
             });
             long lease=EngineHost.currentLease();
             try(ActivityScenario<MainActivity> main=ActivityScenario.launch(MainActivity.class)) {
+                main.onActivity(MainActivity::showDevices);
                 until(()->{AtomicReference<String> dom=new AtomicReference<>();main.onActivity(a->a.web.evaluateJavascript("document.body.innerText.includes('Cette tablette') && document.body.innerText.includes('Lieu test public')",dom::set));
                     long end=android.os.SystemClock.elapsedRealtime()+1000;while(dom.get()==null && android.os.SystemClock.elapsedRealtime()<end)Thread.sleep(10);return "true".equals(dom.get());});
                 AtomicLong first = new AtomicLong();

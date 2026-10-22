@@ -39,6 +39,15 @@ public final class BackupArchiveTest {
         assertArrayEquals(bytes, Files.readAllBytes(new File(target, "recordings/synthetic.bin").toPath()));
         assertTrue(new File(target, "settings.json").isFile());
     }
+    @Test public void randomPreviewBootstrapRoundTripKeepsFormatAndLegacyValidation() throws Exception {
+        JSONObject keys=new JSONObject().put("format",2).put("master","ab".repeat(32)).put("pin","cd".repeat(32));
+        ByteArrayOutputStream out=new ByteArrayOutputStream();BackupArchive.exportTo(data(),keys,PASSWORD,out);
+        JSONObject recovered=BackupArchive.importTo(new ByteArrayInputStream(out.toByteArray()),PASSWORD,temp.newFolder());
+        assertEquals(2,recovered.getInt("format"));assertEquals(keys.getString("pin"),recovered.getString("pin"));ProtectedKey.validate(credentials());
+        for(JSONObject bad:new JSONObject[]{new JSONObject(keys.toString()).put("format",3),new JSONObject(keys.toString()).put("pin","4826"),new JSONObject(keys.toString()).put("pin","a".repeat(63))}){
+            try{ProtectedKey.validate(bad);fail("Malformed bootstrap accepted");}catch(IllegalStateException expected){}
+        }
+    }
     @Test public void wrongPasswordIsRejected() throws Exception { rejected(export(data()), "wrong recovery password".toCharArray()); }
     @Test public void corruptedCiphertextIsRejected() throws Exception { byte[] b=export(data()); b[60]^=1; rejected(b,PASSWORD); }
     @Test public void missingFinalRecordIsRejected() throws Exception { byte[] b=export(data()); rejected(Arrays.copyOf(b,b.length-20),PASSWORD); }

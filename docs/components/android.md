@@ -61,8 +61,13 @@ Linux-only host/ARP presence integrations are not enabled by this preview.
 
 ## Keys and future migration
 
-At first start the user chooses the dashboard PIN. A random portable 256-bit
-Moli master key and that bootstrap PIN are wrapped with AES-GCM under Android
+Fresh 0.13 previews open a single trial home: Search, My devices and Export report.
+The first deliberate search or device consultation creates independent random
+256-bit master and bootstrap credentials, without asking for a PIN. Before that,
+Settings → Backup/transfer can restore an existing encrypted archive.
+Legacy numeric PIN credentials remain valid and are never automatically rekeyed.
+Format-2 random bootstrap credentials survive encrypted archive round trips.
+The random portable Moli master key and bootstrap are wrapped with AES-GCM under Android
 Keystore and stored in noBackupFilesDir. The master key is passed to Rust only
 in memory; Android does not use the engine's plaintext master.key fallback.
 Existing encrypted stores without their wrapping material are never silently
