@@ -12,6 +12,7 @@
 //! on the same network, checks its identity there, and talks to it at its
 //! new address, journaled and remembered (`data/addresses.json`).
 
+pub mod meross_cloud;
 mod mss310;
 mod profile;
 mod trust;
@@ -176,6 +177,37 @@ pub async fn read_only_once(
                 .map(|value| (point.spec.key.to_string(), value))
         })
         .collect())
+}
+
+/// One signed GET to verify an MSS310's hardware UUID before account-assisted provisioning.
+/// Callers must approve the private numeric destination; no discovery or write is performed.
+pub async fn mss310_identity(host: &str, port: u16, key: &str) -> anyhow::Result<String> {
+    anyhow::ensure!(
+        host.parse::<Ipv4Addr>().is_ok() && port != 0,
+        "numeric destination required"
+    );
+    let (profile, _) = open("meross-mss310")?;
+    let config = Config {
+        profile: "meross-mss310".into(),
+        host: Some(host.into()),
+        port: Some(port),
+        vars: std::collections::BTreeMap::default(),
+        discovery: false,
+        name: None,
+    };
+    let target = Target::of(&config, &profile)?;
+    let request = profile
+        .requests
+        .iter()
+        .find(|r| r.id == "all")
+        .context("identity request missing")?;
+    let Answer::Json(body) = mss310::fetch(&target, request, Some(key), &profile).await? else {
+        bail!("identity response rejected");
+    };
+    Ok(body["payload"]["all"]["system"]["hardware"]["uuid"]
+        .as_str()
+        .context("identity missing")?
+        .to_ascii_lowercase())
 }
 
 #[derive(Debug)]

@@ -6,3 +6,8 @@ This product includes data derived from Powercalc
 the light power profiles in crates/moli-energy/src/estimate.rs.
 Copyright (c) 2021 Bram Gerritsen. Licensed under the MIT License;
 see licenses/powercalc-MIT.txt.
+
+The Meross account wire protocol implementation is based on the public reference
+krahabb/meross_lan (merossclient/cloudapi.py, commit bafedb4f8563153f9e3494292073551bb28f5f9a).
+MIT License; copyright (c) 2020 Joakim Sørensen @ludeeus.
+See licenses/meross-lan-MIT.txt. Home Assistant components are not embedded.

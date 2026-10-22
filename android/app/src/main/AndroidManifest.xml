@@ -22,6 +22,7 @@
         </activity>
         <activity android:name=".HomeSettingsActivity" android:exported="false" />
         <activity android:name=".EquipmentSettingsActivity" android:exported="false" />
+        <activity android:name=".MerossAccountActivity" android:exported="false" />
         <activity android:name=".LocalNetworkActivity" android:exported="false" />
         <activity android:name=".BackupActivity" android:exported="false" />
         <activity android:name=".IntegrationsActivity" android:exported="false" />

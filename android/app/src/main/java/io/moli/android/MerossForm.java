@@ -40,8 +40,8 @@ final class MerossForm {
     }
     JSONArray settings() throws Exception {
         JSONArray result=new JSONArray();
-        for(Row r:entries) result.put(new JSONObject().put("id",r.id).put("name",r.name.getText().toString().trim())
-                .put("host",r.host.getText().toString().trim()).put("port",Integer.parseInt(r.port.getText().toString().trim())).put("enabled",r.read.isChecked()));
+        for(Row r:entries) { JSONObject entry=new JSONObject().put("id",r.id).put("name",r.name.getText().toString().trim())
+                .put("host",r.host.getText().toString().trim()).put("port",Integer.parseInt(r.port.getText().toString().trim())).put("enabled",r.read.isChecked()); if(!r.uuid.isEmpty())entry.put("uuid",r.uuid); result.put(entry); }
         return result;
     }
     JSONArray keys() throws Exception {
@@ -70,14 +70,15 @@ final class MerossForm {
         return f;
     }
     final class Row {
-        final String id;
+        final String id,uuid;
         final LinearLayout body=new LinearLayout(activity);
         final CheckBox read=new CheckBox(activity);
         final EditText name,host,port,key;
         final Button remove=new Button(activity);
         Row(JSONObject input) {
-            id=input.optString("id",UUID.randomUUID().toString().replace("-",""));
+            id=input.optString("id",UUID.randomUUID().toString().replace("-","")); uuid=input.optString("uuid","");
             body.setOrientation(LinearLayout.VERTICAL); body.setPadding(0,16,0,16);
+            if(!uuid.isEmpty()) {TextView bound=new TextView(activity);bound.setText(activity.getString(R.string.account_uuid_bound,uuid));body.addView(bound);}
             read.setText(R.string.meross_read); read.setChecked(input.optBoolean("enabled")); body.addView(read);
             name=field(body,R.string.meross_name,false); name.setText(input.optString("name",""));
             host=field(body,R.string.equipment_host,false); host.setText(input.optString("host",""));

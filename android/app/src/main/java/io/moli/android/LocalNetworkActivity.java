@@ -86,7 +86,8 @@ public final class LocalNetworkActivity extends Activity {
             button(card,R.string.network_copy,() -> copy(e));
             if(e.kind==NetworkEvidence.Kind.IPP) button(card,R.string.network_configure_ipp,() -> configure(e,"ipp"));
             if(e.kind==NetworkEvidence.Kind.IGD) button(card,R.string.network_configure_igd,() -> configure(e,"igd"));
-            button(card,R.string.network_configure_meross,() -> new AlertDialog.Builder(this).setTitle(R.string.meross_title)
+            if(getIntent().getBooleanExtra("pick_meross_ip",false)) button(card,R.string.account_pick_ip,() -> {setResult(RESULT_OK,new Intent().putExtra("ip",e.ip));finish();});
+            else button(card,R.string.network_configure_meross,() -> new AlertDialog.Builder(this).setTitle(R.string.meross_title)
                     .setMessage(R.string.network_meross_warning).setNegativeButton(android.R.string.cancel,null)
                     .setPositiveButton(R.string.network_continue,(d,w) -> configure(e,"meross")).show());
         }

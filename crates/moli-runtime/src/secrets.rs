@@ -94,6 +94,11 @@ pub fn has_secret(path: &Path, key: &MasterKey, name: &str) -> io::Result<bool> 
     Ok(present)
 }
 
+/// Stopped-host provisioning access. Never expose this value through a UI/API/log.
+pub fn read_secret(path: &Path, key: &MasterKey, name: &str) -> io::Result<Option<String>> {
+    Ok(SecretStore::open(path.to_path_buf(), &parse_master_key(&key.0)?)?.get(name))
+}
+
 /// Stores one secret (operator tool: a device key the human provides).
 /// Safe while moli-os runs (each write starts from the file), but a running
 /// hub reads the new value only after its next write or a restart.

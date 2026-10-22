@@ -3,6 +3,7 @@
 
 mod discovery;
 mod equipment;
+mod meross_account;
 mod profiles;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -113,6 +114,15 @@ pub extern "system" fn Java_io_moli_android_NativeServer_profile(
                 equipment::store_keys(&serde_json::from_str(&text).map_err(|_| "input")?)
             }
             5 => discovery::review(&serde_json::from_str(&text).map_err(|_| "input")?),
+            6 => {
+                let slot = engine()
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if slot.is_some() {
+                    return Err("running");
+                }
+                meross_account::run(&serde_json::from_str(&text).map_err(|_| "input")?)
+            }
             _ => Err("input"),
         }
     }));

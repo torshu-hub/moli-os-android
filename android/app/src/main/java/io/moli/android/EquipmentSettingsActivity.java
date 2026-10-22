@@ -42,6 +42,7 @@ public final class EquipmentSettingsActivity extends Activity {
         text(body, R.string.equipment_title);
         text(body, R.string.equipment_help);
         button(body, R.string.network_title, () -> startActivity(new Intent(this,LocalNetworkActivity.class)));
+        button(body, R.string.account_title, () -> startActivity(new Intent(this,MerossAccountActivity.class)));
         stateText = text(body, R.string.equipment_stop_first);
         button(body, R.string.stop, () -> startService(new Intent(this, MoliService.class).setAction(MoliService.STOP)));
         printer = new CheckBox(this); printer.setText(R.string.equipment_printer); body.addView(printer);

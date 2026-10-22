@@ -1,0 +1,48 @@
+Moli OS 0.10.0 — ARM64 — configuration Meross par compte facultatif
+
+Client expérimental : tests avec faux serveur et prises fictives, aucune connexion à un
+vrai compte Meross ni compatibilité matérielle MSS310 6.0.0 validée par Codex.
+L’APK contient un véritable client, pas un mode de simulation exposé à l’utilisateur.
+Aucun essai physique ou compte réel demandé maintenant. Aucune commande ON/OFF.
+
+Installation debug distincte .preview.account.v0100, pas de mise à jour en place garantie.
+Conserver l’ancienne app si ses réglages sont utiles. Restauration chiffrée facultative
+avant création du PIN dans cette nouvelle installation vierge ; sinon initialiser avec
+Démarrer/choix du PIN, puis Arrêter. Signature permanente toujours suspendue.
+
+Parcours ultérieur volontaire
+1. Équipements → Ajouter via compte Meross. Le moteur doit être arrêté.
+2. Lire l’avertissement, autoriser explicitement l’accès cloud, choisir EU/US/AP/Global,
+   puis saisir les identifiants uniquement dans l’application. Se connecter et lire
+   l’inventaire. Le mot de passe n’est jamais enregistré. Aucun compte n’est obligatoire
+   pour la configuration locale manuelle existante.
+3. Si MFA demandée, saisir le code OTP et ressaisir le mot de passe ; attendre au moins
+   10 s avant un nouvel essai. Aucun contournement ni renouvellement silencieux.
+4. L’inventaire reçu est enregistré au coffre. Choisir une MSS310 ; le compte ne garantit
+   pas son IP actuelle. Choisir une IP candidate via Réseau local ou la saisir à la main,
+   port habituel 80. Aucune prise ne sera identifiée sur la seule base de son nom/IP.
+5. Vérifier le nom ; cocher éventuellement l’autorisation des futures lectures locales.
+   « Vérifier l’UUID et enregistrer » effectue un seul GET d’identité à cette adresse.
+   Une identité différente/inaccessible refuse l’association. La clé locale est affectée
+   au coffre de cette instance après vérification ; jamais affichée ni mise en configuration.
+6. Retrouver la prise dans Équipements. Démarrer volontairement le moteur pour lire les
+   mesures. Les prises liées gardent l’UUID attendu, y compris après changement d’IP/nom.
+   Les lectures de mesures liées vérifient l’identité avant leur requête ; une autre prise
+   ayant récupéré l’adresse est refusée. Les commandes électriques restent absentes.
+7. Actualiser l’inventaire uniquement si nécessaire (1 min minimum, 20/h). Connexions :
+   10 essais/h, intervalle minimum 10 s. Pas de scrutation cloud en arrière-plan.
+8. « Déconnecter et oublier » retire le jeton et la clé du profil de compte, puis demande
+   la révocation distante. Une révocation non confirmée est signalée. Les clés locales
+   déjà affectées et les lectures restent utilisables sans compte ni Internet Meross.
+   Jeton expiré/refusé : reconnexion manuelle, aucun mot de passe durable à réutiliser.
+
+Limites
+API communautaire non officielle, susceptible de changer. HTTPS vérifié et destinations
+régionales limitées ; aucun renvoi d’identifiants vers un domaine arbitraire.
+IP privée du Wi-Fi courant, sans VPN, IPv4 uniquement. Découverte partielle possible ;
+aucune association automatique à partir d’un port HTTP, aucun essai réseau permanent.
+MSS310 seulement, EM06 distinct. Les mesures restent celles du pilote local existant.
+Mot de passe/OTP effacés des champs après envoi et à la sortie ; écran protégé des captures.
+Aucun secret dans les journaux/exports de diagnostic. La sauvegarde chiffrée habituelle
+contient le coffre et doit rester protégée ; oublier le compte ne révoque pas une ancienne
+copie de sauvegarde. La veille Samsung prolongée n’est pas requalifiée par ces tests.

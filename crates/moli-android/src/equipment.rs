@@ -108,6 +108,13 @@ fn meross(entries: &Value) -> Result<Value, &'static str> {
             return Err("meross_duplicate");
         }
         checked.push(json!({"id":id,"name":name.trim(),"host":ip,"port":number,"enabled":entry["enabled"].as_bool().unwrap_or(false)}));
+        if let Some(uuid) = entry.get("uuid") {
+            let uuid = uuid
+                .as_str()
+                .filter(|s| valid_id(s))
+                .ok_or("meross_settings")?;
+            checked.last_mut().ok_or("meross_settings")?["uuid"] = json!(uuid);
+        }
     }
     Ok(json!(checked))
 }
@@ -126,8 +133,12 @@ pub fn drivers(input: &Value) -> Result<Vec<Value>, &'static str> {
     }
     if let Some(entries) = checked["meross"].as_array() {
         for entry in entries.iter().filter(|e| e["enabled"] == true) {
-            result.push(json!({"id":format!("android-meross-{}",entry["id"].as_str().ok_or("meross_settings")?),"kind":"profile","options":{
-                "profile":"meross-mss310","host":entry["host"],"port":entry["port"],"name":entry["name"],"discovery":false}}));
+            let mut driver = json!({"id":format!("android-meross-{}",entry["id"].as_str().ok_or("meross_settings")?),"kind":"profile","options":{
+                "profile":"meross-mss310","host":entry["host"],"port":entry["port"],"name":entry["name"],"discovery":false}});
+            if entry["uuid"].is_string() {
+                driver["options"]["vars"] = json!({"expected_uuid":entry["uuid"]});
+            }
+            result.push(driver);
         }
     }
     Ok(result)

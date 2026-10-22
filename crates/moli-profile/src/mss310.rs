@@ -9,6 +9,31 @@ pub(super) async fn fetch(
     secret: Option<&str>,
     compiled: &Compiled,
 ) -> anyhow::Result<Answer> {
+    if compiled.meta.id == "meross-mss310"
+        && compiled.source == super::Source::Builtin
+        && request.id != "all"
+        && let Some(expected) = target.vars.get("expected_uuid")
+    {
+        let identity = compiled
+            .requests
+            .iter()
+            .find(|r| r.id == "all")
+            .ok_or_else(|| anyhow::anyhow!("MSS310 identity request missing"))?;
+        let Answer::Json(mut body) = super::fetch(target, identity, secret).await? else {
+            anyhow::bail!("MSS310 identity rejected");
+        };
+        anyhow::ensure!(
+            body["header"]["namespace"] == "Appliance.System.All",
+            "MSS310 identity namespace rejected"
+        );
+        normalise("all", &mut body)?;
+        anyhow::ensure!(
+            body["payload"]["all"]["system"]["hardware"]["uuid"]
+                .as_str()
+                .is_some_and(|id| id.eq_ignore_ascii_case(expected)),
+            "MSS310 expected identity rejected"
+        );
+    }
     let mut answer = super::fetch(target, request, secret).await?;
     if compiled.meta.id == "meross-mss310" && compiled.source == super::Source::Builtin {
         let Answer::Json(body) = &mut answer else {
@@ -21,6 +46,16 @@ pub(super) async fn fetch(
             );
         }
         normalise(&request.id, body)?;
+        if request.id == "all"
+            && let Some(expected) = target.vars.get("expected_uuid")
+        {
+            anyhow::ensure!(
+                body["payload"]["all"]["system"]["hardware"]["uuid"]
+                    .as_str()
+                    .is_some_and(|id| id.eq_ignore_ascii_case(expected)),
+                "MSS310 expected identity rejected"
+            );
+        }
     }
     Ok(answer)
 }
@@ -198,5 +233,72 @@ mod tests {
         }
         let mut wrong = json!({"payload":{"all":{"system":{"hardware":{"type":"em06","uuid":"00000000000000000000000000000001"}}}}});
         assert!(normalise("all", &mut wrong).is_err());
+    }
+}
+
+#[cfg(test)]
+mod binding_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    #[tokio::test]
+    async fn meross_bound_measurement_refuses_another_uuid_before_reading_electricity() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let fixture = tokio::spawn(async move {
+            for value in [
+                "00000000000000000000000000000001",
+                "00000000000000000000000000000002",
+            ] {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut headers = vec![];
+                let mut byte = [0];
+                while !headers.ends_with(b"\r\n\r\n") {
+                    stream.read_exact(&mut byte).await.unwrap();
+                    headers.push(byte[0]);
+                    assert!(headers.len() < 8192);
+                }
+                let head = String::from_utf8(headers).unwrap();
+                let len = head
+                    .lines()
+                    .find_map(|s| {
+                        s.to_ascii_lowercase()
+                            .strip_prefix("content-length:")
+                            .map(|s| s.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap();
+                let mut body = vec![0; len];
+                stream.read_exact(&mut body).await.unwrap();
+                let request: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                assert_eq!(request["header"]["namespace"], "Appliance.System.All");
+                assert_eq!(request["header"]["method"], "GET");
+                let mut response: serde_json::Value = serde_json::from_str(include_str!(
+                    "../../../integrations/meross-mss310/fixtures/all.json"
+                ))
+                .unwrap();
+                response["payload"]["all"]["system"]["hardware"]["uuid"] = serde_json::json!(value);
+                let body = response.to_string();
+                stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).as_bytes()).await.unwrap();
+            }
+        });
+        assert_eq!(
+            crate::mss310_identity("127.0.0.1", port, &"a".repeat(32))
+                .await
+                .unwrap(),
+            "00000000000000000000000000000001"
+        );
+        let (compiled, _) = crate::open("meross-mss310").unwrap();
+        let config:crate::Config=serde_json::from_value(serde_json::json!({"profile":"meross-mss310","host":"127.0.0.1","port":port,"discovery":false,"vars":{"expected_uuid":"00000000000000000000000000000001"}})).unwrap();
+        let target = crate::Target::of(&config, &compiled).unwrap();
+        let request = compiled
+            .requests
+            .iter()
+            .find(|r| r.id == "electricity")
+            .unwrap();
+        let error = fetch(&target, request, Some(&"a".repeat(32)), &compiled)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("expected identity rejected"));
+        fixture.await.unwrap(); // Only two identity GETs, no electricity request to the other plug.
     }
 }
