@@ -1,6 +1,10 @@
 package io.moli.android;
 
 import android.content.*;
+import android.app.Activity;
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
+import androidx.test.runner.lifecycle.Stage;
+import java.util.function.Consumer;
 import android.os.SystemClock;
 import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -33,7 +37,7 @@ public final class EquipmentReadTest {
         AtomicReference<String> result = new AtomicReference<>(); ui.onActivity(a -> a.web.evaluateJavascript(code,result::set));
         until(() -> result.get()!=null); return result.get();
     }
-    private static void saved(ActivityScenario<EquipmentSettingsActivity> ui) throws Exception {
+    private static void saved(EquipmentScreen ui) throws Exception {
         until(() -> { AtomicReference<Boolean> ok = new AtomicReference<>(false); ui.onActivity(a -> ok.set(a.message.getText().toString().equals(a.getString(R.string.equipment_saved)) && a.start.isEnabled())); return ok.get(); });
     }
     private static String localAddress() throws Exception {
@@ -52,7 +56,7 @@ public final class EquipmentReadTest {
         String address = localAddress();
         try (Fixture fixture = new Fixture(); ActivityScenario<MainActivity> home = ActivityScenario.launch(MainActivity.class)) {
             try {
-                try (ActivityScenario<EquipmentSettingsActivity> ui = ActivityScenario.launch(EquipmentSettingsActivity.class)) {
+                try (EquipmentScreen ui = EquipmentScreen.open(home)) {
                     until(() -> { AtomicReference<Boolean> ready = new AtomicReference<>(false); ui.onActivity(a -> ready.set(a.save.isEnabled())); return ready.get(); });
                     ui.onActivity(a -> {
                         a.printer.setChecked(true); a.host.setText("8.8.8.8"); a.port.setText(String.valueOf(fixture.port())); a.path.setText("/ipp/print");
@@ -92,7 +96,7 @@ public final class EquipmentReadTest {
                 until(() -> { fixture.check(); return "true".equals(js(home,"document.querySelector('[data-equipment=printer]')?.dataset.equipmentStatus==='unavailable'")); });
                 assertEquals(lease,EngineHost.currentLease());
                 app.startService(new Intent(app,MoliService.class).setAction(MoliService.STOP)); until(() -> EngineHost.state()==EngineHost.State.STOPPED);
-                try (ActivityScenario<EquipmentSettingsActivity> ui = ActivityScenario.launch(EquipmentSettingsActivity.class)) {
+                try (EquipmentScreen ui = EquipmentScreen.open(home)) {
                     savedAfterRecreation(ui,address);
                     ui.onActivity(a -> { a.printer.setChecked(false); a.gateway.setChecked(false); a.save.performClick(); });
                     saved(ui); int before=fixture.count(); ui.onActivity(a -> a.start.performClick());
@@ -109,8 +113,44 @@ public final class EquipmentReadTest {
             }
         }
     }
-    private static void savedAfterRecreation(ActivityScenario<EquipmentSettingsActivity> ui,String address) throws Exception {
+    private static void savedAfterRecreation(EquipmentScreen ui,String address) throws Exception {
         until(() -> { AtomicReference<Boolean> ready=new AtomicReference<>(false); ui.onActivity(a -> ready.set(a.start.isEnabled() && address.equals(a.host.getText().toString()) && a.printer.isChecked() && a.gateway.isChecked())); return ready.get(); });
+    }
+    /** ActivityScenario's invoker always adds CLEAR_TASK, even with an explicit
+     * Intent. Open the child like the app does and observe its actual lifecycle. */
+    private static final class EquipmentScreen implements AutoCloseable {
+        private static EquipmentSettingsActivity current() {
+            for (Activity activity : ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))
+                if (activity instanceof EquipmentSettingsActivity) return (EquipmentSettingsActivity)activity;
+            return null;
+        }
+        static EquipmentScreen open(ActivityScenario<MainActivity> home) throws Exception {
+            home.onActivity(a -> a.startActivity(new Intent(a,EquipmentSettingsActivity.class)));
+            until(() -> {
+                AtomicReference<Boolean> visible=new AtomicReference<>(false);
+                InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> visible.set(current()!=null));
+                return visible.get();
+            });
+            return new EquipmentScreen();
+        }
+        void onActivity(Consumer<EquipmentSettingsActivity> action) {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
+                EquipmentSettingsActivity activity=current(); assertNotNull("Configuration screen resumed",activity); action.accept(activity);
+            });
+        }
+        void recreate() throws Exception {
+            AtomicReference<EquipmentSettingsActivity> before=new AtomicReference<>();
+            onActivity(a -> { before.set(a); a.recreate(); });
+            until(() -> {
+                AtomicReference<Boolean> changed=new AtomicReference<>(false);
+                InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> changed.set(current()!=null && current()!=before.get()));
+                return changed.get();
+            });
+        }
+        @Override public void close() {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> { EquipmentSettingsActivity activity=current(); if(activity!=null) activity.finish(); });
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+        }
     }
     private static final class Fixture implements AutoCloseable {
         final ServerSocket server = new ServerSocket(0,8,InetAddress.getByName("0.0.0.0"));
