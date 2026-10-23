@@ -123,6 +123,8 @@ jobs:
           chmod +x gradlew
           mkdir -p ../android-artifacts/reports
           (cd .. && python3 scripts/test-android-beta-metadata.py)
+          # The APK checkout is shallow; fetch only the comparison object if absent.
+          git cat-file -e "$PREVIOUS_REF^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$PREVIOUS_REF"
           (cd .. && python3 scripts/check-android-beta.py --previous-ref "$PREVIOUS_REF")
           ./gradlew --no-daemon :app:testDebugUnitTest --tests io.moli.android.DataFreshnessTest --tests io.moli.android.ProfileInputTest --tests io.moli.android.TrialJournalTest --tests io.moli.android.WeatherBudgetTest --tests io.moli.android.TrialEvidenceTest --tests io.moli.android.NetworkEvidenceTest --tests io.moli.android.DiscoveryHttpTest --tests io.moli.android.MerossMatchesTest --tests io.moli.android.BackupArchiveTest :app:assembleBeta :app:lintBeta
           apk=app/build/outputs/apk/beta/app-beta-unsigned.apk
