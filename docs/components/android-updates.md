@@ -1,117 +1,121 @@
-# Android identity, updates and recovery
+# Android beta identity, updates and recovery
 
-The unified app contains the original Rust engine/dashboard, start/stop controls,
-encrypted backup/restore, and **App / Updates**. That screen shows the installed
-version, package ID and public signing-certificate SHA-256, plus Android notification
-and battery-optimization states. It never displays the Moli master key or reads a
-signing private key. Android settings open only when the user taps the button.
+## Prepared identity; distribution is not enabled
 
-## Identities and transition
+`android/beta.properties` is the single source of beta metadata:
+`io.moli.android.app.beta`, label **Moli OS Bêta / Moli OS Beta**, initially
+`0.14.0-beta.1`, version code **17**. The identity and label never contain a version.
+`:app:assembleBeta` produces an **unsigned, non-debuggable ARM64 APK**, Android
+9/API 28 minimum and API 35 target, with the existing permissions. Debug overrides
+cannot change beta output metadata. Production `io.moli.android.app` and historical
+preview IDs remain separate; no existing application is renamed or uninstalled.
 
-| Build | Application ID | Purpose |
-|---|---|---|
-| Proposed durable release, currently unsigned | `io.moli.android.app` | One ongoing application after signing approval |
-| Unified demo | `io.moli.android.app.preview` | Paired upgrade demonstration; Moli OS Preview |
-| Disposable emulator receiver | `io.moli.android.app.preview.receiver` | Pre-update rescue archive verification |
+The beta has deliberately **no signing configuration or debug fallback**. It is
+not yet an installable distribution. No new temporary preview is delivered.
+`check-android-beta.py` validates fixed identity, metadata, permissions and ABI;
+comparison with a previous reference rejects decreasing codes or a new name with
+an unchanged code. Before any future distribution, run its `--delivery
+--previous-ref <previous-distributed-commit>` guard: every delivered beta must have
+a strictly greater code. Rebuilding an unchanged commit for verification is allowed.
 
-The old `io.moli.android`, `io.moli.android.recovery`, and
-`io.moli.android.recovery.receiver` installations remain independent. The unified
-app cannot read their private data. A recovery-preview archive can be imported
-into the **fresh** unified app before starting it; the original prototype has no
-export interface and is not automatically migrated. Never uninstall an existing
-installation to resolve an update/signature error.
+## Emulator proof
 
-## Try the paired demo APKs
+`scripts/test-android-beta-update.sh` refuses physical devices and existing test
+installations. Its two beta APKs use the same ephemeral **Gradle debug signer in
+one disposable job**, package `.beta` and test-only labels/version names. The
+`.beta` debug identity requires explicit `moliUpdateFixture=true`; production beta
+remains unsigned. Neither test APK nor its private signing key is uploaded,
+cached as signing material, or offered for installation. These are fixtures,
+not a durable distribution key or a promise of cross-job updates.
 
-The **Android update continuity** workflow delivers two ARM64 APKs signed with the
-same disposable debug certificate in a single CI job:
+The test creates a fresh 0.13 preview with format-2 random credentials, a synthetic
+encrypted account/session/inventory of four plugs and local keys, saved equipment,
+configuration, SQLite and recordings. Only an authenticated encrypted recovery
+archive crosses to a fresh beta UID. The untouched Rust reader checks the synthetic
+vault; fixture encryption is confined to androidTest code, with no production test
+hook or actual cloud/device operation.
 
-1. Install `moli-preview-0.3.0-arm64.apk` (version code 3). Before its first Start,
-   optionally restore an existing *synthetic* recovery-preview archive. Otherwise
-   create a test PIN and use the dashboard normally.
-2. Stop the server and wait for shutdown. Export a recovery archive and retain its
-   password separately. Keep the app installed.
-3. Install `moli-preview-0.3.1-arm64.apk` (code 4) **over** the first APK using the
-   Android installer. Reopen it, check version 0.3.1 in App / Updates, then Start.
-   Check the same PIN and test configuration. Explicit Stop remains remembered.
+It installs beta A (17), restores before a fresh key is created, then installs B
+(18) **using `adb install -r`, without uninstall, clearing, export or re-login**.
+Assertions compare UID, signing certificate, every data-file hash, wrapped-key
+bytes, unwrapped master/bootstrap hashes, data-generation selection and preferences;
+Rust reopens the account/inventory and confirms all four local keys remain present.
+An ordinary downgrade and a differently signed APK must be refused; data is
+checked again afterwards. A separate legacy numeric-PIN archive is also restored
+in an independent UID. Both source formats use synthetic data; this does not
+claim a physical tablet update or actual Meross refresh. Successful fixtures are
+removed only after all checks on that disposable emulator, never between A and B.
 
-Both builds deliberately share the same source with different version metadata:
-this demonstrates Android package replacement and persistence, not a database
-schema migration. Different CI jobs can have different debug signers; only use the
-pair from **one** artifact. A later preview is not promised to update this one.
-If either installer refuses, stop and report the message; do not clear app data,
-force a downgrade or remove any installed app. The future durable identity will
-receive an encrypted restore into a fresh installation once approved.
+The existing home/navigation/read-only integration suite follows in the same
+emulator job. Only redacted reports, public metadata/checksums and synthetic
+screenshots are retained. No runtime archive, keystore or signed test APK is a CI
+artifact. The JNI cache remains keyed solely by unchanged native inputs.
 
-Android updates require the same application ID, a compatible signer and increasing
-version codes. Installation kills the running process, so the supported procedure
-is **stop → encrypted backup → install → reopen → start**. No automatic installer,
-boot receiver or background restart is introduced. Backups use the existing portable
-format and native data layout. For an incompatible future format, keep the previous
-signed APK and recovery archive, and require a tested migration/recovery plan before
-shipping; APK downgrade is not a data rollback strategy.
+## One-time migration, then normal updates
 
-## Durable signing proposal — owner decision required
+**Initial beta installation (after stable signing approval):** stop the old engine,
+export an encrypted backup if its data is useful, keep its password separately.
+Install Moli OS Bêta alongside the preview. Before its first Search/My devices,
+use Settings → Backup/transfer to restore. The old app and its only useful data
+must remain until recovery is verified. No PIN is requested for a fresh format-2
+installation; legacy numeric credentials remain supported. Do not run both engines.
 
-Recommended first distribution: versioned APKs with release notes, checksums and
-public certificate fingerprint, installed manually through Android. No Play account,
-paid service or in-app updater is needed. Publishing a release remains a deliberate
-step after its checks and owner approval where required.
+**Subsequent beta update:** stop Moli, retain a current encrypted backup as a
+precaution, install the newer signed APK over **Moli OS Bêta**, then reopen it.
+An ordinary update retains private files and Android Keystore; it needs no archive
+restore, new PIN or Meross login. Engine restart stays voluntary. Android Settings
+can authorize the browser/file manager to install an APK; no Play account or PC is
+needed for ordinary installation. There is no in-app automatic installer.
 
-Reserve `io.moli.android.app`, keep one long-lived signing certificate and monotonically
-increase `versionCode`. Create its private keystore **only after explicit owner
-approval**, on an owner-controlled trusted machine. Keep an encrypted offline backup
-and the password in separate owner-controlled storage. Never put either in Git,
-APK artifacts, build caches, logs or chat. The signing key is distinct from the
-per-installation Moli encryption key and Android Keystore wrapping key.
+**Signature refusal:** stop; do not uninstall, clear data or force an install.
+Check package/version and the published certificate fingerprint. **Data-format
+incompatibility:** preserve the existing installation and backup, report the exact
+error; require a tested migration before shipment. APK downgrade is not data rollback.
+No schema change is introduced here. Existing archives, guarded restore, old
+credentials and Android automatic-backup disabling are unchanged.
 
-Initially CI can build the unsigned release (`:app:assembleRelease`); signing occurs
-outside CI using that owner-held keystore. Verify its certificate fingerprint and
-install/update test before distribution. This limits production-key exposure but
-requires an owner signing step per release. For later unattended distribution, a
-separate explicit approval can authorize a keystore/password in a restricted GitHub
-environment and an audited signing workflow, with branch/environment restrictions
-and a separately held recovery copy. No such environment, secret, permanent key,
-public release or signing automation is created by this change.
+## Future stable signing: explicit owner approval still required
 
-The release build intentionally has no signing configuration and does not fall back
-to a debug signer. Loss of the durable signer can prevent updates; recovery of data
-into a separately signed identity then depends on a valid encrypted archive and its
-password. Preserve both independently.
+Recommended custody: **owner-held encrypted PKCS12/keystore backup**, password in
+a separate password manager, and a controlled CI copy for repeatable signing.
+Choose one RSA 3072-bit signing key with a long validity, keep the public certificate
+fingerprint pinned and publish it with future APK checksums. This key is entirely
+separate from the Moli master key and Android Keystore wrapping key. Its loss can
+prevent in-place updates; an encrypted Moli backup cannot replace a signing key.
 
-## Verification scope
+No PC is required in principle for the one-time setup: an owner-controlled browser
+workspace (for example a private GitHub Codespace **only if included quota is
+available, paid usage disabled and its use separately approved**) can generate it
+outside Git and let the owner download the password-protected recovery file
+privately. An existing trusted personal computer is an alternative. **Do not
+create such a workspace/key now.** No key, password, base64 copy or private recovery
+file may enter Git, CI artifacts/cache/logs, screenshots, PRs or this chat. Private
+browser downloads are for the owner's custody, not build artifacts. Confirm that
+the recovery copy is actually held before enabling distribution.
 
-`scripts/test-android-update.sh` requires a disposable emulator and absent test
-packages. It configures version 3, records the private file inventory, wrapped-key
-hash, public signer and UID, and copies only the encrypted rescue archive out.
-It installs version 4 with `adb install -r` (no clearing/uninstall), requires an
-ordinary downgrade to be refused, checks unchanged files/preferences/wrapped key,
-opens that key with Android Keystore, then starts the actual server and dashboard.
-Finally it restores the pre-update archive in a separate UID/Keystore and checks
-SQLite, recordings and vault startup. PR synchronization compares the previous and new head for actual APK/test inputs;
-documentation or source-hygiene-only updates preserve existing results. A workflow-only
-change needing an APK job can be verified through explicit workflow dispatch.
-Neither plaintext keys nor runtime archives
-are retained in CI artifacts. No claim of crash/power-loss atomicity or real-device
-upgrade validation follows from this emulator test.
+For later CI signing, the owner would create an `android-beta-signing` GitHub
+Environment on the public code repo, limited to the protected trusted branch and
+requiring owner review. Store keystore and passwords only as environment secrets;
+use the GitHub web interface, never paste them into this conversation. A separate,
+reviewed `workflow_dispatch` signing job must accept only an approved immutable
+commit and a verified unsigned APK. No `pull_request` or `pull_request_target` job
+may use the environment. The signing job must not run untrusted repository/build
+scripts after secrets become available; use pinned SDK signing tools, least token
+permissions, a private temporary directory and cleanup, no signing-key cache.
+Only the signed APK, public certificate and checksums may be retained/published.
+A sole owner must be able to approve their own manually dispatched environment
+review; do not enable a self-review ban that makes that arrangement impossible.
+Branch/environment controls are real GitHub settings, not substitutes in a README.
 
-## Samsung sleep preparation
+This requires explicit decisions on key creation/custody, the owner recovery copy,
+CI secret setup and the trusted signing workflow/branch. No environment, secret,
+key, paid workspace, public release or merge is configured by this preparation.
+The eventual first signed build must be checked against the pinned fingerprint
+and its next signed update tested before inviting users to rely on continuity.
 
-When the owner is available, use synthetic data and record Android/One UI version,
-app version, notification status and the battery state shown in App / Updates.
-Keep the initial Samsung settings for the first observation:
+## Android background limitations
 
-- Start and lock the screen for 30–60 minutes; note notification presence, dashboard
-  responsiveness and any error on reopening. A visible notification alone does not
-  prove the engine worked continuously while asleep.
-- If that succeeds, observe a longer idle period (for example overnight) and note
-  time and battery change. Without active integrations there is no proof yet of
-  scheduled actions or network reliability during Doze.
-- Separately, explicitly Stop, close and reopen: it must remain stopped. After an
-  owner-initiated reboot or Android force-stop, reopen and start manually as needed.
-- If Samsung restricts the app, record its Battery/background-use settings before
-  changing anything. The Android exemption indicator does not cover Samsung deep
-  sleep lists; change one setting at a time only under owner control.
-
-No wake lock, blanket battery exemption, boot automation, real-equipment operation,
-or Linux migration work is included here.
+No wake lock, global battery exemption, boot receiver or unattended restart is
+introduced. A notification does not prove continuous engine activity while asleep.
+Samsung prolonged sleep still needs owner-observed evidence when convenient;
+this update test does not repeat or replace it. No physical commands or Pi work.

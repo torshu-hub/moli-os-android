@@ -15,6 +15,9 @@ on:
       - '.cargo/audit.toml'
       - 'Cargo.lock'
       - 'scripts/test-android-integrations.sh'
+      - 'scripts/test-android-beta-update.sh'
+      - 'scripts/check-android-beta.py'
+      - 'scripts/test-android-beta-metadata.py'
       - '.github/workflows/android-integrations.yml'
   workflow_dispatch:
 
@@ -47,7 +50,7 @@ jobs:
           # a source-hygiene/docs-only fix must not rebuild already verified APKs.
           if [ "$EVENT_ACTION" != synchronize ]; then
             echo 'rebuild=true' >> "$GITHUB_OUTPUT"
-          elif git diff --quiet "$BEFORE" "$AFTER" -- android crates vendor integrations locales web .cargo Cargo.toml Cargo.lock moli.example.toml LICENSE NOTICE scripts/build-android.sh scripts/verify-android-apk.py scripts/test-android-integrations.sh .github/workflows/android-integrations.yml; then
+          elif git diff --quiet "$BEFORE" "$AFTER" -- android crates vendor integrations locales web .cargo Cargo.toml Cargo.lock moli.example.toml LICENSE NOTICE scripts/build-android.sh scripts/verify-android-apk.py scripts/test-android-integrations.sh scripts/test-android-beta-update.sh scripts/check-android-beta.py scripts/test-android-beta-metadata.py .github/workflows/android-integrations.yml; then
             echo 'rebuild=false' >> "$GITHUB_OUTPUT"
           else
             status=$?
@@ -109,22 +112,30 @@ jobs:
         run: sh scripts/build-android.sh arm64-v8a
       - name: Verify dashboard translations and source status
         run: node scripts/i18n-check.mjs && node --test web/src/maison/lib/source-status.test.js
-      - name: Build ARM64 integrations and targeted checks
+      - name: Prepare unsigned ARM64 beta and targeted checks
+        id: beta
+        env:
+          PREVIOUS_REF: ${{ github.event.before || github.event.pull_request.base.sha || github.sha }}
         working-directory: android
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          mkdir -p ../android-artifacts/install ../android-artifacts/reports
-          ./gradlew --no-daemon :app:testDebugUnitTest --tests io.moli.android.DataFreshnessTest --tests io.moli.android.ProfileInputTest --tests io.moli.android.TrialJournalTest --tests io.moli.android.WeatherBudgetTest --tests io.moli.android.TrialEvidenceTest --tests io.moli.android.NetworkEvidenceTest --tests io.moli.android.DiscoveryHttpTest --tests io.moli.android.MerossMatchesTest --tests io.moli.android.BackupArchiveTest :app:assembleDebug :app:lintDebug -PmoliAppSuffix=.preview.automatic.v0130
-          cp app/build/outputs/apk/debug/app-debug.apk ../android-artifacts/install/moli-os-android-0.13.0-arm64.apk
-          apk=../android-artifacts/install/moli-os-android-0.13.0-arm64.apk
+          mkdir -p ../android-artifacts/reports
+          (cd .. && python3 scripts/test-android-beta-metadata.py)
+          (cd .. && python3 scripts/check-android-beta.py --previous-ref "$PREVIOUS_REF")
+          ./gradlew --no-daemon :app:testDebugUnitTest --tests io.moli.android.DataFreshnessTest --tests io.moli.android.ProfileInputTest --tests io.moli.android.TrialJournalTest --tests io.moli.android.WeatherBudgetTest --tests io.moli.android.TrialEvidenceTest --tests io.moli.android.NetworkEvidenceTest --tests io.moli.android.DiscoveryHttpTest --tests io.moli.android.MerossMatchesTest --tests io.moli.android.BackupArchiveTest :app:assembleBeta :app:lintBeta
+          apk=app/build/outputs/apk/beta/app-beta-unsigned.apk
           python3 ../scripts/verify-android-apk.py "$apk"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk" > "$apk.certificate.txt"
+          (cd .. && python3 scripts/check-android-beta.py --apk "android/$apk") > ../android-artifacts/reports/beta-metadata.json
+          # No distribution key exists. A beta must remain unsigned, never debug-signed.
+          if "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$apk" > ../android-artifacts/reports/beta-unsigned.txt 2>&1; then
+            echo 'Unexpected signed beta: distribution remains unauthorized' >&2; exit 1
+          fi
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 4 "$apk"
-          (cd ../android-artifacts/install && sha256sum moli-os-android-0.13.0-arm64.apk > SHA256SUMS)
-          cp app/src/main/assets/synthetic-temperature.toml ../android-artifacts/install/
-          cp ../docs/android/INSTALLATION-0.13.0.txt ../android-artifacts/install/INSTALLATION.txt
+          sha256sum "$apk" > ../android-artifacts/reports/beta-unsigned-sha256.txt
+          version=$(sed -n 's/^versionName=//p' beta.properties)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Build the emulator JNI library only on a native cache miss
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: sh scripts/build-android.sh x86_64
@@ -146,24 +157,18 @@ jobs:
           target: google_apis
           disable-animations: true
           working-directory: android
-          script: sh ../scripts/test-android-integrations.sh
+          script: |
+            sh ../scripts/test-android-beta-update.sh
+            sh ../scripts/test-android-integrations.sh
       - name: Check public-source hygiene
         run: sh scripts/leak-check.sh
-      - name: Retain install bundle with flat versioned names
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: moli-os-android-0.13.0-arm64
-          path: android-artifacts/install/*
-          if-no-files-found: warn
-          retention-days: 14
       - name: Retain verification separately
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: moli-os-android-0.13.0-test-reports
+          name: moli-os-android-${{ steps.beta.outputs.version || 'beta-preparation' }}-update-reports
           path: |
             android-artifacts/reports/
-            android/app/build/reports/lint-results-debug.html
+            android/app/build/reports/lint-results-beta.html
             android/app/build/test-results/testDebugUnitTest/
           retention-days: 14

@@ -26,8 +26,10 @@ python3 scripts/verify-android-apk.py android/app/build/outputs/apk/debug/app-de
 ```
 
 The default debug APK now uses `io.moli.android.app.preview` (**Moli OS Preview**,
-localized), independent of earlier prototypes. The proposed durable identity is
-`io.moli.android.app`; release builds remain unsigned pending an owner decision.
+localized), independent of earlier prototypes. The prepared beta identity is
+`io.moli.android.app.beta` (fixed label, version metadata in `android/beta.properties`);
+`:app:assembleBeta` is non-debuggable and intentionally unsigned pending signing approval.
+Production `io.moli.android.app` remains separate and unsigned.
 See [identity, paired updates, signing proposal and sleep preparation](android-updates.md).
 The debug APK contains only ARM64 by default, with provisional API 28 minimum.
 Packaging and emulator results do not substitute for physical device validation.

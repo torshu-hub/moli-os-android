@@ -1,4 +1,6 @@
 <resources>
+    <string name="app_name_beta">Moli OS Bêta</string>
+    <string name="app_name_beta_fixture">Moli OS — Test de mise à jour</string>
     <string name="app_name">Moli OS</string>
     <string name="start">Démarrer</string>
     <string name="stop">Arrêter</string>
@@ -33,7 +35,7 @@
     <string name="app_settings">Réglages Android de cette application</string>
     <string name="app_identity">Version %1$s (%2$d)\nApplication : %3$s\nCertificat public SHA-256 :\n%4$s</string>
     <string name="app_identity_unavailable">Identité de cette installation indisponible.</string>
-    <string name="update_help">Avant une mise à jour : arrêtez Moli, exportez une sauvegarde chiffrée et gardez son mot de passe séparément. Installez ensuite le nouvel APK par-dessus cette application, puis rouvrez Moli et démarrez le serveur. Android conserve les données si le nom de paquet et la signature restent compatibles et si la version augmente. Si Android refuse, ne désinstallez rien et ne supprimez pas les données. Les APK de démonstration ne garantissent cette continuité que dans une même livraison. Le passage vers une future version durable utilisera une restauration dans une nouvelle installation.</string>
+    <string name="update_help">Moli OS Bêta utilise un nom de paquet fixe. Après la première migration chiffrée depuis une ancienne version, les mises à jour doivent être installées par-dessus la bêta avec la même signature et une version supérieure. Arrêtez Moli et conservez une sauvegarde récente avant installation. Une mise à jour normale conserve les données et le coffre sans restauration ni reconnexion. Si Android refuse la signature ou si un format est incompatible, ne désinstallez rien et ne supprimez pas les données. La distribution bêta reste en attente de validation de la clé de signature ; les signatures de test ne garantissent pas les mises à jour futures.</string>
     <string name="background_status">\nNotifications : %1$s\nBatterie Android : %2$s\nCes états ne prouvent pas le fonctionnement en veille prolongée. Les restrictions Samsung peuvent être supplémentaires. Après redémarrage système ou arrêt forcé, rouvrez Moli manuellement.</string>
     <string name="notifications_allowed">autorisées</string>
     <string name="notifications_blocked">bloquées</string>

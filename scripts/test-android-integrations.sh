@@ -11,7 +11,7 @@ adb shell settings put system screen_off_timeout 1800000
 adb shell svc power stayon true
 adb shell input keyevent KEYCODE_WAKEUP
 adb shell wm dismiss-keyguard
-./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest -PmoliAbis=x86_64 -PmoliAppSuffix=.preview.automatic.v0130
+./gradlew --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest -PmoliAbis=x86_64 -PmoliAppSuffix=.preview.automatic.v0130 -PmoliVersionCode=16 -PmoliVersionName=0.13.0-preview
 # Verify actual packaged fixture bytes, including on a clean CI checkout.
 python3 - <<'PYFIXTURE'
 from pathlib import Path

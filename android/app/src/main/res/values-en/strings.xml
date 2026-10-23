@@ -1,4 +1,6 @@
 <resources>
+    <string name="app_name_beta">Moli OS Beta</string>
+    <string name="app_name_beta_fixture">Moli OS — Update fixture</string>
     <string name="app_name">Moli OS</string>
     <string name="start">Start</string>
     <string name="stop">Stop</string>
@@ -33,7 +35,7 @@
     <string name="app_settings">Android settings for this app</string>
     <string name="app_identity">Version %1$s (%2$d)\nApplication: %3$s\nPublic certificate SHA-256:\n%4$s</string>
     <string name="app_identity_unavailable">Installation identity unavailable.</string>
-    <string name="update_help">Before updating: stop Moli, export an encrypted backup and keep its password separately. Install the new APK over this app, then reopen Moli and start the server. Android preserves data when the package name and signature remain compatible and the version increases. If Android refuses, do not uninstall or clear data. Demo APKs guarantee signing continuity only within one delivery. Moving to a future durable release will use restoration into a new installation.</string>
+    <string name="update_help">Moli OS Beta uses a fixed package name. After the initial encrypted migration from an older app, install updates over the beta with the same signing identity and a higher version code. Stop Moli and retain a recent backup first. Ordinary updates preserve data and the vault without restoring or signing in again. If Android rejects the signature or a data format is incompatible, do not uninstall or clear data. Beta distribution awaits signing-key approval; test signatures do not guarantee future updates.</string>
     <string name="background_status">\nNotifications: %1$s\nAndroid battery: %2$s\nThese states do not prove extended sleep reliability. Samsung may apply additional restrictions. After reboot or force-stop, reopen Moli manually.</string>
     <string name="notifications_allowed">allowed</string>
     <string name="notifications_blocked">blocked</string>
