@@ -17,3 +17,5 @@ web/dist
 *.keystore
 *.p12
 *.pfx
+
+/tools/android-signing/__pycache__/

@@ -74,44 +74,99 @@ error; require a tested migration before shipment. APK downgrade is not data rol
 No schema change is introduced here. Existing archives, guarded restore, old
 credentials and Android automatic-backup disabling are unchanged.
 
-## Future stable signing: explicit owner approval still required
+## Reusable beta signing — owner backup first
 
-Recommended custody: **owner-held encrypted PKCS12/keystore backup**, password in
-a separate password manager, and a controlled CI copy for repeatable signing.
-Choose one RSA 3072-bit signing key with a long validity, keep the public certificate
-fingerprint pinned and publish it with future APK checksums. This key is entirely
-separate from the Moli master key and Android Keystore wrapping key. Its loss can
-prevent in-place updates; an encrypted Moli backup cannot replace a signing key.
+The chosen scope is a **single-user test/beta key**, not an official production
+release key. Keep one password-protected PKCS12 file, alias `moli-beta`, RSA 3072,
+SHA-256 certificate, 10,000-day validity. One NordPass entry may hold both its
+32-character random password and its file attachment. Never regenerate it for a
+new version. Losing both copies prevents ordinary updates; the Moli data backup
+cannot replace the signing key. A later production identity remains a separate decision.
 
-No PC is required in principle for the one-time setup: an owner-controlled browser
-workspace (for example a private GitHub Codespace **only if included quota is
-available, paid usage disabled and its use separately approved**) can generate it
-outside Git and let the owner download the password-protected recovery file
-privately. An existing trusted personal computer is an alternative. **Do not
-create such a workspace/key now.** No key, password, base64 copy or private recovery
-file may enter Git, CI artifacts/cache/logs, screenshots, PRs or this chat. Private
-browser downloads are for the owner's custody, not build artifacts. Confirm that
-the recovery copy is actually held before enabling distribution.
+### Three owner actions, phone/tablet only
 
-For later CI signing, the owner would create an `android-beta-signing` GitHub
-Environment on the public code repo, limited to the protected trusted branch and
-requiring owner review. Store keystore and passwords only as environment secrets;
-use the GitHub web interface, never paste them into this conversation. A separate,
-reviewed `workflow_dispatch` signing job must accept only an approved immutable
-commit and a verified unsigned APK. No `pull_request` or `pull_request_target` job
-may use the environment. The signing job must not run untrusted repository/build
-scripts after secrets become available; use pinned SDK signing tools, least token
-permissions, a private temporary directory and cleanup, no signing-key cache.
-Only the signed APK, public certificate and checksums may be retained/published.
-A sole owner must be able to approve their own manually dispatched environment
-review; do not enable a self-review ban that makes that arrangement impossible.
-Branch/environment controls are real GitHub settings, not substitutes in a README.
+1. **NordPass:** create “Moli OS — Signature bêta”, generate/save a random 32-character
+   ASCII password. If this entry already holds a `.p12`, skip new-key creation.
+2. **Private Colab session:** open the [prepared notebook](../../tools/android-signing/moli-beta-key.ipynb)
+   in your own Google account, free CPU runtime. Run creation, enter the password
+   in masked prompts and download `moli-beta-signature.p12`. Attach it to the same
+   NordPass entry and record the displayed **public** certificate fingerprint.
+   Reopen NordPass, **download its attachment again**, then run the notebook's
+   verification cell on that downloaded file. This checks that the saved copy and
+   password actually work before preparing a GitHub credential. Existing owners
+   can use verification alone; it never regenerates their key.
+3. **GitHub activation, guided separately:** copy the notebook's opaque credential
+   only into environment secret `BETA_SIGNING_BUNDLE`, not a repository secret.
+   Environment: `android-beta-signing`, selected deployment **branch `main` only**,
+   no tags. Keep updates to that trusted branch owner-controlled. No extra reviewer
+   chain is needed: the workflow is manual, owner-only and main-only. The reviewed
+   single workflow file must first be placed on default `main` by an explicitly
+   authorized owner action; **this preparation does not change main or merge PR #7**.
 
-This requires explicit decisions on key creation/custody, the owner recovery copy,
-CI secret setup and the trusted signing workflow/branch. No environment, secret,
-key, paid workspace, public release or merge is configured by this preparation.
-The eventual first signed build must be checked against the pinned fingerprint
-and its next signed update tested before inviting users to rely on continuity.
+The Colab link must use the reviewed immutable Git commit, not a moving branch.
+The notebook is a small Python utility in a Google VM private to the owner's
+account, **not computation exclusively on the phone**. It uses `cryptography`,
+does not mount Drive or access NordPass/GitHub accounts, and prints only public
+fingerprints. No private key is created in Codex. The encrypted file downloads
+privately to the owner; it is never a GitHub build artifact. The verification
+cell attests personal NordPass retrieval, validates the same certificate/password,
+then offers a copy button for one credential bundle. That bundle includes the
+password: paste it only into the GitHub secret, replace the clipboard afterwards,
+and close/delete the private Colab runtime. Do not save notebook outputs to GitHub
+or share that session. Outputs are excluded from saved copies by notebook metadata.
+No paid Colab plan, GPU, Codespace, Play account, PC or new signing app is needed;
+free Colab availability is not guaranteed. If its crypto library is unavailable,
+stop before entering any password and ask for guidance rather than using another key.
+
+NordPass Android [official attachment instructions](https://support.nordpass.com/hc/en-us/articles/43785604725137-Attach-files-to-NordPass-items-on-Mobile)
+confirm attach/download support for Premium. [Colab's FAQ](https://research.google.com/colaboratory/faq.html)
+describes its free tier and private account runtimes. The mobile browser journey
+has not been physically tested here. Do not send a `.p12`, bundle, password or
+screenshot containing them to chat, issue, PR, Git, CI logs or public artifacts.
+
+### One manual workflow, no signing key in a build
+
+`.github/workflows/android-beta-sign.yml` is self-contained so activating it does
+not require merging the application PR. GitHub requires this manual workflow on
+the default branch ([official documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)).
+It is **prepared in the draft branch, not activated on main**.
+
+The owner selects an immutable source commit that already passed Android, audit,
+check and hygiene CI; the workflow refuses missing/failed latest results and forks.
+The first source is the already-validated `fde277b…`, version 17; subsequent runs
+need the previous signed source SHA and strictly increasing versionCode. These are
+public references provided with development reports, not secrets.
+
+Three automatic jobs perform one owner-requested operation:
+
+- **Build:** no signing environment or secret. Reuse exact-match JNI cache;
+  build the unsigned ARM64 beta and disposable x86_64 fixtures. No repeated
+  12-journey integration suite, Rust audit or archive tests for the already-green source.
+- **Sign:** fresh runner, environment restricted to main, no checkout or project
+  build/dependency scripts. Trusted inline code, SDK 35.0.0 and one step-scoped
+  credential decode a private temporary `.p12`, sign and verify the public
+  fingerprint. Private material is removed; nothing is cached or uploaded.
+- **Verify/deliver:** another runner without secrets reuses the existing six
+  migration/update fixture invocations **with the actual reusable certificate**.
+  Only after success is the final ARM64 ZIP offered with its checksum, certificate
+  fingerprint and short notice. Debuggable emulator APKs are not the user APK.
+  Intermediate APK-only artifacts expire in one day; final APK/proof in 14 days.
+
+The single bundle requires explicit owner recovery confirmation. Until the owner
+has personally verified their NordPass copy, status is **ATTENTE COPIE UTILISATEUR**:
+no real bundle configured, no reusable key generated here, no signed beta delivered.
+The earlier A→B emulator proof remains valid and is not rerun now; the actual-key
+proof runs only after personal setup. Local signing tests use disposable synthetic
+credentials and are not evidence that the owner key or NordPass setup exists.
+
+Only public standard GitHub runners are used, not paid/larger runners. Artifact
+storage still shares the account allowance ([GitHub billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions));
+retain a zero-spend/blocked paid-usage policy and verify included storage before
+activation. No paid service or account spending setting is enabled by this work.
+Keep the environment and trusted main settings real in GitHub; text in this file
+is not a substitute for them. The assistant cannot access NordPass or read back
+an encrypted GitHub environment secret. No key rotation, HSM or enterprise vault
+is required for these single-owner beta trials.
 
 ## Android background limitations
 

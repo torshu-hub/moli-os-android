@@ -14,3 +14,6 @@ jobs:
         with:
           persist-credentials: false
       - run: sh scripts/leak-check.sh
+      - name: Check signing preparation without keys or Android builds
+        if: hashFiles('tools/android-signing/check_static.py') != ''
+        run: python3 tools/android-signing/check_static.py
