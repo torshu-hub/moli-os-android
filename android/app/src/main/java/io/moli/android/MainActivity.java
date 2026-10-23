@@ -182,7 +182,9 @@ public final class MainActivity extends Activity {
             if(EngineHost.state()!=EngineHost.State.RUNNING || generation!=EngineHost.currentLease() || !origin.equals(EngineHost.origin()))return;
             if(!Boolean.TRUE.equals(accepted)){dashboardFailed();return;}
             loaded=origin;loadedLease=generation;pageFailed=false;
-            web.loadUrl(origin+"/#/");web.setVisibility(viewing?View.VISIBLE:View.GONE);
+            // A hash-only navigation can retain an HTTP error document (or old SSE).
+            // Use a new, non-secret document URL after every authenticated session.
+            web.loadUrl(origin+"/?view="+generation+"_"+request+"#/");web.setVisibility(viewing?View.VISIBLE:View.GONE);
         });
     }
     // Return to the dashboard root, rather than traversing WebView history (which
