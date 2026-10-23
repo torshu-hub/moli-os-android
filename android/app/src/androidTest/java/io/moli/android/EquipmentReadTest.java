@@ -37,6 +37,16 @@ public final class EquipmentReadTest {
         AtomicReference<String> result = new AtomicReference<>(); ui.onActivity(a -> a.web.evaluateJavascript(code,result::set));
         until(() -> result.get()!=null); return result.get();
     }
+    private static void click(ActivityScenario<MainActivity> ui,int text) throws Exception {
+        until(() -> {
+            AtomicReference<Boolean> clicked=new AtomicReference<>(false);
+            ui.onActivity(a -> {
+                android.widget.Button button=MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(text));
+                if(button!=null && button.isEnabled()){button.performClick();clicked.set(true);}
+            });
+            return clicked.get();
+        });
+    }
     private static void saved(EquipmentScreen ui) throws Exception {
         until(() -> { AtomicReference<Boolean> ok = new AtomicReference<>(false); ui.onActivity(a -> ok.set(a.message.getText().toString().equals(a.getString(R.string.equipment_saved)) && a.start.isEnabled())); return ok.get(); });
     }
@@ -92,6 +102,31 @@ public final class EquipmentReadTest {
                     return printer && gateway;
                 });
                 until(() -> "true".equals(js(home,"document.querySelector('[data-equipment=printer]')?.dataset.equipmentStatus==='fresh' && document.querySelector('[data-equipment=gateway]')?.dataset.equipmentStatus==='fresh' && document.body.innerText.includes('MG3600 series')")));
+                // The native controls remain available even when the WebView cannot authenticate.
+                String master=ProtectedKey.open(app).getString("master");
+                String selected=EquipmentStore.read(app).toString();
+                long beforeRestart=EngineHost.currentLease();
+                home.onActivity(MainActivity::showHome);
+                click(home,R.string.stop);
+                until(() -> EngineHost.state()==EngineHost.State.STOPPED);
+                click(home,R.string.start);
+                until(() -> EngineHost.state()==EngineHost.State.RUNNING && EngineHost.currentLease()>beforeRestart);
+                home.onActivity(MainActivity::showDevices);
+                until(() -> "true".equals(js(home,"document.querySelector('[data-moli-connected=true]')!==null")));
+                // Reproduce lost authentication at an unchanged origin; HTTP 401 must recover.
+                home.onActivity(a -> android.webkit.CookieManager.getInstance().setCookie(EngineHost.origin(),
+                    "moli_android=invalid-fixture; Path=/; HttpOnly; SameSite=Strict", ok -> a.web.loadUrl(EngineHost.origin()+"/")));
+                until(() -> "true".equals(js(home,"document.querySelector('[data-moli-connected=true]')===null")));
+                until(() -> "true".equals(js(home,"document.querySelector('[data-equipment=printer]')?.dataset.equipmentStatus==='fresh'")));
+                long previous=EngineHost.currentLease();
+                home.onActivity(a -> a.web.loadUrl("about:blank"));
+                click(home,R.string.engine_restart);
+                until(() -> EngineHost.state()==EngineHost.State.RUNNING && EngineHost.currentLease()>previous);
+                home.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
+                home.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
+                until(() -> "true".equals(js(home,"document.querySelector('[data-moli-connected=true]')!==null && document.querySelector('[data-equipment=printer]')?.dataset.equipmentStatus==='fresh'")));
+                assertEquals(master,ProtectedKey.open(app).getString("master"));
+                assertEquals(selected,EquipmentStore.read(app).toString());
                 long lease = EngineHost.currentLease();
                 fixture.printerAvailable=false;
                 until(() -> { fixture.check(); return "true".equals(js(home,"document.querySelector('[data-equipment=printer]')?.dataset.equipmentStatus==='unavailable'")); });

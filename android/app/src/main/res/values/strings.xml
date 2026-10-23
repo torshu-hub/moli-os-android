@@ -321,4 +321,8 @@
     <string name="report_share">Partager le rapport</string>
     <string name="report_fallback_name">Rapport d’essai Moli OS (.txt)</string>
     <string name="auto_save_partial">%1$d prises enregistrées avant l’arrêt de l’ajout. %2$s Les autres réglages sont conservés.</string>
+    <string name="engine_restart">Redémarrer</string>
+    <string name="engine_reconnect">Reconnecter l’affichage</string>
+    <string name="engine_live">Moteur joignable · vérifié il y a %1$d s</string>
+    <string name="engine_display_retry">Affichage déconnecté : nouvelle tentative en cours. Les commandes du moteur restent accessibles.</string>
 </resources>

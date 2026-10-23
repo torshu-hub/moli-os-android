@@ -94,6 +94,7 @@ public final class MerossReadTest {
                 try(ActivityScenario<MainActivity> home=ActivityScenario.launch(MainActivity.class)) {
                 home.onActivity(MainActivity::showDevices);
                     until(()->"true".equals(js(home,"document.querySelectorAll('[data-equipment=meross]').length===4 && document.querySelectorAll('[data-equipment=meross][data-equipment-status=fresh]').length===3")));
+                    assertEquals("true",js(home,"(()=>{const cards=[...document.querySelectorAll('[data-equipment=meross][data-equipment-status=fresh]')];return cards.every(c=>c.querySelectorAll('[data-equipment-received]').length===1 && !c.querySelector('details').open && c.querySelector('details dl') && !c.querySelector(':scope > dl small'))})()"));
                     long lease=EngineHost.currentLease();four.available=false;
                     until(()->"true".equals(js(home,"document.querySelectorAll('[data-equipment=meross][data-equipment-status=fresh]').length===2")));
                     assertEquals(lease,EngineHost.currentLease());assertNotNull(device(1));

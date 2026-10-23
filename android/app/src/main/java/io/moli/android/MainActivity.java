@@ -14,6 +14,10 @@ import android.widget.*;
 public final class MainActivity extends Activity {
     WebView web; // Package-visible to the isolated instrumentation smoke test.
     private TextView status,dashboardStatus;
+    private Button startButton,stopButton,restartButton;
+    private long loadedLease=-1,authLease=-1,authRequest;
+    private boolean pageFailed;
+    private long retryAfter;
     private android.view.View home;
     private LinearLayout dashboard;
     private boolean viewing;
@@ -36,10 +40,15 @@ public final class MainActivity extends Activity {
             // request before Android has delivered its command to the service.
             if (state == EngineHost.State.STOPPED && bound && (server == null || !server.hasCommand()))
                 state = EngineHost.State.STARTING;
-            if(state==EngineHost.State.RUNNING)status.setText(R.string.preview_engine_ready);
+            long[] health=EngineHealth.snapshot();
+            if(state==EngineHost.State.RUNNING)status.setText(health[0]==1 ? getString(R.string.engine_live,health[1]/1000) :
+                    getString(health[5]==2 ? R.string.engine_observed_failure : health[5]==3 ? R.string.engine_not_observed : R.string.engine_no_sample));
+            startButton.setEnabled(state==EngineHost.State.STOPPED);
+            stopButton.setEnabled(state==EngineHost.State.RUNNING || state==EngineHost.State.STARTING);
+            restartButton.setEnabled(state==EngineHost.State.RUNNING || state==EngineHost.State.ERROR);
             if (state != EngineHost.State.RUNNING) {
                 if (loaded != null) {
-                    loaded = null; web.stopLoading(); web.loadUrl("about:blank");
+                    invalidateDashboard();
                 }
                 web.setVisibility(View.GONE); status.setVisibility(View.VISIBLE);
                 status.setText(state == EngineHost.State.STARTING ? R.string.starting : state == EngineHost.State.STOPPING ? R.string.stopping :
@@ -48,26 +57,20 @@ public final class MainActivity extends Activity {
                     if (bound) { unbindService(connection); bound = false; } server = null;
                 }
             }
-            if (server != null && server.origin() != null && !server.origin().equals(loaded)) {
-                String origin = server.origin();
-                String token = server.token();
-                CookieManager.getInstance().setCookie(origin,
-                        "moli_android=" + token + "; Path=/; HttpOnly; SameSite=Strict", accepted -> {
-                    if (!isDestroyed() && EngineHost.state() == EngineHost.State.RUNNING && origin.equals(EngineHost.origin()) && Boolean.TRUE.equals(accepted)) {
-                        loaded = origin;
-                        web.loadUrl(origin + "/");
-                        web.setVisibility(viewing?View.VISIBLE:View.GONE);
-                    }
-                });
+            long generation=EngineHost.currentLease();
+            if (server != null && state==EngineHost.State.RUNNING && server.origin()!=null &&
+                    (loadedLease!=generation || !server.origin().equals(loaded) || pageFailed) &&
+                    (!pageFailed || SystemClock.elapsedRealtime()>=retryAfter) && authLease!=generation) {
+                authenticateDashboard(generation,server.origin(),server.token());
             }
-            dashboardStatus.setText(status.getText());dashboardStatus.setVisibility(state==EngineHost.State.RUNNING?View.GONE:View.VISIBLE);
+            dashboardStatus.setText(pageFailed?getString(R.string.engine_display_retry):status.getText());dashboardStatus.setVisibility(state==EngineHost.State.RUNNING && !pageFailed?View.GONE:View.VISIBLE);
             handler.postDelayed(this, 500);
         }
     };
     private final ServiceConnection connection = new ServiceConnection() {
         @Override public void onServiceConnected(ComponentName name, IBinder binder) { server = ((MoliService.LocalBinder) binder).service(); }
         @Override public void onServiceDisconnected(ComponentName name) {
-            server = null; loaded = null;
+            server = null; invalidateDashboard();
             status.setText(R.string.stopped); status.setVisibility(View.VISIBLE); web.setVisibility(View.GONE);
         }
     };
@@ -77,6 +80,16 @@ public final class MainActivity extends Activity {
         super.onCreate(saved); TrialLog.attach(this);
         TrialLog.begin(this);
         LinearLayout root = TrialUi.page(this);
+        LinearLayout controls=TrialUi.card(this,root);
+        status=TrialUi.text(this,controls,R.string.stopped);
+        LinearLayout buttons=new LinearLayout(this);controls.addView(buttons);
+        startButton=TrialUi.button(this,buttons,R.string.start,true,this::prepare);
+        stopButton=TrialUi.button(this,buttons,R.string.stop,false,()->sendCommand(MoliService.STOP));
+        restartButton=TrialUi.button(this,buttons,R.string.engine_restart,false,()->sendCommand(MoliService.RESTART));
+        for(Button button:new Button[]{startButton,stopButton,restartButton}) {
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.setMargins(TrialUi.dp(this,2),0,TrialUi.dp(this,2),0);button.setLayoutParams(lp);
+        }
+        TrialUi.button(this,controls,R.string.engine_reconnect,false,()->{invalidateDashboard();EngineHealth.check();});
         home=new LinearLayout(this);((LinearLayout)home).setOrientation(LinearLayout.VERTICAL);root.addView(home);
         LinearLayout front=(LinearLayout)home;
         TrialUi.title(this,front,R.string.preview_home_title);
@@ -86,7 +99,6 @@ public final class MainActivity extends Activity {
         TrialUi.button(this,actions,R.string.preview_devices,false,this::showDevices);
         report=new ReportExport(this);
         TrialUi.button(this,actions,R.string.report_export,false,report::choose);
-        status=TrialUi.text(this,front,R.string.stopped);
         TrialUi.text(this,front,R.string.preview_report_auto);
         TrialUi.button(this,front,R.string.preview_settings,false,()->startActivity(new Intent(this,PreviewSettingsActivity.class)));
         dashboard=new LinearLayout(this);dashboard.setOrientation(LinearLayout.VERTICAL);root.addView(dashboard);dashboard.setVisibility(View.GONE);
@@ -100,6 +112,12 @@ public final class MainActivity extends Activity {
         web.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.setWebViewClient(new WebViewClient() {
+            @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error) {
+                if(request.isForMainFrame()) dashboardFailed();
+            }
+            @Override public void onReceivedHttpError(WebView view,WebResourceRequest request,WebResourceResponse response) {
+                if(request.isForMainFrame()) dashboardFailed();
+            }
             @Override public void doUpdateVisitedHistory(WebView view, String url, boolean reload) {
                 resetExitBack();
             }
@@ -152,12 +170,35 @@ public final class MainActivity extends Activity {
     @Override protected void onActivityResult(int request,int result,Intent intent){super.onActivityResult(request,result,intent);report.result(request,result,intent);}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);if(intent.getBooleanExtra("devices",false))showDevices();}
     private void startServer() {
-        if (bound) return;
         getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", true).apply();
         status.setText(R.string.starting); status.setVisibility(View.VISIBLE);
         Intent intent = new Intent(this, MoliService.class);
         startForegroundService(intent);
-        bound = bindService(intent, connection, BIND_AUTO_CREATE);
+        if(!bound)bound = bindService(intent, connection, BIND_AUTO_CREATE);
+    }
+    private void sendCommand(String command) {
+        if(EngineHost.state()==EngineHost.State.MAINTENANCE)return;
+        invalidateDashboard();
+        startService(new Intent(this,MoliService.class).setAction(command));
+    }
+    private void dashboardFailed() {
+        pageFailed=true;retryAfter=SystemClock.elapsedRealtime()+5000;
+        dashboardStatus.setText(R.string.engine_display_retry);dashboardStatus.setVisibility(View.VISIBLE);
+    }
+    private void invalidateDashboard() {
+        ++authRequest;authLease=-1;loadedLease=-1;loaded=null;pageFailed=false;
+        if(web!=null){web.stopLoading();web.loadUrl("about:blank");}
+    }
+    private void authenticateDashboard(long generation,String origin,String token) {
+        authLease=generation;long request=++authRequest;
+        CookieManager.getInstance().setCookie(origin,"moli_android="+token+"; Path=/; HttpOnly; SameSite=Strict",accepted->{
+            if(isDestroyed() || request!=authRequest)return;
+            authLease=-1;
+            if(EngineHost.state()!=EngineHost.State.RUNNING || generation!=EngineHost.currentLease() || !origin.equals(EngineHost.origin()))return;
+            if(!Boolean.TRUE.equals(accepted)){dashboardFailed();return;}
+            loaded=origin;loadedLease=generation;pageFailed=false;
+            web.loadUrl(origin+"/#/");web.setVisibility(viewing?View.VISIBLE:View.GONE);
+        });
     }
     // Return to the dashboard root, rather than traversing WebView history (which
     // also contains loading/stopped pages). Closing the UI never stops the service.
@@ -203,7 +244,7 @@ public final class MainActivity extends Activity {
         }
     }
     @Override public void onStart() {
-        super.onStart(); web.onResume(); handler.removeCallbacks(refresh); handler.post(refresh);
+        super.onStart(); web.onResume(); invalidateDashboard(); EngineHealth.check(); handler.removeCallbacks(refresh); handler.post(refresh);
     }
     @Override public void onStop() {
         resetExitBack(); handler.removeCallbacks(refresh); web.onPause(); super.onStop();

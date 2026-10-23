@@ -254,5 +254,7 @@
   "maison.equipment.meross_unavailable": "Lecture non confirmée. Vérifiez l’adresse locale, la clé enregistrée et la connexion de la prise ; un protocole différent peut aussi être refusé.",
   "maison.equipment.age": "Actualisé il y a {seconds} s",
   "maison.equipment.duration": "{days} j {hours} h {minutes} min",
-  "maison.equipment.read_confirmed": "Lecture active : réponse fraîche reçue, distincte de la configuration enregistrée."
+  "maison.equipment.read_confirmed": "Lecture active : réponse fraîche reçue, distincte de la configuration enregistrée.",
+  "maison.android.checking": "Lecture en cours de confirmation",
+  "maison.equipment.details": "Détails des relevés"
 }

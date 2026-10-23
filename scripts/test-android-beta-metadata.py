@@ -19,13 +19,13 @@ class MetadataTest(unittest.TestCase):
             with self.assertRaises(ValueError): beta.parse(text)
     def test_invalid_version(self):
         for code in ['16', '0', '-1', '2100000001']:
-            with self.assertRaises(ValueError): beta.parse(self.text.replace('versionCode=17', 'versionCode='+code))
+            with self.assertRaises(ValueError): beta.parse(self.text.replace('versionCode='+self.current['versionCode'], 'versionCode='+code))
     def test_downgrade_and_reused_delivery_refused(self):
-        previous = dict(self.current, versionCode='18')
+        previous = dict(self.current, versionCode=str(int(self.current['versionCode'])+1))
         with self.assertRaises(ValueError): beta.compare(self.current, previous)
         with self.assertRaises(ValueError): beta.compare(self.current, self.current, delivery=True)
     def test_increased_delivery_and_same_code_new_name(self):
-        beta.compare(dict(self.current,versionCode='18'), self.current, delivery=True)
+        beta.compare(dict(self.current,versionCode=str(int(self.current['versionCode'])+1)), self.current, delivery=True)
         with self.assertRaises(ValueError): beta.compare(dict(self.current,versionName='0.14.0-beta.2'), self.current)
 
 unittest.main()

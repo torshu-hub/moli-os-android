@@ -321,4 +321,8 @@
     <string name="report_share">Share report</string>
     <string name="report_fallback_name">Moli OS trial report (.txt)</string>
     <string name="auto_save_partial">%1$d plugs saved before the addition stopped. %2$s Other settings were preserved.</string>
+    <string name="engine_restart">Restart</string>
+    <string name="engine_reconnect">Reconnect dashboard</string>
+    <string name="engine_live">Engine reachable · checked %1$d s ago</string>
+    <string name="engine_display_retry">Dashboard disconnected: retrying. Engine controls remain available.</string>
 </resources>

@@ -254,5 +254,7 @@
   "maison.equipment.meross_unavailable": "Reading not confirmed. Check the local address, stored key and plug connection; a different protocol may also be rejected.",
   "maison.equipment.age": "Updated {seconds} s ago",
   "maison.equipment.duration": "{days} d {hours} h {minutes} min",
-  "maison.equipment.read_confirmed": "Reading active: fresh response received, distinct from saved configuration."
+  "maison.equipment.read_confirmed": "Reading active: fresh response received, distinct from saved configuration.",
+  "maison.android.checking": "Confirming readings",
+  "maison.equipment.details": "Reading details"
 }

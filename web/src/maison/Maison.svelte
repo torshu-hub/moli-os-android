@@ -108,7 +108,7 @@
   const page = $derived(route.split('/')[0] ?? '');
 </script>
 
-<div class="maison" data-theme={theme}>
+<div class="maison" data-theme={theme} data-moli-connected={hub.connected}>
   <nav class="rail" aria-label={t('commun.nav.aria')}>
     <a class="brand" href="#/" aria-label={t('commun.nav.logo')}>
       <svg viewBox="0 0 32 32" aria-hidden="true">

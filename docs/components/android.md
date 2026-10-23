@@ -47,6 +47,17 @@ does not automatically restart it. Android/Samsung power management still needs
 physical testing. No wake locks or battery-optimization exemptions are enabled.
 On recent Android, the user can choose whether to allow notifications.
 
+The native home and dashboard header expose Start, Stop and Restart independently
+of the WebView. Restart drains the existing engine before starting a new lease;
+it never recreates keys or clears configuration. Status uses bounded authenticated
+HTTP observations, distinguishing failed checks from checks not yet performed.
+Returning from settings reauthenticates/reloads the dashboard, even when a new
+engine reuses the same local address; failed page loads retry every five seconds.
+Reconnect dashboard reloads only the display, without restarting the engine.
+Equipment cards show one compact receipt time, with per-point times under Details.
+Meross startup/brief loss of confirmation is labelled as pending, never as fresh;
+expired readings remain visibly old and persistent loss remains unavailable.
+
 The Rust library reuses the Linux engine's workers and shutdown flushes with an
 external cancellation token. It binds an ephemeral **127.0.0.1** socket before
 spawning workers, never the LAN. A random per-service token is installed as an

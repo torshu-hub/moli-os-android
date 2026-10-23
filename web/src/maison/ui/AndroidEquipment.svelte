@@ -1,7 +1,9 @@
 <script>
   import { home, hub, device, clock, num } from '../lib/home.svelte.js';
-  import { equipmentStatus, durationParts } from '../lib/equipment-status.js';
+  import { equipmentStatus, durationParts, sampleMaxAge } from '../lib/equipment-status.js';
   import { t } from '../../lib/i18n.svelte.js';
+  const firstSeen = Date.now();
+  const compactClock = (ts) => new Date(ts).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   const cfg = $derived(home.config.android);
   const printer = $derived(device(cfg.printer_id));
   const gateway = $derived(Object.values(hub.devices).find(d => d.instance === 'android-gateway'));
@@ -13,7 +15,7 @@
   ]);
   const status = (card) => equipmentStatus(card.kind,card.data,
     hub.drivers.find(d => d.instance === (card.instance || (card.kind === 'printer' ? 'android-printer' : 'android-gateway'))),
-    hub.connected && home.snapshotHealthy,home.now,hub.observedAt);
+    hub.connected && home.snapshotHealthy,home.now,hub.observedAt,firstSeen);
   function shown(sample, point) {
     if (!sample || sample.value == null) return t('maison.equipment.not_reported');
     const v = sample.value;
@@ -39,22 +41,32 @@
         <p class="chip" class:good={observed.state === 'fresh'}>{t('maison.android.' + observed.state)}</p>
         {#if card.data}
           <p>{[card.data.manufacturer,card.data.model].filter(Boolean).join(' ') || card.data.native_name}</p>
-          {#if observed.ts}<p class="muted" data-equipment-received={observed.ts}>{t('maison.android.received',{time:clock(observed.ts)})} · {t('maison.equipment.age',{seconds:observed.age})}</p>{/if}
+          {#if observed.ts}<p class="muted" data-equipment-received={observed.ts}>{t('maison.android.received',{time:compactClock(observed.ts)})}</p>{/if}
           <dl>
             {#each card.data.points.filter(p => p.access.read && !p.access.write && p.key !== 'responding') as point (point.key)}
               {@const sample = card.data.state?.[point.key]}
               <dt>{card.kind === 'meross' ? t('maison.equipment.mss_'+point.key) : point.label}</dt><dd>{shown(sample,point)}
-                {#if sample?.ts}<small>{clock(sample.ts)} · {t('maison.equipment.age',{seconds:Math.max(0,Math.floor((observed.now-sample.ts)/1000))})}</small>{/if}
-                {#if sample?.value != null && (sample.ts > home.now || home.now - sample.ts > (card.kind === 'meross' && ['energy_recent','energy_date'].includes(point.key) ? 660000 : card.kind === 'meross' && point.key === 'signal' ? 135000 : card.age))}
+                {#if sample?.value != null && (sample.ts > observed.now || observed.now - sample.ts > sampleMaxAge(card.kind,point.key))}
                   <small>{t('maison.android.stale')}</small>
                 {/if}
               </dd>
             {/each}
           </dl>
+          <details data-equipment-details><summary>{t('maison.equipment.details')}</summary>
+            <dl>
+              {#each card.data.points.filter(p => p.access.read && !p.access.write) as point (point.key)}
+                {@const sample=card.data.state?.[point.key]}
+                <dt>{card.kind==='meross'?t('maison.equipment.mss_'+point.key):point.label}</dt>
+                <dd>{sample?.ts ? clock(sample.ts) : t('maison.equipment.not_reported')}
+                  {#if sample?.ts}<small>{t('maison.equipment.age',{seconds:Math.max(0,Math.floor((observed.now-sample.ts)/1000))})}</small>{/if}
+                </dd>
+              {/each}
+            </dl>
+          </details>
         {/if}
         {#if card.kind === 'meross'}<p class="muted">{t('maison.equipment.meross_help')}</p>{/if}
         {#if observed.state==='fresh'}<p class="muted">{t('maison.equipment.read_confirmed')}</p>{/if}
-        {#if observed.state !== 'fresh'}<p class="muted">{t(card.kind === 'meross' ? 'maison.equipment.meross_unavailable' : 'maison.equipment.unavailable_help')}</p>{/if}
+        {#if ['stale','unavailable'].includes(observed.state)}<p class="muted">{t(card.kind === 'meross' ? 'maison.equipment.meross_unavailable' : 'maison.equipment.unavailable_help')}</p>{/if}
       </article>
     {/each}
   </div>
@@ -64,4 +76,5 @@
  .devices {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:20px;}
  dl {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 16px;overflow-wrap:anywhere;}
  dd {margin:0;text-align:right;} small {display:block;color:var(--muted);} p {margin:12px 0;overflow-wrap:anywhere;} a {min-height:44px;display:inline-flex;align-items:center;}
+ summary {min-height:44px;cursor:pointer;display:flex;align-items:center;}
 </style>
