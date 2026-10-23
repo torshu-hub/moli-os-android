@@ -22,8 +22,7 @@ public final class MainActivity extends Activity {
     private LinearLayout dashboard;
     private boolean viewing;
     private ReportExport report;
-    private MoliService server;
-    private boolean bound;
+    private long startRequestedUntil;
     private volatile String loaded;
     private long exitBackAt = -1;
     private Toast exitHint;
@@ -32,14 +31,11 @@ public final class MainActivity extends Activity {
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
             EngineHost.State state = EngineHost.state();
-            // A settings screen may have started the service while this screen
-            // was stopped and unbound. Bind it without issuing another start.
-            if (!bound && (state == EngineHost.State.RUNNING || state == EngineHost.State.STARTING))
-                bound = bindService(new Intent(MainActivity.this, MoliService.class), connection, 0);
-            // Binding can complete after the first UI refresh. Do not unbind a start
-            // request before Android has delivered its command to the service.
-            if (state == EngineHost.State.STOPPED && bound && (server == null || !server.hasCommand()))
-                state = EngineHost.State.STARTING;
+            if(state!=EngineHost.State.STOPPED)startRequestedUntil=0;
+            // Only an explicitly issued start can be pending. A bound screen
+            // must not hold a stopped service alive or infer a start from its binder.
+            if(state==EngineHost.State.STOPPED && SystemClock.elapsedRealtime()<startRequestedUntil)
+                state=EngineHost.State.STARTING;
             long[] health=EngineHealth.snapshot();
             if(state==EngineHost.State.RUNNING)status.setText(health[0]==1 ? getString(R.string.engine_live,health[1]/1000) :
                     getString(health[5]==2 ? R.string.engine_observed_failure : health[5]==3 ? R.string.engine_not_observed : R.string.engine_no_sample));
@@ -53,28 +49,17 @@ public final class MainActivity extends Activity {
                 web.setVisibility(View.GONE); status.setVisibility(View.VISIBLE);
                 status.setText(state == EngineHost.State.STARTING ? R.string.starting : state == EngineHost.State.STOPPING ? R.string.stopping :
                         state == EngineHost.State.ERROR ? (EngineHost.profileFailure ? R.string.integration_changed : R.string.failed) : state == EngineHost.State.MAINTENANCE ? R.string.backup_working : R.string.stopped);
-                if (state == EngineHost.State.STOPPED || state == EngineHost.State.ERROR) {
-                    if (bound) { unbindService(connection); bound = false; } server = null;
-                }
             }
             long generation=EngineHost.currentLease();
-            if (server != null && state==EngineHost.State.RUNNING && server.origin()!=null &&
-                    (loadedLease!=generation || !server.origin().equals(loaded) || pageFailed) &&
+            if (state==EngineHost.State.RUNNING && EngineHost.origin()!=null &&
+                    (loadedLease!=generation || !EngineHost.origin().equals(loaded) || pageFailed) &&
                     (!pageFailed || SystemClock.elapsedRealtime()>=retryAfter) && authLease!=generation) {
-                authenticateDashboard(generation,server.origin(),server.token());
+                authenticateDashboard(generation,EngineHost.origin(),EngineHost.token());
             }
             dashboardStatus.setText(pageFailed?getString(R.string.engine_display_retry):status.getText());dashboardStatus.setVisibility(state==EngineHost.State.RUNNING && !pageFailed?View.GONE:View.VISIBLE);
             handler.postDelayed(this, 500);
         }
     };
-    private final ServiceConnection connection = new ServiceConnection() {
-        @Override public void onServiceConnected(ComponentName name, IBinder binder) { server = ((MoliService.LocalBinder) binder).service(); }
-        @Override public void onServiceDisconnected(ComponentName name) {
-            server = null; invalidateDashboard();
-            status.setText(R.string.stopped); status.setVisibility(View.VISIBLE); web.setVisibility(View.GONE);
-        }
-    };
-
     @SuppressLint("SetJavaScriptEnabled")
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved); TrialLog.attach(this);
@@ -119,7 +104,7 @@ public final class MainActivity extends Activity {
                 if(request.isForMainFrame()) dashboardFailed();
             }
             @Override public void doUpdateVisitedHistory(WebView view, String url, boolean reload) {
-                resetExitBack();
+                if(viewing)resetExitBack();
             }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
@@ -170,11 +155,11 @@ public final class MainActivity extends Activity {
     @Override protected void onActivityResult(int request,int result,Intent intent){super.onActivityResult(request,result,intent);report.result(request,result,intent);}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);if(intent.getBooleanExtra("devices",false))showDevices();}
     private void startServer() {
+        startRequestedUntil=SystemClock.elapsedRealtime()+5000;
         getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", true).apply();
         status.setText(R.string.starting); status.setVisibility(View.VISIBLE);
         Intent intent = new Intent(this, MoliService.class);
         startForegroundService(intent);
-        if(!bound)bound = bindService(intent, connection, BIND_AUTO_CREATE);
     }
     private void sendCommand(String command) {
         if(EngineHost.state()==EngineHost.State.MAINTENANCE)return;
@@ -252,7 +237,6 @@ public final class MainActivity extends Activity {
     @Override public void onDestroy() {
         handler.removeCallbacks(refresh);
         if (unregisterBack != null) unregisterBack.run();
-        if (bound) unbindService(connection);
         web.destroy();
         super.onDestroy();
     }

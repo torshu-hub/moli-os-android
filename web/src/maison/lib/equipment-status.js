@@ -2,7 +2,7 @@ import { sourceStatus } from './source-status.js';
 
 /** IGD status and uptime come from the same GetStatusInfo response. Uptime also emits SSE when connected is unchanged. */
 export function equipmentStatus(kind, device, driver, connected, tick, receivedAt, firstSeen = null) {
-  const now=Math.max(tick,receivedAt || 0);
+  const now=Math.max(tick,receivedAt || 0,firstSeen || 0);
   const uptime=device?.state?.uptime;
   const key=kind==='gateway' && Number.isFinite(uptime?.value) && uptime.value>=0?'uptime':kind==='gateway'?'connected':kind==='printer'?'responding':'reported_model';
   const result=sourceStatus(connected,device,driver,[key],now,kind==='gateway'?35000:65000);

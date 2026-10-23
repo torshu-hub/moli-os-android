@@ -38,11 +38,13 @@ public final class EquipmentReadTest {
         until(() -> result.get()!=null); return result.get();
     }
     private static void click(ActivityScenario<MainActivity> ui,int text) throws Exception {
+        long deadline=SystemClock.elapsedRealtime()+65000;
         until(() -> {
             AtomicReference<Boolean> clicked=new AtomicReference<>(false);
             ui.onActivity(a -> {
                 android.widget.Button button=MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(text));
                 if(button!=null && button.isEnabled()){button.performClick();clicked.set(true);}
+                else if(SystemClock.elapsedRealtime()>=deadline)fail("Native control "+a.getString(text)+"; engine="+EngineHost.state()+"; lifecycle="+ui.getState()+"; found="+(button!=null));
             });
             return clicked.get();
         });

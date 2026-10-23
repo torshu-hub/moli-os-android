@@ -23,6 +23,7 @@ test('IGD unchanged connection stays fresh through received uptime and never hid
 });
 test('Meross distinguishes startup and brief lost confirmation from a significant outage',()=>{
  const driver={status:{state:'running'}};
+ assert.equal(equipmentStatus('meross',null,driver,true,999,999,1000).state,'checking');
  assert.equal(equipmentStatus('meross',null,driver,true,50000,50000,1000).state,'checking');
  assert.equal(equipmentStatus('meross',null,driver,true,70000,70000,1000).state,'unavailable');
  const d={online:true,state:{reported_model:{value:'MSS310',ts:100000}}};
