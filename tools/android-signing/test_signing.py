@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 import contextlib
 import io
+import types
 import yaml
 
 BASE=Path(__file__).resolve().parent
@@ -48,6 +49,35 @@ class SigningTest(unittest.TestCase):
         self.assertNotIn(self.password,code)
         self.assertNotIn('drive.mount',code)
         self.assertNotIn('requests.post',code)
+    def test_notebook_recovery_in_fresh_session_without_key_generation(self):
+        nb=json.loads((BASE/'moli-beta-key.ipynb').read_text())
+        cells=[''.join(c['source']) for c in nb['cells'] if c['cell_type']=='code']
+        self.assertEqual(len(cells),3)
+        colab=types.ModuleType('google.colab')
+        google=types.ModuleType('google');google.colab=colab
+        colab.files=types.SimpleNamespace(upload=lambda:{'recovered.p12':self.blob})
+        colab.output=types.SimpleNamespace(eval_js=lambda js:False)
+        # Each case starts with an empty kernel. Creation cell is never executed.
+        for expected,allowed in [(self.fingerprint,True),('0'*64,False),('',False)]:
+            namespace={};captured=io.StringIO()
+            with patch('cryptography.hazmat.primitives.asymmetric.rsa.generate_private_key',side_effect=AssertionError('Recovery must never generate a key')) as generate,patch.dict(sys.modules,{'google':google,'google.colab':colab}),patch('builtins.input',side_effect=['OUI',expected]) as prompts,patch('getpass.getpass',return_value=self.password),contextlib.redirect_stdout(captured),patch.object(colab.output,'eval_js',return_value=False) as clipboard:
+                exec(compile(cells[0],'initialization','exec'),namespace)
+                self.assertNotIn('_moli_pending_p12',namespace)
+                self.assertNotIn('_moli_fingerprint',namespace)
+                # Even a stale in-memory fingerprint must not bypass NordPass input.
+                namespace['_moli_fingerprint']=self.fingerprint
+                if allowed:
+                    exec(compile(cells[2],'verification','exec'),namespace)
+                    self.assertTrue(clipboard.called)
+                    self.assertIn(json.dumps(self.bundle),clipboard.call_args.args[0])
+                    self.assertNotIn('bundle',namespace)
+                else:
+                    with self.assertRaises(ValueError):exec(compile(cells[2],'verification','exec'),namespace)
+                    clipboard.assert_not_called()
+                self.assertEqual(prompts.call_count,2)
+                generate.assert_not_called()
+            self.assertNotIn(self.password,captured.getvalue())
+            self.assertNotIn(self.bundle,captured.getvalue())
     def test_workflow_only_manual_owner_main_and_isolated_signing(self):
         workflow=(ROOT/'.github/workflows/android-beta-sign.yml').read_text()
         data=yaml.safe_load(workflow)

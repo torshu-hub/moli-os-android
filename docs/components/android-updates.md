@@ -88,13 +88,16 @@ cannot replace the signing key. A later production identity remains a separate d
 1. **NordPass:** create “Moli OS — Signature bêta”, generate/save a random 32-character
    ASCII password. If this entry already holds a `.p12`, skip new-key creation.
 2. **Private Colab session:** open the [prepared notebook](../../tools/android-signing/moli-beta-key.ipynb)
-   in your own Google account, free CPU runtime. Run creation, enter the password
+   in your own Google account, free CPU runtime. Run **0 — Initialize** (definitions
+   only, no key creation), then **1 — Create once**, enter the password
    in masked prompts and download `moli-beta-signature.p12`. Attach it to the same
    NordPass entry and record the displayed **public** certificate fingerprint.
    Reopen NordPass, **download its attachment again**, then run the notebook's
    verification cell on that downloaded file. This checks that the saved copy and
    password actually work before preparing a GitHub credential. Existing owners
-   can use verification alone; it never regenerates their key.
+   start a fresh session with **0 — Initialize**, then **2 — Verify**, skipping
+   creation entirely. Verification always asks for the public fingerprint saved
+   in NordPass; it never regenerates their key or trusts a replacement fingerprint.
 3. **GitHub activation, guided separately:** copy the notebook's opaque credential
    only into environment secret `BETA_SIGNING_BUNDLE`, not a repository secret.
    Environment: `android-beta-signing`, selected deployment **branch `main` only**,
