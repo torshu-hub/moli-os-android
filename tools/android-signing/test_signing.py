@@ -69,7 +69,10 @@ class SigningTest(unittest.TestCase):
                 if allowed:
                     exec(compile(cells[2],'verification','exec'),namespace)
                     self.assertTrue(clipboard.called)
-                    self.assertIn(json.dumps(self.bundle),clipboard.call_args.args[0])
+                    script=clipboard.call_args.args[0]
+                    self.assertEqual(script.count(json.dumps(self.bundle)),1)
+                    self.assertIn('Secret BETA_SIGNING_BUNDLE.',script)
+                    self.assertNotIn('__MOLI_CLIPBOARD_VALUE__',script)
                     self.assertNotIn('bundle',namespace)
                 else:
                     with self.assertRaises(ValueError):exec(compile(cells[2],'verification','exec'),namespace)
