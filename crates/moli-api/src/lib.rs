@@ -98,6 +98,8 @@ pub struct EmbeddedClient;
 /// Surface settings.
 #[derive(Clone, Debug, Default)]
 pub struct Options {
+    /// Sanitized compiled catalogue and effective configured instances, supplied by the engine.
+    pub integration_inventory: Vec<serde_json::Value>,
     /// Host names (or IPs) this instance is reached by, besides localhost.
     pub allowed_hosts: Vec<String>,
     /// PIN that opens a human session in the dashboard. `None`: nobody is
@@ -346,6 +348,9 @@ pub fn router(hub: Hub, shutdown: CancellationToken, options: &Options) -> Route
         )
         .fallback(assets::serve)
         .layer(Extension(shutdown))
+        .layer(Extension(system::IntegrationInventory(
+            options.integration_inventory.clone(),
+        )))
         .layer(Extension(sse::Streams::default()))
         .layer(Extension(rest::Recorded(options.history.clone())))
         .layer(Extension(rest::BenchFile(options.bench_path.clone())))

@@ -4,6 +4,7 @@ mod backup;
 mod catalogue;
 mod config;
 mod embedded;
+mod inventory;
 
 pub use embedded::EmbeddedEngine;
 
@@ -391,6 +392,7 @@ async fn serve(
         phones: gates.phones,
         machines: gates.machines,
         weather: weather(&config),
+        integration_inventory: inventory::inventory(&config),
     };
     // Client addresses matter: human sessions are bound to them.
     let is_embedded = embedded.is_some();

@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import Icon from '../ui/Icon.svelte';
+  import IntegrationInventory from '../ui/IntegrationInventory.svelte';
   import TuyaCloudKeys from '../ui/TuyaCloudKeys.svelte';
   import AssistantSettings from '../ui/AssistantSettings.svelte';
   import AssistantExchanges from '../ui/AssistantExchanges.svelte';
@@ -157,6 +158,8 @@
   </header>
 
   {#if error}<p class="muted">{error}</p>{/if}
+
+  <IntegrationInventory rows={sys?.integrations} platform={sys?.platform} />
 
   <PeopleCard />
 

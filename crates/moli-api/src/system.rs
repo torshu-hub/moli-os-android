@@ -15,8 +15,12 @@ use serde_json::{Value as Json, json};
 use crate::automations::Autos;
 use crate::rest::{BenchFile, Metered, Recorded, read_bench};
 
+#[derive(Clone, Debug)]
+pub(crate) struct IntegrationInventory(pub Vec<Json>);
+
 pub(crate) async fn system(
     State(hub): State<Hub>,
+    Extension(IntegrationInventory(inventory)): Extension<IntegrationInventory>,
     Extension(BenchFile(bench_path)): Extension<BenchFile>,
     Extension(Recorded(history)): Extension<Recorded>,
     Extension(Metered(energy)): Extension<Metered>,
@@ -80,6 +84,8 @@ pub(crate) async fn system(
         "version": env!("CARGO_PKG_VERSION"),
         "stats": hub.stats(),
         "drivers": drivers,
+        "integrations": observed_inventory(inventory, &snapshot),
+        "platform": if cfg!(target_os = "android") { "android" } else { "other" },
         "bricks": bricks,
         "surfaces": [
             { "id": "maison", "name": moli_i18n::tr!("serveur.systeme.surface.maison.nom"), "what": moli_i18n::tr!("serveur.systeme.surface.maison.quoi") },
@@ -136,4 +142,75 @@ fn perf_history(data_dir: Option<&PathBuf>) -> Vec<Json> {
         .iter()
         .filter_map(|l| serde_json::from_str(l).ok())
         .collect()
+}
+
+/// Runtime presence is not proof of hardware validation or a fresh reading.
+fn observed_inventory(mut inventory: Vec<Json>, snapshot: &Snapshot) -> Vec<Json> {
+    for row in &mut inventory {
+        if let Some(instances) = row["instances"].as_array_mut() {
+            for instance in instances {
+                let observed = snapshot
+                    .drivers
+                    .iter()
+                    .find(|d| instance["instance"].as_str() == Some(d.instance.as_str()));
+                instance["status"] =
+                    observed.map_or(Json::Null, |d| json!({"state": json!(d.status)["state"]}));
+            }
+        }
+        row["hardware_validation"] = Json::Null;
+    }
+    // Drivers created by the engine itself need no [[driver]] entry.
+    for driver in &snapshot.drivers {
+        if inventory.iter().any(|r| {
+            r["instances"].as_array().is_some_and(|list| {
+                list.iter()
+                    .any(|i| i["instance"].as_str() == Some(driver.instance.as_str()))
+            })
+        }) {
+            continue;
+        }
+        inventory.push(json!({"id":driver.integration,"kind":driver.kind,"compiled":true,"hardware_validation":null,
+            "instances":[{"instance":driver.instance,"enabled":null,"runtime_only":true,"status":{"state":json!(driver.status)["state"]}}]}));
+    }
+    inventory
+}
+
+#[cfg(test)]
+mod inventory_tests {
+    use super::*;
+    use moli_core::{DriverStatus, InstanceId};
+    use moli_runtime::{DriverView, HubOptions};
+
+    #[test]
+    fn inventory_preserves_observed_states_without_promoting_them_to_hardware_proof() {
+        let hub = Hub::new(HubOptions::default()).unwrap();
+        for status in [
+            DriverStatus::Starting,
+            DriverStatus::Running,
+            DriverStatus::Stopped,
+            DriverStatus::Waiting {
+                reason: "private reason".into(),
+            },
+            DriverStatus::Backoff {
+                error: "private error".into(),
+                retry_in_ms: 1000,
+            },
+        ] {
+            let mut snapshot = hub.snapshot();
+            snapshot.drivers.push(DriverView {
+                instance: InstanceId::from("internal"),
+                kind: "fake",
+                integration: "fake".into(),
+                status: status.clone(),
+            });
+            let rows = observed_inventory(Vec::new(), &snapshot);
+            assert_eq!(
+                rows[0]["instances"][0]["status"]["state"],
+                json!(status)["state"]
+            );
+            assert!(rows[0]["instances"][0]["runtime_only"].as_bool().unwrap());
+            assert!(rows[0]["hardware_validation"].is_null());
+            assert!(!rows[0].to_string().contains("private"));
+        }
+    }
 }

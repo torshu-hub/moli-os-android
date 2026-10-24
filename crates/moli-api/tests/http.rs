@@ -1194,3 +1194,33 @@ async fn an_invited_person_reaches_the_house_from_the_internet() {
     assert_eq!(status, 401);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[tokio::test]
+async fn integration_inventory_is_read_only_and_separates_configuration_from_observation() {
+    let hub = lamp_hub().await;
+    let options = moli_api::Options {
+        integration_inventory: vec![
+            json!({"id":"fake","kind":"fake","compiled":true,"instances":[{"instance":"fake","enabled":true}]}),
+            json!({"id":"disabled","kind":"profile","compiled":true,"instances":[{"instance":"disabled","enabled":false}]}),
+            json!({"id":"unconfigured","kind":"profile","compiled":true,"instances":[]}),
+        ],
+        ..moli_api::Options::default()
+    };
+    let addr = serve(&hub, &options).await;
+    for _ in 0..2 {
+        let (status, body) = request(&addr, "GET", "/api/system", None).await;
+        assert_eq!(status, 200, "{body}");
+        let body: Json = serde_json::from_str(&body).unwrap();
+        let rows = body["integrations"].as_array().unwrap();
+        assert_eq!(rows[0]["instances"][0]["status"]["state"], "running");
+        assert_eq!(rows[1]["instances"][0]["enabled"], false);
+        assert!(rows[1]["instances"][0]["status"].is_null());
+        assert!(rows[2]["instances"].as_array().unwrap().is_empty());
+        assert!(rows.iter().all(|r| r["hardware_validation"].is_null()));
+    }
+    assert_eq!(
+        hub.state(&"fake:lamp/state".into()).unwrap().value,
+        Value::Bool(false)
+    );
+    assert_eq!(hub.snapshot().drivers.len(), 1);
+}
