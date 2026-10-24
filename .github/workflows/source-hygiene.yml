@@ -1,19 +1,22 @@
 name: Source hygiene
-
-on:
-  pull_request:
-
+'on':
+  pull_request: null
+  push:
+    branches:
+    - android/beta-ready
 permissions:
   contents: read
-
 jobs:
   source-hygiene:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - run: sh scripts/leak-check.sh
-      - name: Check signing preparation without keys or Android builds
-        if: hashFiles('tools/android-signing/check_static.py') != ''
-        run: python3 tools/android-signing/check_static.py
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - run: sh scripts/leak-check.sh
+    - run: |-
+        python3 -m pip install --disable-pip-version-check PyYAML==6.0.3
+        python3 tools/android-signing/check_static.py
+        python3 -m unittest discover -s tools/android-ci -p "test_*.py" -v

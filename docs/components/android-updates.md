@@ -102,7 +102,7 @@ cannot replace the signing key. A later production identity remains a separate d
    only into environment secret `BETA_SIGNING_BUNDLE`, not a repository secret.
    Environment: `android-beta-signing`, selected deployment **branch `main` only**,
    no tags. Keep updates to that trusted branch owner-controlled. No extra reviewer
-   chain is needed: the workflow is manual, owner-only and main-only. The reviewed
+   chain is needed. Secret access stays main-only; the currently active workflow is manual. The reviewed
    single workflow file must first be placed on default `main` by an explicitly
    authorized owner action; **this preparation does not change main or merge PR #7**.
 
@@ -127,49 +127,103 @@ describes its free tier and private account runtimes. The mobile browser journey
 has not been physically tested here. Do not send a `.p12`, bundle, password or
 screenshot containing them to chat, issue, PR, Git, CI logs or public artifacts.
 
-### One manual workflow, no signing key in a build
+### Prepared automatic delivery, without keys in a build
 
-`.github/workflows/android-beta-sign.yml` is self-contained so activating it does
-not require merging the application PR. GitHub requires this manual workflow on
-the default branch ([official documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)).
-It is **prepared in the draft branch, not activated on main**.
+**Activation is pending.** Main still contains the earlier manual signer. The
+replacement `.github/workflows/android-beta-sign.yml` in this draft PR is a
+self-contained, reviewable activation diff. No key, environment, ruleset or main
+change is performed by this preparation. The existing certificate is pinned;
+never recreate the key.
 
-The owner selects an immutable source commit that already passed Android, audit,
-check and hygiene CI; the workflow refuses missing/failed latest results and forks.
-The first source is the already-validated `fde277b…`, version 17; subsequent runs
-need the previous signed source SHA and strictly increasing versionCode. These are
-public references provided with development reports, not secrets.
+A release milestone is a trusted owner-originated push to `android/beta-ready`,
+not every development commit. Promote only the finished work commit, after the
+previous delivery has finished. Use the existing authenticated owner GitHub App
+or owner GitHub session: a push made by `GITHUB_TOKEN` does not trigger the next
+workflow. Work continues on `android/profile-import`, with PR #7 kept in draft.
 
-Three automatic jobs perform one owner-requested operation:
+1. **Secret-free candidate:** cumulative changes since the last delivered source
+   determine tests. Web/UI changes run relevant JS/i18n/navigation checks; driver
+   changes test their paths; storage, JNI, dependencies, Gradle or unknown inputs
+   keep the preservation/full Android checks. Rust checks and audit run independently,
+   once. Ordinary PR edits only run applicable lightweight checks; heavy APK/emulator
+   jobs run at a ready milestone. Update tests use disposable emulator certificates.
+2. **Build once:** ARM64 JNI caches include exact source, embedded dashboard and
+   Rust/NDK/API versions, without broad fallback keys. x86_64 has a separate cache
+   and is built only when emulator tests apply. The unsigned ARM64 APK is assembled
+   once. The immutable artifact contains APK SHA-256, source/run/attempt, toolchains,
+   runtime-input fingerprint, metadata, test plan and selected instrumentation logs.
+3. **Main-only gate:** `workflow_run` receives the successful ready run. Trusted
+   inline code independently verifies repository, owner actor, branch, immutable
+   commit, latest successful checks, approved CI-script hashes, v4 artifact digest,
+   exact evidence and APK digest. It never executes candidate code. A fork, changed
+   policy, incomplete/failed evidence or stale milestone is refused before the key
+   is available. Missing caches are never treated as test results.
+4. **Isolated signer:** separate main-only environment, no checkout, Gradle, app
+   scripts or emulator. Sign exactly the validated bytes with the existing key,
+   verify package/ABI/permissions, alignment and pinned certificate. Private material
+   is temporary, removed and never uploaded or cached. No dependency installation
+   occurs in the secret-bearing step.
+5. **Verified delivery:** a separate job, without the key, independently checks SDK
+   signature, package, version and hashes, then publishes a GitHub prerelease with
+   the ARM64 APK, checksum, public certificate and installation notice. This is the
+   only job requesting `contents: write`. It atomically reserves a monotonically
+   increasing `moli-beta-code-N` tag, stages assets in a draft and publishes only a
+   complete release. The JSON release ledger binds versionCode to source and hash.
+   The initial ledger is the already signed code 17; same/lower codes are rejected.
 
-- **Build:** no signing environment or secret. Reuse exact-match JNI cache;
-  build the unsigned ARM64 beta and disposable x86_64 fixtures. No repeated
-  12-journey integration suite, Rust audit or archive tests for the already-green source.
-- **Sign:** fresh runner, environment restricted to main, no checkout or project
-  build/dependency scripts. Trusted inline code, SDK 35.0.0 and one step-scoped
-  credential decode a private temporary `.p12`, sign and verify the public
-  fingerprint. Private material is removed; nothing is cached or uploaded.
-- **Verify/deliver:** another runner without secrets reuses the existing six
-  migration/update fixture invocations **with the actual reusable certificate**.
-  Only after success is the final ARM64 ZIP offered with its checksum, certificate
-  fingerprint and short notice. Debuggable emulator APKs are not the user APK.
-  Intermediate APK-only artifacts expire in one day; final APK/proof in 14 days.
+**Single activation decision:** approve replacing only the protected workflow on
+main, including its isolated publication job's `contents: write` permission and
+public APK prerelease assets. Keep `android-beta-signing` restricted to **main only**,
+its existing secret and all current protections. No application PR merge, environment
+expansion, new secret or repeated per-version dispatch is required. The activation
+push can process the already validated current ready milestone; later successful
+ready workflows trigger it automatically. Manual dispatch remains only an owner
+fallback, without SHA fields. If environment required reviewers are enabled later,
+their approval remains a real GitHub gate and is not bypassed.
 
-The single bundle requires explicit owner recovery confirmation. Until the owner
-has personally verified their NordPass copy, status is **ATTENTE COPIE UTILISATEUR**:
-no real bundle configured, no reusable key generated here, no signed beta delivered.
-The earlier A→B emulator proof remains valid and is not rerun now; the actual-key
-proof runs only after personal setup. Local signing tests use disposable synthetic
-credentials and are not evidence that the owner key or NordPass setup exists.
+GitHub requires the `workflow_run` handler on the default branch. It grants access
+to privileged tokens even after unprivileged runs, so no downloaded source/scripts
+are executed in the handler. Provenance uses authenticated GitHub APIs, immutable
+v4 artifact digests and independent source/policy checks. This is not an artifact
+attestation: no new OIDC or attestation-write permission is requested. Trust remains
+in the owner-controlled main workflow and GitHub Actions infrastructure.
 
-Only public standard GitHub runners are used, not paid/larger runners. Artifact
-storage still shares the account allowance ([GitHub billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions));
-retain a zero-spend/blocked paid-usage policy and verify included storage before
-activation. No paid service or account spending setting is enabled by this work.
-Keep the environment and trusted main settings real in GitHub; text in this file
-is not a substitute for them. The assistant cannot access NordPass or read back
-an encrypted GitHub environment secret. No key rotation, HSM or enterprise vault
-is required for these single-owner beta trials.
+Delivery concurrency never cancels an existing signing operation. A conflicting
+version, superseded milestone or interrupted draft publication fails closed. Do
+not move/delete its reserved tag or overwrite a release automatically; inspect the
+failed run before owner-approved recovery. CI policy/toolchain changes require a
+reviewed protected-workflow update because their hashes are pinned; ordinary app
+changes do not. No signing-key rotation or automatic app installation is introduced.
+
+### Reusing the existing 0.14.1 proof
+
+Android run `40025382394`, source `014ba7baa92865d51e0d56055737f7af4f392ff4`,
+already passed six migration/preservation and twelve journey instrumentations.
+For this pipeline-only change, independently compare all tracked runtime/build/test
+inputs with that source, excluding only documented orchestration/docs paths. If
+identical, the successful owner-originated baseline remains the validation proof;
+no emulator/JVM/Rust repetition. A changed or unknown runtime input disables reuse.
+The unsigned APK still needs to be retained once, since the old CI retained reports
+rather than a delivery APK. Final signature/certificate/metadata verification always
+runs. The prior actual-certificate update proof remains valid; repeat preservation
+checks when storage, identity, JNI, migration or dependency changes warrant them.
+
+Local validation commands (no owner credentials):
+
+```
+python3 tools/android-signing/check_static.py
+python3 -m unittest discover -s tools/android-ci -p 'test_*.py' -v
+python3 tools/android-signing/test_signing.py  # existing unsigned APK, disposable key only
+sh -n tools/android-ci/build_candidate.sh scripts/test-android-integrations.sh
+sh scripts/leak-check.sh
+```
+
+Only standard public GitHub runners are used. Artifacts expire after 1–14 days;
+public prerelease assets persist. No paid service, larger runner or billing setting
+is enabled. Runtime cache hits and runner scheduling affect latency; a 5–10 minute
+small-update target is not a guarantee. Install the delivered APK **over** the same
+beta, without uninstalling or clearing data; stop the engine first. Signature refusal
+is a reason to stop, never to delete the installed application's data.
 
 ## Android background limitations
 

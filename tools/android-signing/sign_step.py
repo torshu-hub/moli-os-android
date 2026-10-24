@@ -25,6 +25,8 @@ def sign():
     if set(bundle) != {'format', 'p12', 'password', 'certificate_sha256', 'nordpass_confirmed'} or bundle['format'] != 1 or bundle['nordpass_confirmed'] is not True:
         raise ValueError('Owner recovery confirmation is required')
     password, expected = bundle['password'], bundle['certificate_sha256']
+    if expected != os.environ.get('EXPECTED_CERTIFICATE'):
+        raise ValueError('Existing beta certificate pin is required')
     if not isinstance(password, str) or not 24 <= len(password) <= 128 or any(not 33 <= ord(c) <= 126 for c in password) or not re.fullmatch('[a-f0-9]{64}', expected):
         raise ValueError('Invalid signing credentials or public fingerprint')
     blob = base64.b64decode(bundle['p12'], validate=True)
@@ -35,6 +37,8 @@ def sign():
             print('::add-mask::' + value.replace('%', '%25'), flush=True)
     sdk = Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'
     source = Path(os.environ['UNSIGNED_APK']).resolve()
+    if hashlib.sha256(source.read_bytes()).hexdigest()!=os.environ.get('UNSIGNED_SHA256'):
+        raise ValueError('Unsigned bytes must match the validated artifact')
     metadata = json.loads(os.environ['BETA_METADATA'])
     code, version = metadata['versionCode'], metadata['versionName']
     if metadata['applicationId'] != 'io.moli.android.app.beta' or not re.fullmatch('[1-9][0-9]*', str(code)) or not 16 < int(code) <= 2100000000 or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+-beta\.[1-9][0-9]*', version):

@@ -81,52 +81,19 @@ class SigningTest(unittest.TestCase):
                 generate.assert_not_called()
             self.assertNotIn(self.password,captured.getvalue())
             self.assertNotIn(self.bundle,captured.getvalue())
-    def test_workflow_only_manual_owner_main_and_isolated_signing(self):
-        workflow=(ROOT/'.github/workflows/android-beta-sign.yml').read_text()
-        data=yaml.safe_load(workflow)
-        trigger=data.get('on',data.get(True))
-        self.assertEqual(set(trigger),{'workflow_dispatch'})
-        jobs=data['jobs'];sign=jobs['sign']
-        self.assertEqual(sign['environment'],'android-beta-signing')
-        self.assertIn("github.ref == 'refs/heads/main'",sign['if'])
-        self.assertIn('github.actor == github.repository_owner',sign['if'])
-        self.assertEqual(jobs['sign']['needs'],'build')
-        steps=sign['steps'];secretsteps=[s for s in steps if 'BETA_SIGNING_BUNDLE' in s.get('env',{})]
-        self.assertEqual(len(secretsteps),1)
-        script=secretsteps[0]['run'];self.assertIn((BASE/'sign_step.py').read_text(),script)
-        self.assertFalse(any('actions/checkout' in s.get('uses','') for s in steps))
-        self.assertFalse(any('gradle' in s.get('run','') for s in steps))
-        self.assertEqual(data['permissions'],{'contents':'read','actions':'read'})
-        for job in jobs.values():
-            self.assertEqual(job['runs-on'],'ubuntu-24.04')
-            for step in job['steps']:
-                if 'uses' in step:self.assertRegex(step['uses'],r'@[0-9a-f]{40}$')
-        verify=jobs['verify-and-deliver']['steps']
-        proof=next(s for s in verify if s.get('name','').startswith('Prepare trusted'))
-        self.assertIn((BASE/'verify_prebuilt.sh').read_text(),proof['run'])
-        emulator=next(s for s in verify if s.get('name','').startswith('Verify migration'))
-        self.assertEqual(emulator['with']['script'],'sh verify-beta-signed.sh')
-        delivery=next(s for s in verify if s.get('name','').startswith('Deliver only'))
-        self.assertNotIn('always()',delivery.get('if',''))
-    def test_source_gate_rejects_missing_failed_latest_and_fork_runs(self):
+    def test_workflow_isolated_existing_certificate_and_validated_bytes(self):
         workflow=yaml.safe_load((ROOT/'.github/workflows/android-beta-sign.yml').read_text())
-        body=workflow['jobs']['build']['steps'][0]['run']
-        code=body.split("<<'PYCODE'\n",1)[1].rsplit('\nPYCODE',1)[0]
-        required=['check','audit','Source hygiene','Android home and integrations']
-        good=[dict(name=name,head_sha='a'*40,status='completed',conclusion='success',head_repository={'id':123}) for name in required]
-        cases=[(good,True),(good[:-1],False),([dict(good[0],conclusion='failure')]+good,False),([dict(r,head_repository={'id':999}) for r in good],False)]
-        for runs,allowed in cases:
-            response=io.BytesIO(json.dumps({'workflow_runs':runs}).encode())
-            with patch.dict(os.environ,{'SOURCE_SHA':'a'*40,'PREVIOUS_SHA':'','GH_TOKEN':'invented-test-token','REPOSITORY':'example/example','REPOSITORY_ID':'123'}),patch('urllib.request.urlopen',return_value=response),contextlib.redirect_stdout(io.StringIO()):
-                if allowed:exec(compile(code,'source-gate','exec'),{})
-                else:
-                    with self.assertRaises(SystemExit):exec(compile(code,'source-gate','exec'),{})
+        sign=workflow['jobs']['sign'];self.assertEqual(sign['environment'],'android-beta-signing')
+        step=next(s for s in sign['steps'] if 'BETA_SIGNING_BUNDLE' in s.get('env',{}))
+        self.assertIn((BASE/'sign_step.py').read_text(),step['run'])
+        self.assertIn('UNSIGNED_SHA256',step['env']);self.assertEqual(len(step['env']['EXPECTED_CERTIFICATE']),64)
+        self.assertFalse(any('actions/checkout' in s.get('uses','') for s in sign['steps']))
     def test_sdk_signing_and_rejection_without_leaking_inputs(self):
         source=ROOT/'android/app/build/outputs/apk/beta/app-beta-unsigned.apk'
         self.assertTrue(source.exists(),'Prepare the unchanged unsigned beta once before SDK signing self-test')
-        metadata={'applicationId':'io.moli.android.app.beta','versionCode':'17','versionName':'0.14.0-beta.1'}
+        metadata=dict(line.split('=',1) for line in (ROOT/'android/beta.properties').read_text().splitlines() if line and not line.startswith('#'))
         with tempfile.TemporaryDirectory(prefix='moli-sign-test-') as temp:
-            env=dict(os.environ,BETA_SIGNING_BUNDLE=self.bundle,BETA_METADATA=json.dumps(metadata),UNSIGNED_APK=str(source),SIGNED_OUTPUT=temp+'/valid',RUNNER_TEMP=temp)
+            env=dict(os.environ,BETA_SIGNING_BUNDLE=self.bundle,BETA_METADATA=json.dumps(metadata),UNSIGNED_APK=str(source),SIGNED_OUTPUT=temp+'/valid',RUNNER_TEMP=temp,EXPECTED_CERTIFICATE=self.fingerprint,UNSIGNED_SHA256=__import__('hashlib').sha256(source.read_bytes()).hexdigest())
             result=subprocess.run([sys.executable,'-I',str(BASE/'sign_step.py')],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
             self.assertEqual(result.returncode,0,'SDK signing failed without exposing its private diagnostic')
             self.assertNotIn(self.password,result.stdout+result.stderr)
@@ -140,5 +107,10 @@ class SigningTest(unittest.TestCase):
                 self.assertNotIn(self.password,result.stdout+result.stderr)
                 self.assertFalse(Path(temp,label).exists())
             self.assertEqual(list(Path(temp).glob('moli-sign-*')),[])
+            env['BETA_SIGNING_BUNDLE']=self.bundle
+            for key in ['EXPECTED_CERTIFICATE','UNSIGNED_SHA256']:
+                old=env[key];env[key]='0'*64;env['SIGNED_OUTPUT']=temp+'/pin-refused'
+                result=subprocess.run([sys.executable,'-I',str(BASE/'sign_step.py')],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+                self.assertNotEqual(result.returncode,0);self.assertFalse(Path(temp,'pin-refused').exists());env[key]=old
 
 if __name__=='__main__':unittest.main(verbosity=2)

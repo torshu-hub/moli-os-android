@@ -27,7 +27,11 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 adb install app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell pm grant "$app" android.permission.POST_NOTIFICATIONS
 failed=0
-for class in AutomaticMerossTest ProfileImportTest EngineDiagnosticsTest WeatherObservationTest BackNavigationTest HomeSetupTest EquipmentReadTest MerossReadTest NetworkDiscoveryTest MerossAccountTest UsabilityJourneyTest GuidedEquipmentTest; do
+classes=${MOLI_TEST_CLASSES:-"AutomaticMerossTest ProfileImportTest EngineDiagnosticsTest WeatherObservationTest BackNavigationTest HomeSetupTest EquipmentReadTest MerossReadTest NetworkDiscoveryTest MerossAccountTest UsabilityJourneyTest GuidedEquipmentTest"}
+for selected in $classes; do
+    case "$selected" in AutomaticMerossTest|ProfileImportTest|EngineDiagnosticsTest|WeatherObservationTest|BackNavigationTest|HomeSetupTest|EquipmentReadTest|MerossReadTest|NetworkDiscoveryTest|MerossAccountTest|UsabilityJourneyTest|GuidedEquipmentTest) ;; *) echo 'Unknown fixture test class' >&2; exit 1;; esac
+done
+for class in $classes; do
     log=../android-artifacts/reports/$class.txt
     # System Back and clipboard APIs require an interactive, unlocked display.
     # Keep each independent class on that same documented precondition.
@@ -46,10 +50,14 @@ for class in AutomaticMerossTest ProfileImportTest EngineDiagnosticsTest Weather
 done
 
 mkdir -p ../android-artifacts/reports/screenshots
+case " $classes " in *" AutomaticMerossTest "*)
 for image in 01-accueil 02-prises-reconnues-fixtures; do
     adb exec-out run-as "$app" cat "files/trial-screenshots/$image.png" > "../android-artifacts/reports/screenshots/$image.png"
 done
+;; esac
+case " $classes " in *" WeatherObservationTest "*)
 adb exec-out run-as "$app" cat files/weather-evidence.txt > ../android-artifacts/reports/weather-evidence.txt
 cat ../android-artifacts/reports/weather-evidence.txt
+;; esac
 
 [ "$failed" = 0 ]
