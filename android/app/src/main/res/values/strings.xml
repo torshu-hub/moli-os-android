@@ -272,10 +272,10 @@
     <string name="network_as_printer">Configurer comme imprimante IPP (à vérifier)</string>
     <string name="equipment_receipt">Dernière réception : %1$s — actualisé il y a %2$d s</string>
     <string name="account_network_consent">Les sondes des ports 80/631 sont cochées pour inclure les prises qui ne s’annoncent pas. Désactivez-les si vous le préférez. Seules les candidates choisies seront ensuite interrogées pour leur identité Meross.</string>
-    <string name="preview_home_title">Moli OS — Essais</string>
+    <string name="preview_home_title">Moli OS — Android</string>
     <string name="preview_home_help">Retrouvez vos appareils et vérifiez leurs données, simplement.</string>
     <string name="preview_search">Rechercher mes appareils</string>
-    <string name="preview_devices">Mes appareils</string>
+    <string name="preview_devices">Ouvrir Moli OS</string>
     <string name="preview_settings">Paramètres</string>
     <string name="preview_report_auto">Le rapport d’essai enregistre automatiquement les étapes utiles, sans secret.</string>
     <string name="preview_engine_ready">Moteur actif · rapport automatique</string>

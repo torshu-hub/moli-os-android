@@ -272,10 +272,10 @@
     <string name="network_as_printer">Configure as IPP printer (unverified)</string>
     <string name="equipment_receipt">Last received: %1$s — updated %2$d s ago</string>
     <string name="account_network_consent">Port 80/631 probes are selected to include unannounced plugs. You may uncheck them. Only selected candidates are then queried for Meross identity.</string>
-    <string name="preview_home_title">Moli OS — Trials</string>
+    <string name="preview_home_title">Moli OS — Android</string>
     <string name="preview_home_help">Find your devices and check their readings.</string>
     <string name="preview_search">Find my devices</string>
-    <string name="preview_devices">My devices</string>
+    <string name="preview_devices">Open Moli OS</string>
     <string name="preview_settings">Settings</string>
     <string name="preview_report_auto">The trial report automatically records useful steps, without secrets.</string>
     <string name="preview_engine_ready">Engine running · automatic report</string>

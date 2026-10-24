@@ -47,8 +47,31 @@ final class TouchRegression {
         for(int n=1;n<=24;n++){SystemClock.sleep(20);event(start,MotionEvent.ACTION_MOVE,x,from+(to-from)*n/24);}
         event(start,MotionEvent.ACTION_UP,x,to);Thread.sleep(350);
     }
+    static void originalMenu(ActivityScenario<MainActivity> ui)throws Exception {
+        assertEquals("true",js(ui,"['moli','salon','pieces','plan','carte','cameras','parler','energie','impression','dehors','automatismes','infra','systeme','atelier'].every(p=>document.querySelector('.rail a[href=\"#/'+p+'\"]'))"));
+        for(String route:new String[]{"moli","systeme","atelier"}) {
+            boolean tapped=false;
+            for(int n=0;n<12&&!tapped;n++) {
+                JSONObject r=new JSONObject(js(ui,"(()=>{const rail=document.querySelector('.rail').getBoundingClientRect(),r=document.querySelector('.rail a[href=\"#/'+"+JSONObject.quote(route)+"+'\"]').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,top:rail.top,bottom:rail.bottom,w:innerWidth}})()"));
+                AtomicReference<float[]> xy=new AtomicReference<>();ui.onActivity(a->{int[] pos=new int[2];a.web.getLocationOnScreen(pos);float scale=(float)(a.web.getWidth()/r.optDouble("w"));xy.set(new float[]{pos[0]+(float)r.optDouble("x")*scale,pos[1],scale});});
+                float[] v=xy.get();long start=SystemClock.uptimeMillis();
+                if(r.getDouble("y")>r.getDouble("top")+20&&r.getDouble("y")<r.getDouble("bottom")-20) {
+                    float y=v[1]+(float)r.getDouble("y")*v[2];event(start,MotionEvent.ACTION_DOWN,v[0],y);SystemClock.sleep(80);event(start,MotionEvent.ACTION_UP,v[0],y);tapped=true;
+                } else {
+                    float from=v[1]+((float)r.getDouble("bottom")-60)*v[2],to=v[1]+((float)r.getDouble("top")+60)*v[2];
+                    event(start,MotionEvent.ACTION_DOWN,v[0],from);for(int k=1;k<=24;k++){SystemClock.sleep(20);event(start,MotionEvent.ACTION_MOVE,v[0],from+(to-from)*k/24);}event(start,MotionEvent.ACTION_UP,v[0],to);Thread.sleep(350);
+                }
+            }
+            assertTrue("Original menu reachable by touch: "+route,tapped);
+            until(()->JSONObject.quote("#/"+route).equals(js(ui,"location.hash")));
+        }
+        until(()->"true".equals(js(ui,"!document.querySelector('.maison')")));
+        js(ui,"location.hash='#/'");until(()->"true".equals(js(ui,"document.querySelectorAll('[data-equipment=meross]').length===4")));
+        evidence("ORIGINAL MENU: 14 original destinations present; touchscreen opens Moli, scrolls rail to Systeme and Atelier; dashboard restored");
+    }
     static void verifyDevices(ActivityScenario<MainActivity> ui)throws Exception {
         until(()->{AtomicReference<Boolean> ready=new AtomicReference<>(false);ui.onActivity(a->ready.set(a.hasWindowFocus()&&a.web.getHeight()>300));return ready.get();});
+        originalMenu(ui);
         ui.onActivity(a->{ViewGroup root=a.findViewById(android.R.id.content);View controls=((ViewGroup)root.getChildAt(0)).getChildAt(0);
             assertTrue("Native engine controls compact",controls.getHeight()<=TrialUi.dp(a,120));
             assertTrue("Dashboard retains most of portrait screen",a.web.getHeight()>a.getResources().getDisplayMetrics().heightPixels*0.7);

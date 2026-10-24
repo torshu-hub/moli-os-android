@@ -85,8 +85,8 @@ public final class MainActivity extends Activity {
         TrialUi.title(this,front,R.string.preview_home_title);
         TrialUi.text(this,front,R.string.preview_home_help);
         LinearLayout actions=TrialUi.card(this,front);
-        TrialUi.button(this,actions,R.string.preview_search,true,()->{if(ensureKeys())startActivity(new Intent(this,SearchHomeActivity.class));});
-        TrialUi.button(this,actions,R.string.preview_devices,false,this::showDevices);
+        TrialUi.button(this,actions,R.string.preview_devices,true,this::showDevices);
+        TrialUi.button(this,actions,R.string.preview_search,false,()->{if(ensureKeys())startActivity(new Intent(this,SearchHomeActivity.class));});
         report=new ReportExport(this);
         TrialUi.button(this,actions,R.string.report_export,false,report::choose);
         TrialUi.text(this,front,R.string.preview_report_auto);
