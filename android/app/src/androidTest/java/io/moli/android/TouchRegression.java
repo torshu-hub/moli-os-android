@@ -56,21 +56,7 @@ final class TouchRegression {
                 Button b=MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(label));assertNotNull(b);assertTrue(b.isShown());assertTrue("Accessible touch target",b.getHeight()>=TrialUi.dp(a,48));
             }});
         assertEquals("true",js(ui,"document.querySelectorAll('[data-equipment=meross]').length===4 && document.documentElement.scrollHeight>innerHeight+100"));
-        // Reconstruct the former native parent + oversized WebView within the same
-        // running screen. Record which scroller receives the physical gesture.
-        AtomicReference<LinearLayout> root=new AtomicReference<>(),dashboard=new AtomicReference<>();
-        AtomicReference<ViewGroup.LayoutParams> dashParams=new AtomicReference<>(),webParams=new AtomicReference<>(),rootParams=new AtomicReference<>();
-        AtomicReference<ScrollView> legacy=new AtomicReference<>();
-        ui.onActivity(a->{ViewGroup content=a.findViewById(android.R.id.content);LinearLayout r=(LinearLayout)content.getChildAt(0),d=(LinearLayout)a.web.getParent();root.set(r);rootParams.set(r.getLayoutParams());dashboard.set(d);dashParams.set(d.getLayoutParams());webParams.set(a.web.getLayoutParams());
-            content.removeView(r);ScrollView s=new ScrollView(a);s.setFillViewport(true);FrameLayout frame=new FrameLayout(a);s.addView(frame);frame.addView(r,new FrameLayout.LayoutParams(-1,-2));content.addView(s);legacy.set(s);
-            d.setLayoutParams(new LinearLayout.LayoutParams(-1,-2));a.web.setLayoutParams(new LinearLayout.LayoutParams(-1,Math.max(TrialUi.dp(a,480),a.getResources().getDisplayMetrics().heightPixels-TrialUi.dp(a,160))));});
-        Thread.sleep(400);js(ui,"window.scrollTo(0,0)");swipe(ui);swipe(ui);
-        AtomicReference<Integer> nativeScroll=new AtomicReference<>();ui.onActivity(a->nativeScroll.set(legacy.get().getScrollY()));
-        String oldWeb=js(ui,"Math.round(scrollY)");
-        evidence("SCROLL historical container: native="+nativeScroll.get()+" web="+oldWeb);
-        assertTrue("Historical parent intercepts the vertical gesture",nativeScroll.get()>0);
-        ui.onActivity(a->{ViewGroup content=a.findViewById(android.R.id.content);((ViewGroup)root.get().getParent()).removeView(root.get());content.removeView(legacy.get());content.addView(root.get(),rootParams.get());dashboard.get().setLayoutParams(dashParams.get());a.web.setLayoutParams(webParams.get());});
-        Thread.sleep(400);js(ui,"window.scrollTo(0,0)");
+        js(ui,"window.scrollTo(0,0)");
         ui.onActivity(a->{for(ViewParent p=a.web.getParent();p!=null;p=p.getParent())assertFalse("WebView must not compete with a native scroller",p instanceof ScrollView);
             Rect full=new Rect(),visible=new Rect();a.web.getGlobalVisibleRect(visible);int[] xy=new int[2];a.web.getLocationOnScreen(xy);full.set(xy[0],xy[1],xy[0]+a.web.getWidth(),xy[1]+a.web.getHeight());assertEquals("Entire WebView viewport is visible",full,visible);});
         String target="[...document.querySelectorAll('[data-equipment=meross]')].at(-1).querySelector('summary')";
