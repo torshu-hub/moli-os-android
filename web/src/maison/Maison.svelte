@@ -54,6 +54,7 @@
     { path: 'infra', label: 'commun.nav.infra', icon: 'server' },
   ];
 
+
   let moliOpen = $state(false);
   let prefersDark = $state(false);
 
@@ -106,7 +107,7 @@
   const page = $derived(route.split('/')[0] ?? '');
 </script>
 
-<div class="maison" data-theme={theme}>
+<div class="maison" data-theme={theme} data-moli-connected={hub.connected}>
   <nav class="rail" aria-label={t('commun.nav.aria')}>
     <a class="brand" href="#/" aria-label={t('commun.nav.logo')}>
       <svg viewBox="0 0 32 32" aria-hidden="true">
@@ -244,6 +245,8 @@
     position: sticky;
     top: 0;
     height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -258,6 +261,7 @@
   }
 
   .rail ul {
+    flex-shrink: 0;
     list-style: none;
     margin: 12px 0 0;
     padding: 0;
@@ -308,6 +312,7 @@
   }
 
   .rail-foot {
+    flex-shrink: 0;
     margin-top: auto;
     display: grid;
     gap: 4px;
@@ -470,6 +475,7 @@
       position: fixed;
       inset: auto 0 0 0;
       height: auto;
+      overflow-y: visible;
       flex-direction: row;
       justify-content: center;
       padding: 6px 8px calc(6px + env(safe-area-inset-bottom));

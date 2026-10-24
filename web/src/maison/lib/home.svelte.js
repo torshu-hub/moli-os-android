@@ -1,7 +1,7 @@
 // The family dashboard's model: the hub's live state (SSE, shared with the
 // Atelier), the home layout (/api/home), and gentle helpers on top.
 
-import { hub, connect, login, decide, refreshSession } from '../../lib/hub.svelte.js';
+import { hub, connect, login, decide, refreshSession, refreshSnapshot } from '../../lib/hub.svelte.js';
 import { t, locale } from '../../lib/i18n.svelte.js';
 
 export { hub };
@@ -9,6 +9,7 @@ export { hub };
 export const home = $state({
   /** @type {any} layout from /api/home ({} = automatic) */
   config: null,
+  snapshotHealthy: false,
   /** an order the guard held, waiting for « c'est moi » */
   held: null,
   /** the installation, put off for now (a house already in use) */
@@ -49,6 +50,18 @@ export async function start() {
     home.config = res.ok ? await res.json() : {};
   } catch {
     home.config = {};
+  }
+  if (home.config?.android) {
+    let busy = false;
+    const read = async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      try { home.snapshotHealthy = await refreshSnapshot(); home.now = Date.now(); }
+      finally { busy = false; }
+    };
+    read();
+    setInterval(read, 15000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) read(); });
   }
 }
 
@@ -392,7 +405,7 @@ export async function dismissHeld() {
   else if (held) await decide({ id: held.id, point: held.point }, false);
 }
 
-export { refreshSession };
+export { refreshSession, refreshSnapshot };
 
 // ---- formatting ----------------------------------------------------------------
 

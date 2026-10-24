@@ -7,11 +7,11 @@ use std::time::Duration;
 use moli_core::Value;
 use serde_json::{Map, Value as Json, json};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-use tokio::net::TcpStream;
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::{Instant, timeout};
 
+use crate::connections::Connections;
 use crate::model::TuyaDevice;
 use crate::protocol::{Codec, Frame, Version, cmd};
 
@@ -28,6 +28,16 @@ const POWER_DPS: [u32; 3] = [18, 19, 20];
 
 /// Where the device is, from the device file or discovery.
 pub type Address = Option<(String, Version)>;
+
+/// Shared with discovery: a TCP connection alone proves neither presence
+/// nor identity. Only the link marks a device online; key searches may
+/// also raise the minimum protocol version after a successful proof.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Reachability {
+    pub online: bool,
+    pub connected_ip: Option<std::net::Ipv4Addr>,
+    pub version: Option<Version>,
+}
 
 /// What a device task reports to the driver.
 #[derive(Debug)]
@@ -63,6 +73,8 @@ pub struct Link {
     pub device: Arc<TuyaDevice>,
     pub key: [u8; 16],
     pub address: watch::Receiver<Address>,
+    pub reachability: Arc<watch::Sender<Reachability>>,
+    pub connections: Arc<Connections>,
     pub orders: mpsc::Receiver<Order>,
     pub up: mpsc::Sender<Up>,
 }
@@ -75,6 +87,12 @@ enum LinkError {
     Protocol(#[from] crate::protocol::ProtocolError),
     #[error("no answer")]
     Timeout,
+}
+
+enum Wake {
+    Retry,
+    Address,
+    Stopped,
 }
 
 /// The oldest protocol version a device is spoken to in: what its file
@@ -130,12 +148,15 @@ impl Link {
         let mut watching = true;
         let mut floor = Floor::new(self.device.version);
         loop {
+            if let Some(version) = self.reachability.borrow().version {
+                floor.proved(version);
+            }
             let Some((ip, announced)) = self.address.borrow().clone() else {
                 if online.is_none() {
                     online = Some(false);
                     let _ = self.up.send(Up::Online(self.index, false)).await;
                 }
-                if !self.idle(None, &mut watching).await {
+                if matches!(self.idle(None, &mut watching).await, Wake::Stopped) {
                     return;
                 }
                 continue;
@@ -143,6 +164,7 @@ impl Link {
             let version = floor.version(&self.device.name, announced);
             let started = Instant::now();
             let result = self.session(&ip, version, &mut online, &mut floor).await;
+            self.reachability.send_modify(|state| state.online = false);
             if self.up.is_closed() {
                 return;
             }
@@ -157,34 +179,35 @@ impl Link {
             if started.elapsed() > Duration::from_secs(60) {
                 backoff = Duration::from_secs(2);
             }
-            if !self.idle(Some(backoff), &mut watching).await {
-                return;
+            match self.idle(Some(backoff), &mut watching).await {
+                Wake::Stopped => return,
+                Wake::Address => backoff = Duration::from_secs(2),
+                Wake::Retry => backoff = (backoff * 2).min(BACKOFF_MAX),
             }
-            backoff = (backoff * 2).min(BACKOFF_MAX);
         }
     }
 
     /// Away from the device: refuse orders until the backoff ends (if any)
-    /// or the address changes. `false`: the driver is gone.
-    async fn idle(&mut self, backoff: Option<Duration>, watching: &mut bool) -> bool {
+    /// or an address proof arrives, including a proof of the same IP.
+    async fn idle(&mut self, backoff: Option<Duration>, watching: &mut bool) -> Wake {
         let wake = tokio::time::sleep(backoff.unwrap_or(Duration::from_secs(86_400)));
         tokio::pin!(wake);
         loop {
             tokio::select! {
-                () = &mut wake, if backoff.is_some() => return true,
+                () = &mut wake, if backoff.is_some() => return Wake::Retry,
                 changed = self.address.changed(), if *watching => {
                     if changed.is_err() {
                         *watching = false;
                         continue;
                     }
-                    return true;
+                    return Wake::Address;
                 }
                 order = self.orders.recv() => match order {
                     Some(order) => order.refuse(moli_i18n::tr!(
                         "pilotes.tuya.injoignable",
                         name = self.device.name.trim()
                     )),
-                    None => return false,
+                    None => return Wake::Stopped,
                 },
             }
         }
@@ -198,40 +221,46 @@ impl Link {
         online: &mut Option<bool>,
         floor: &mut Floor,
     ) -> Result<(), LinkError> {
-        let stream = timeout(CONNECT, TcpStream::connect((ip, PORT)))
+        let (stream, _reservation) = timeout(CONNECT, self.connections.connect(ip, PORT))
             .await
             .map_err(|_| LinkError::Timeout)??;
         stream.set_nodelay(true)?;
+        let connected_ip = match stream.peer_addr()?.ip() {
+            std::net::IpAddr::V4(ip) => Some(ip),
+            std::net::IpAddr::V6(_) => None,
+        };
         let (mut reader, mut writer) = stream.into_split();
         let mut codec = Codec::new(version, self.key);
         let mut buf = Vec::with_capacity(1024);
 
-        if version.negotiates() {
-            let (start, local) = codec.session_start();
-            writer.write_all(&start).await?;
-            let answer = loop {
-                let frame = next_frame(&codec, &mut reader, &mut buf).await?;
-                if frame.cmd == cmd::SESS_KEY_NEG_RESP {
-                    break frame;
-                }
-            };
-            let finish = codec.session_finish(local, &answer)?;
-            floor.proved(version);
-            writer.write_all(&finish).await?;
-        }
-
         let id = self.device.id.as_str();
-        let query = if version == Version::V33 {
-            codec.encode(
-                cmd::DP_QUERY,
-                json!({"gwId": id, "devId": id, "uid": id, "t": now()})
-                    .to_string()
-                    .as_bytes(),
-            )
-        } else {
-            codec.encode(cmd::DP_QUERY_NEW, b"{}")
-        };
-        writer.write_all(&query).await?;
+        // Bound the entire proof, including a peer that sends heartbeats
+        // forever instead of completing its handshake or encrypted status.
+        let first = timeout(
+            REPLY,
+            authenticate(&mut codec, &mut reader, &mut writer, &mut buf, id),
+        )
+        .await
+        .map_err(|_| LinkError::Timeout)??;
+        floor.proved(version);
+        // Orders received before identity was established are not replayed
+        // after recovery, even if their caller has not timed out yet.
+        while let Ok(order) = self.orders.try_recv() {
+            order.refuse(moli_i18n::tr!(
+                "pilotes.tuya.injoignable",
+                name = self.device.name.trim()
+            ));
+        }
+        self.reachability.send_modify(|state| {
+            state.online = true;
+            state.connected_ip = connected_ip;
+            state.version = state.version.max(Some(version));
+        });
+        *online = Some(true);
+        let _ = self.up.send(Up::Online(self.index, true)).await;
+        if let Some(frame) = first {
+            self.report(&codec, &frame).await;
+        }
 
         let wants_power = self.device.dps.iter().any(|d| POWER_DPS.contains(&d.id));
         let mut heartbeat = tokio::time::interval(HEARTBEAT);
@@ -252,10 +281,6 @@ impl Link {
                     heard = Instant::now();
                     buf.extend_from_slice(&chunk[..n]);
                     while let Some(frame) = codec.decode(&mut buf)? {
-                        if *online != Some(true) {
-                            *online = Some(true);
-                            let _ = self.up.send(Up::Online(self.index, true)).await;
-                        }
                         if matches!(frame.cmd, cmd::CONTROL | cmd::CONTROL_NEW) {
                             // The device took the order, or refused it.
                             let outcome = match frame.retcode {
@@ -297,7 +322,29 @@ impl Link {
     }
 
     async fn report(&self, codec: &Codec, frame: &Frame) {
-        if !matches!(
+        let dps = match status_dps(codec, frame) {
+            Ok(Some(dps)) => dps,
+            Ok(None) => return,
+            Err(e) => {
+                tracing::debug!(device = self.device.name, error = %e, "unreadable tuya payload");
+                return;
+            }
+        };
+        let values = self.device.decode_dps(&dps);
+        if !values.is_empty() {
+            let _ = self.up.send(Up::State(self.index, values)).await;
+        }
+    }
+}
+
+/// A successful, decrypted state is the only key proof available in 3.3.
+/// Empty acknowledgements, heartbeats and error replies never qualify.
+pub(crate) fn status_dps(
+    codec: &Codec,
+    frame: &Frame,
+) -> Result<Option<Map<String, Json>>, crate::protocol::ProtocolError> {
+    if frame.retcode.is_some_and(|code| code != 0)
+        || !matches!(
             frame.cmd,
             cmd::STATUS
                 | cmd::DP_QUERY
@@ -305,26 +352,57 @@ impl Link {
                 | cmd::CONTROL
                 | cmd::CONTROL_NEW
                 | cmd::UPDATEDPS
-        ) {
-            return;
+        )
+    {
+        return Ok(None);
+    }
+    let Some(json) = codec.open_json(&frame.payload)? else {
+        return Ok(None);
+    };
+    Ok(json
+        .get("dps")
+        .or_else(|| json.get("data").and_then(|data| data.get("dps")))
+        .and_then(Json::as_object)
+        .cloned())
+}
+
+async fn authenticate(
+    codec: &mut Codec,
+    reader: &mut tokio::net::tcp::OwnedReadHalf,
+    writer: &mut OwnedWriteHalf,
+    buf: &mut Vec<u8>,
+    id: &str,
+) -> Result<Option<Frame>, LinkError> {
+    if codec.version.negotiates() {
+        let (start, local) = codec.session_start();
+        writer.write_all(&start).await?;
+        loop {
+            let frame = next_frame(codec, reader, buf).await?;
+            if frame.cmd == cmd::SESS_KEY_NEG_RESP {
+                let finish = codec.session_finish(local, &frame)?;
+                writer.write_all(&finish).await?;
+                break;
+            }
         }
-        let json = match codec.open_json(&frame.payload) {
-            Ok(Some(json)) => json,
-            Ok(None) => return,
-            Err(e) => {
-                tracing::debug!(device = self.device.name, error = %e, "unreadable tuya payload");
-                return;
-            }
-        };
-        // 3.4+ nest the DPs under `data`.
-        let dps = json
-            .get("dps")
-            .or_else(|| json.get("data").and_then(|d| d.get("dps")));
-        if let Some(Json::Object(dps)) = dps {
-            let values = self.device.decode_dps(dps);
-            if !values.is_empty() {
-                let _ = self.up.send(Up::State(self.index, values)).await;
-            }
+    }
+    let query = if codec.version == Version::V33 {
+        codec.encode(
+            cmd::DP_QUERY,
+            json!({"gwId": id, "devId": id, "uid": id, "t": now()})
+                .to_string()
+                .as_bytes(),
+        )
+    } else {
+        codec.encode(cmd::DP_QUERY_NEW, b"{}")
+    };
+    writer.write_all(&query).await?;
+    if codec.version.negotiates() {
+        return Ok(None);
+    }
+    loop {
+        let frame = next_frame(codec, reader, buf).await?;
+        if status_dps(codec, &frame)?.is_some() {
+            return Ok(Some(frame));
         }
     }
 }
@@ -382,6 +460,472 @@ fn now() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::net::TcpStream;
+
+    fn response(version: Version, key: [u8; 16], command: u32, payload: &[u8]) -> Vec<u8> {
+        let mut frame = Codec::new(version, key).encode(command, payload);
+        frame.splice(16..16, [0, 0, 0, 0]);
+        let total = frame.len();
+        let trailer = if version == Version::V33 { 8 } else { 36 };
+        frame[12..16].copy_from_slice(&u32::try_from(total - 16).unwrap().to_be_bytes());
+        let checksum = if version == Version::V33 {
+            crc32fast::hash(&frame[..total - trailer])
+                .to_be_bytes()
+                .to_vec()
+        } else {
+            crate::protocol::hmac_sha256(&key, &frame[..total - trailer]).to_vec()
+        };
+        frame[total - trailer..total - 4].copy_from_slice(&checksum);
+        frame
+    }
+
+    fn order(value: bool) -> (Order, oneshot::Receiver<Result<(), String>>) {
+        let (done, result) = oneshot::channel();
+        (
+            Order {
+                dps: serde_json::from_value(json!({"1": value})).unwrap(),
+                done,
+                at: Instant::now(),
+            },
+            result,
+        )
+    }
+
+    async fn request(stream: &mut TcpStream) -> (u32, Vec<u8>) {
+        let mut header = [0; 16];
+        stream.read_exact(&mut header).await.unwrap();
+        let size = u32::from_be_bytes(header[12..16].try_into().unwrap()) as usize;
+        let mut body = vec![0; size];
+        stream.read_exact(&mut body).await.unwrap();
+        (
+            u32::from_be_bytes(header[8..12].try_into().unwrap()),
+            body[..size - 8].to_vec(),
+        )
+    }
+
+    #[tokio::test]
+    async fn unverified_connections_never_receive_an_order() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.7", PORT))
+            .await
+            .unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            assert_eq!(request(&mut stream).await.0, cmd::DP_QUERY);
+            let reply = response(Version::V33, *b"0123456789abcdef", cmd::HEART_BEAT, b"{}");
+            stream.write_all(&reply).await.unwrap();
+            assert!(
+                timeout(Duration::from_millis(100), stream.read(&mut [0; 1024]))
+                    .await
+                    .is_err(),
+                "no CONTROL may be sent before a decrypted state proves the key"
+            );
+        });
+        let (up, mut events) = mpsc::channel(8);
+        let (mut link, orders) = test_link(up);
+        let (queued, _done) = order(true);
+        orders.send(queued).await.unwrap();
+        let mut online = Some(false);
+        let _ = link
+            .session(
+                "127.0.0.7",
+                Version::V33,
+                &mut online,
+                &mut Floor::new(None),
+            )
+            .await;
+        server.await.unwrap();
+        assert_eq!(online, Some(false));
+        assert!(events.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn a_status_encrypted_with_another_key_does_not_mark_online() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.8", PORT))
+            .await
+            .unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            request(&mut stream).await;
+            stream
+                .write_all(&response(
+                    Version::V33,
+                    *b"fedcba9876543210",
+                    cmd::STATUS,
+                    br#"{"dps":{"1":true}}"#,
+                ))
+                .await
+                .unwrap();
+        });
+        let (up, mut events) = mpsc::channel(8);
+        let (mut link, _orders) = test_link(up);
+        let mut online = Some(false);
+        assert!(
+            link.session(
+                "127.0.0.8",
+                Version::V33,
+                &mut online,
+                &mut Floor::new(None)
+            )
+            .await
+            .is_err()
+        );
+        server.await.unwrap();
+        assert_eq!(online, Some(false));
+        assert!(events.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn verified_status_allows_fresh_orders_but_discards_the_recovery_queue() {
+        let key = *b"0123456789abcdef";
+        let listener = tokio::net::TcpListener::bind(("127.0.0.9", PORT))
+            .await
+            .unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            request(&mut stream).await;
+            stream
+                .write_all(&response(
+                    Version::V33,
+                    key,
+                    cmd::STATUS,
+                    br#"{"dps":{"1":false}}"#,
+                ))
+                .await
+                .unwrap();
+            let (command, body) = request(&mut stream).await;
+            assert_eq!(command, cmd::CONTROL);
+            let json = Codec::new(Version::V33, key)
+                .open_json(&body)
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                json["dps"]["1"], true,
+                "only the fresh order crosses the wire"
+            );
+            stream
+                .write_all(&response(Version::V33, key, cmd::CONTROL, b"{}"))
+                .await
+                .unwrap();
+        });
+        let (up, mut events) = mpsc::channel(8);
+        let (mut link, orders) = test_link(up);
+        let (queued, refused) = order(false);
+        orders.send(queued).await.unwrap();
+        let session = tokio::spawn(async move {
+            link.session(
+                "127.0.0.9",
+                Version::V33,
+                &mut Some(false),
+                &mut Floor::new(None),
+            )
+            .await
+        });
+        assert!(matches!(events.recv().await, Some(Up::Online(0, true))));
+        assert!(
+            matches!(events.recv().await, Some(Up::State(0, values)) if values == vec![("switch_1".into(), Value::Bool(false))])
+        );
+        assert!(refused.await.unwrap().is_err());
+        let (fresh, done) = order(true);
+        orders.send(fresh).await.unwrap();
+        assert!(done.await.unwrap().is_ok());
+        server.await.unwrap();
+        let _ = session.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn endless_heartbeats_do_not_extend_the_handshake_deadline() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.10", PORT))
+            .await
+            .unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let _ = stream.read(&mut [0; 1024]).await.unwrap();
+            let heartbeat = response(Version::V34, *b"0123456789abcdef", cmd::HEART_BEAT, b"{}");
+            loop {
+                if stream.write_all(&heartbeat).await.is_err() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        });
+        let (up, mut events) = mpsc::channel(8);
+        let (mut link, _orders) = test_link(up);
+        let result = timeout(
+            Duration::from_secs(6),
+            link.session(
+                "127.0.0.10",
+                Version::V34,
+                &mut Some(false),
+                &mut Floor::new(None),
+            ),
+        )
+        .await;
+        server.abort();
+        assert!(matches!(result, Ok(Err(LinkError::Timeout))));
+        assert!(
+            link.connections
+                .reserve("127.0.0.10".parse().unwrap())
+                .is_some(),
+            "authentication timeout releases the address for a later retry"
+        );
+        assert!(events.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn an_announcement_during_authentication_does_not_replace_the_connected_address() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.13", PORT))
+            .await
+            .unwrap();
+        let (queried, query) = oneshot::channel();
+        let (release, released) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            request(&mut stream).await;
+            queried.send(()).unwrap();
+            released.await.unwrap();
+            stream
+                .write_all(&response(
+                    Version::V33,
+                    *b"0123456789abcdef",
+                    cmd::STATUS,
+                    br#"{"dps":{"1":false}}"#,
+                ))
+                .await
+                .unwrap();
+            std::future::pending::<()>().await;
+        });
+        let (up, mut events) = mpsc::channel(8);
+        let (mut link, _orders) = test_link(up);
+        let (address, receiver) = watch::channel(Some(("127.0.0.13".into(), Version::V33)));
+        link.address = receiver;
+        let health = Arc::clone(&link.reachability);
+        let session = tokio::spawn(async move {
+            link.session(
+                "127.0.0.13",
+                Version::V33,
+                &mut Some(false),
+                &mut Floor::new(None),
+            )
+            .await
+        });
+        query.await.unwrap();
+        address
+            .send(Some(("127.0.0.14".into(), Version::V33)))
+            .unwrap();
+        release.send(()).unwrap();
+        assert!(matches!(events.recv().await, Some(Up::Online(0, true))));
+        let connected_ip = health.borrow().connected_ip;
+        server.abort();
+        session.abort();
+        assert_eq!(
+            connected_ip,
+            Some(std::net::Ipv4Addr::new(127, 0, 0, 13)),
+            "the protected address belongs to the verified socket, not the latest broadcast"
+        );
+    }
+
+    fn test_link(up: mpsc::Sender<Up>) -> (Link, mpsc::Sender<Order>) {
+        let (_, address) = watch::channel(None);
+        let (sender, orders) = mpsc::channel(1);
+        (
+            Link {
+                index: 0,
+                device: Arc::new(
+                    serde_json::from_value(json!({
+                        "id": "test-device", "name": "Test switch", "version": "3.3",
+                        "dps": [{"id": 1, "code": "switch_1", "type": "Boolean"}]
+                    }))
+                    .unwrap(),
+                ),
+                key: *b"0123456789abcdef",
+                address,
+                reachability: Arc::new(watch::channel(Reachability::default()).0),
+                connections: Arc::new(Connections::default()),
+                orders,
+                up,
+            },
+            sender,
+        )
+    }
+
+    #[tokio::test]
+    async fn a_reused_address_cannot_claim_to_be_online_with_a_heartbeat() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.2", PORT))
+            .await
+            .unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            request(&mut stream).await;
+            let mut response = Vec::new();
+            for word in [0x55aa_u32, 1, cmd::HEART_BEAT, 12, 0] {
+                response.extend_from_slice(&word.to_be_bytes());
+            }
+            response.extend_from_slice(&crc32fast::hash(&response).to_be_bytes());
+            response.extend_from_slice(&0xaa55_u32.to_be_bytes());
+            stream.write_all(&response).await.unwrap();
+        });
+        let (up, mut events) = mpsc::channel(8);
+        let (mut link, _orders) = test_link(up);
+        let mut online = Some(false);
+        let _ = link
+            .session(
+                "127.0.0.2",
+                Version::V33,
+                &mut online,
+                &mut Floor::new(None),
+            )
+            .await;
+        server.await.unwrap();
+        assert_ne!(online, Some(true), "a heartbeat proves no device identity");
+        while let Ok(event) = events.try_recv() {
+            assert!(!matches!(event, Up::Online(_, true)));
+        }
+    }
+
+    #[tokio::test]
+    async fn an_old_owner_cannot_open_an_already_verified_peers_socket() {
+        exclusive_connection("127.0.0.16", true).await;
+    }
+
+    #[tokio::test]
+    async fn concurrent_authentication_cannot_interrupt_the_first_socket() {
+        exclusive_connection("127.0.0.17", false).await;
+    }
+
+    #[tokio::test]
+    async fn a_new_proved_address_recovers_quickly_after_its_first_connection_fails() {
+        quick_retry_after_proof("127.0.0.19", "127.0.0.20").await;
+    }
+
+    #[tokio::test]
+    async fn proving_the_same_address_again_also_resets_a_long_retry_delay() {
+        quick_retry_after_proof("127.0.0.21", "127.0.0.21").await;
+    }
+
+    async fn quick_retry_after_proof(old_ip: &str, found_ip: &str) {
+        let old = tokio::net::TcpListener::bind((old_ip, PORT)).await.unwrap();
+        let found = if old_ip == found_ip {
+            None
+        } else {
+            Some(
+                tokio::net::TcpListener::bind((found_ip, PORT))
+                    .await
+                    .unwrap(),
+            )
+        };
+        let (up, mut events) = mpsc::channel(16);
+        let (mut link, _orders) = test_link(up);
+        let (address, receiver) = watch::channel(Some((old_ip.to_owned(), Version::V33)));
+        link.address = receiver;
+        let task = tokio::spawn(link.run());
+        // Real refusals at t=0, t=2 and t=6 build the normal exponential
+        // delay. We observe sockets, not a private backoff variable.
+        for _ in 0..3 {
+            let (mut socket, _) = timeout(Duration::from_secs(8), old.accept())
+                .await
+                .unwrap()
+                .unwrap();
+            request(&mut socket).await;
+            socket
+                .write_all(&response(
+                    Version::V33,
+                    *b"fedcba9876543210",
+                    cmd::STATUS,
+                    br#"{"dps":{"1":false}}"#,
+                ))
+                .await
+                .unwrap();
+        }
+        address.send_replace(Some((found_ip.to_owned(), Version::V33)));
+        let listener = found.as_ref().unwrap_or(&old);
+        let (mut transient, _) = timeout(Duration::from_secs(1), listener.accept())
+            .await
+            .unwrap()
+            .unwrap();
+        request(&mut transient).await;
+        // Some devices briefly refuse the first connection after a search.
+        drop(transient);
+        let recovered = timeout(Duration::from_secs(3), listener.accept()).await;
+        if recovered.is_err() {
+            task.abort();
+        }
+        let (mut socket, _) = recovered
+            .expect("a proved address must reset the retry delay before the first attempt")
+            .unwrap();
+        request(&mut socket).await;
+        socket
+            .write_all(&response(
+                Version::V33,
+                *b"0123456789abcdef",
+                cmd::STATUS,
+                br#"{"dps":{"1":true}}"#,
+            ))
+            .await
+            .unwrap();
+        timeout(Duration::from_secs(1), async {
+            while let Some(event) = events.recv().await {
+                if matches!(event, Up::State(0, values) if values == vec![("switch_1".into(), Value::Bool(true))]) {
+                    return;
+                }
+            }
+            panic!("the recovered connection must publish its authenticated state");
+        }).await.unwrap();
+        task.abort();
+        let _ = task.await;
+    }
+
+    async fn exclusive_connection(ip: &'static str, authenticated: bool) {
+        let listener = tokio::net::TcpListener::bind((ip, PORT)).await.unwrap();
+        let (up, mut events) = mpsc::channel(8);
+        let (mut owner, _orders) = test_link(up.clone());
+        let (mut old_owner, _old_orders) = test_link(up);
+        old_owner.key = *b"fedcba9876543210";
+        old_owner.device = Arc::new(
+            serde_json::from_value(json!({
+                "id": "old-owner", "name": "Old address owner", "version": "3.3", "dps": []
+            }))
+            .unwrap(),
+        );
+        let connections = Arc::clone(&owner.connections);
+        old_owner.connections = Arc::clone(&connections);
+        let connected = tokio::spawn(async move {
+            owner
+                .session(ip, Version::V33, &mut Some(false), &mut Floor::new(None))
+                .await
+        });
+        let (mut socket, _) = listener.accept().await.unwrap();
+        request(&mut socket).await;
+        if authenticated {
+            socket
+                .write_all(&response(
+                    Version::V33,
+                    *b"0123456789abcdef",
+                    cmd::STATUS,
+                    br#"{"dps":{"1":false}}"#,
+                ))
+                .await
+                .unwrap();
+            assert!(matches!(events.recv().await, Some(Up::Online(0, true))));
+        }
+        let retry = tokio::spawn(async move {
+            old_owner
+                .session(ip, Version::V33, &mut Some(false), &mut Floor::new(None))
+                .await
+        });
+        let second_connection = timeout(Duration::from_millis(100), listener.accept()).await;
+        connected.abort();
+        retry.abort();
+        let _ = connected.await;
+        let _ = retry.await;
+        assert!(
+            second_connection.is_err(),
+            "an obsolete configured IP must not evict a healthy peer from a single-client device"
+        );
+        assert!(
+            connections.reserve(ip.parse().unwrap()).is_some(),
+            "cancelling a connection releases its slot, before or after authentication"
+        );
+    }
 
     #[test]
     fn a_broadcast_never_lowers_the_version_a_device_proved() {

@@ -191,6 +191,7 @@ public final class NativeSmokeTest {
         if (!ProtectedKey.exists(context)) ProtectedKey.create(context, "4826");
         context.getSharedPreferences("host",Context.MODE_PRIVATE).edit().putBoolean("wanted",true).commit();
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(MainActivity::showDevices);
             AtomicBoolean rendered = new AtomicBoolean(false);
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
             while (!rendered.get() && System.nanoTime() < deadline) {

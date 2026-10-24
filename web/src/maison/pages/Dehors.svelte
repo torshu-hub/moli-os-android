@@ -1,13 +1,15 @@
 <script>
-  import { home, value, num, isOn, reachable } from '../lib/home.svelte.js';
+  import { home, hub, device, value, num, clock, isOn, reachable } from '../lib/home.svelte.js';
   import { weatherOf } from '../lib/icons.js';
   import { t } from '../../lib/i18n.svelte.js';
   import Icon from '../ui/Icon.svelte';
   import LightTile from '../ui/LightTile.svelte';
   import CameraTile from '../ui/CameraTile.svelte';
+  import { sourceStatus } from '../lib/source-status.js';
 
   const out = $derived(home.config?.outdoor ?? {});
   const w = $derived(out.weather);
+  const source = $derived(sourceStatus(hub.connected && (!home.config?.android || home.snapshotHealthy), device(w), hub.drivers.find(d => d.instance === device(w)?.instance), ['temperature','humidity'], home.now, 930000));
   const air = $derived(out.air);
   const pool = $derived(out.pool);
   const v = (id, key) => value(id, key);
@@ -64,6 +66,9 @@
     <p class="page-sub">{t('maison.dehors.sous_titre')}</p>
   </header>
 
+  {#if home.config?.android}
+    <p>{home.config.android.location} · {t('maison.android.' + source.state)}{source.ts ? ' · ' + t('maison.android.received', {time:clock(source.ts)}) : ''}</p>
+  {/if}
   <section class="card sky" class:night={!day}>
     <div class="now">
       <svg class="sky-icon" viewBox="0 0 24 24" aria-hidden="true"><path d={sky.icon} /></svg>

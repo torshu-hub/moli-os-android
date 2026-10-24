@@ -1,0 +1,11 @@
+{
+  "header": {
+    "method": "GETACK",
+    "namespace": "Appliance.System.Runtime"
+  },
+  "payload": {
+    "runtime": {
+      "signal": 76
+    }
+  }
+}

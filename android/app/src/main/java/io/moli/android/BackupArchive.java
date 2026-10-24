@@ -32,6 +32,7 @@ final class BackupArchive {
         }
         // Deliberately export only portable credentials, never the local generation path.
         JSONObject recovery = new JSONObject().put("master", credentials.getString("master")).put("pin", credentials.getString("pin"));
+        if(credentials.has("format")) recovery.put("format",credentials.getInt("format"));
         JSONObject manifest = new JSONObject().put("format", 1).put("engine", "0.1.0")
                 .put("files", entries).put("recovery", recovery);
         byte[] manifestBytes = manifest.toString().getBytes(StandardCharsets.UTF_8);

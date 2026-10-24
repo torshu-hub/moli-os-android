@@ -1,0 +1,20 @@
+[profile]
+id = "synthetic-temperature"
+name = "Demo profile / 42.5 °C"
+[[request]]
+id = "reading"
+path = "/status"
+format = "json"
+every = "5s"
+[[point]]
+key = "temperature"
+label = "Temperature (simulation)"
+from = "reading.temperature"
+kind = "numeric"
+unit = "°C"
+[[point]]
+key = "humidity"
+label = "Humidity (simulation)"
+from = "reading.humidity"
+kind = "numeric"
+unit = "%"

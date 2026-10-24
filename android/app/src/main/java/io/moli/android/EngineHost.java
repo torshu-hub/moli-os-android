@@ -11,6 +11,8 @@ final class EngineHost {
     private static volatile State state = State.STOPPED;
     private static volatile String origin, token;
     private static long lease;
+    private static SyntheticEndpoint synthetic;
+    static volatile boolean profileFailure, configurationFailure;
     private EngineHost() {}
     static State state() { return state; }
     static String origin() { return origin; }
@@ -20,23 +22,30 @@ final class EngineHost {
         if (state == State.RUNNING || state == State.STARTING) return lease;
         if (state != State.STOPPED) return -1;
         long current = ++lease;
-        state = State.STARTING;
+        state = State.STARTING; profileFailure = false; configurationFailure = false;
         Context app = context.getApplicationContext();
+        TrialLog.attach(app);
         WORK.execute(() -> {
             try {
                 JSONObject keys = ProtectedKey.open(app);
                 String session = ProtectedKey.randomHex();
+                synthetic = ProfileStore.prepare(app);
                 int port = NativeServer.start(ProtectedKey.dataDirectory(app, keys).getAbsolutePath(),
                         keys.getString("master"), session, keys.getString("pin"));
                 synchronized (EngineHost.class) {
                     token = session; origin = "http://127.0.0.1:" + port;
                     if (state == State.STARTING) {
                         state = State.RUNNING;
+                        TrialLog.record(TrialJournal.Event.ENGINE_STARTED,current,0);
                         android.content.SharedPreferences history = app.getSharedPreferences("diagnostics", Context.MODE_PRIVATE);
                         history.edit().putLong("starts", history.getLong("starts", 0) + 1).apply();
                     }
                 }
             } catch (Exception | LinkageError failure) {
+                if (synthetic != null) { synthetic.close(); synthetic = null; }
+                profileFailure = failure instanceof ProfileStore.Rejected;
+                configurationFailure = "configuration".equals(failure.getMessage()) || "configuration_conflict".equals(failure.getMessage()) || "configuration_storage".equals(failure.getMessage());
+                TrialLog.record(TrialJournal.Event.ENGINE_FAILED,0,0);
                 synchronized (EngineHost.class) { state = State.ERROR; }
             }
         });
@@ -51,11 +60,15 @@ final class EngineHost {
             catch (Exception | LinkageError failure) { /* No secret/native error logging. */ }
             finally {
                 synchronized (EngineHost.class) {
+                    if (synthetic != null) { synthetic.close(); synthetic = null; }
                     origin = null; token = null; state = success ? State.STOPPED : State.ERROR;
+                    TrialLog.record(success?TrialJournal.Event.ENGINE_STOPPED:TrialJournal.Event.ENGINE_FAILED,0,0);
                 }
             }
         });
     }
+    // Read-only vault snapshots share the engine queue without changing its lifecycle.
+    static <T> Future<T> inspect(Callable<T> task) { return WORK.submit(task); }
     static synchronized <T> Future<T> maintain(Callable<T> task) {
         if (state != State.STOPPED) throw new IllegalStateException("Stop the engine first");
         state = State.MAINTENANCE;

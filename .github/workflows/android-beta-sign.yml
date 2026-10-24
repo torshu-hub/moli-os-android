@@ -1,0 +1,565 @@
+# PREPARED: owner approval is required before copying this file to main.
+name: Sign owner beta
+'on':
+  workflow_run:
+    workflows:
+    - Android home and integrations
+    types:
+    - completed
+    branches:
+    - android/beta-ready
+  push:
+    branches:
+    - main
+    paths:
+    - .github/workflows/android-beta-sign.yml
+  workflow_dispatch: null
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: owner-beta-signing
+  cancel-in-progress: false
+jobs:
+  gate:
+    if: github.ref == 'refs/heads/main' && github.repository == 'torshu-hub/moli-os-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      approved: ${{ steps.gate.outputs.approved }}
+      metadata: ${{ steps.gate.outputs.metadata }}
+      version: ${{ steps.gate.outputs.version }}
+      unsigned_sha256: ${{ steps.gate.outputs.unsigned_sha256 }}
+    steps:
+    - id: gate
+      name: Verify owner milestone, checks, policy and exact artifact
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        python3 -I - <<'PYCODE'
+        """Conservative Android release policy; also embedded in the trusted delivery gate."""
+        import hashlib
+        import re
+
+        REPOSITORY = 'torshu-hub/moli-os-android'
+        READY_BRANCH = 'android/beta-ready'
+        IDENTITY = 'io.moli.android.app.beta'
+        CERTIFICATE = 'ce51eb0755d1e4fd5043d833108f0ed374f44cdac8734e4cf63f2efe1bc3bf37'
+        BOOTSTRAP = {'source_sha': 'fde277b8340cb9fea7fd40b75053c3a42a467d88', 'versionCode': 17, 'certificate_sha256': CERTIFICATE}
+        PROOF_SHA = '014ba7baa92865d51e0d56055737f7af4f392ff4'
+        PROOF_RUN = 40025382394
+        ALL_CLASSES = 'AutomaticMerossTest ProfileImportTest EngineDiagnosticsTest WeatherObservationTest BackNavigationTest HomeSetupTest EquipmentReadTest MerossReadTest NetworkDiscoveryTest MerossAccountTest UsabilityJourneyTest GuidedEquipmentTest'.split()
+        TOOLCHAINS = {'rust': '1.99.1', 'ndk': '28.2.13676358', 'api': 28, 'sdk': 35, 'node': '24.19.0', 'gradle': '8.11.1', 'java': 21}
+
+        def sha(value):
+            if not isinstance(value, str) or not re.fullmatch('[a-f0-9]{40}', value):
+                raise ValueError('Immutable source SHA required')
+            return value
+
+        def runtime_path(path):
+            # Exclusion list, not an extensible allowlist: unknown inputs stay relevant.
+            return not (path.startswith(('docs/', '.github/', '.claude/', 'tools/android-ci/', 'tools/android-signing/')) or
+                        path in ('README.md', 'AGENTS.md') or path.startswith('scripts/test-android-'))
+
+        def fingerprint(entries):
+            lines = [f"{x['mode']} {x['type']} {x['sha']} {x['path']}\n" for x in entries if runtime_path(x['path'])]
+            return hashlib.sha256(''.join(sorted(lines)).encode()).hexdigest()
+
+        def select(paths):
+            flags = {k: False for k in ('rust', 'web', 'image', 'update', 'pipeline')}
+            tests = set()
+            for p in paths:
+                if not runtime_path(p):
+                    flags['pipeline'] |= not p.startswith('docs/') and p not in ('README.md', 'AGENTS.md')
+                elif p == 'android/beta.properties':
+                    # Identity, permission and strict monotonic version checks run separately.
+                    pass
+                elif p.startswith(('web/', 'locales/')):
+                    flags['web'] = True
+                    tests.update(('BackNavigationTest', 'HomeSetupTest', 'EquipmentReadTest', 'MerossReadTest'))
+                elif p.startswith(('crates/', 'vendor/', '.cargo/')) or p in ('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'):
+                    flags['rust'] = True
+                    tests.update(('ProfileImportTest', 'EquipmentReadTest', 'MerossReadTest'))
+                    if p in ('Cargo.toml','Cargo.lock','rust-toolchain.toml') or p.startswith('.cargo/') or any(x in p for x in ('moli-android/', 'moli-runtime/', 'moli-history/', 'moli-api/', 'moli-core/')):
+                        flags['update'] = True; tests.update(ALL_CLASSES)
+                elif p.startswith('integrations/'):
+                    tests.update(('ProfileImportTest', 'EquipmentReadTest', 'MerossReadTest'))
+                elif p.startswith('android/'):
+                    if any(x in p for x in ('Backup', 'ProtectedKey', 'ProfileStore', 'EquipmentStore', 'MerossAccountStore', 'EngineHost', 'NativeServer', '.gradle', 'AndroidManifest', 'res/xml/', 'src/androidTest/')):
+                        flags['update'] = True; tests.update(ALL_CLASSES)
+                    elif 'Meross' in p:
+                        tests.update(('MerossReadTest', 'MerossAccountTest', 'UsabilityJourneyTest', 'AutomaticMerossTest'))
+                    elif 'MainActivity' in p or 'MoliService' in p or 'EngineHealth' in p:
+                        tests.update(('EngineDiagnosticsTest', 'BackNavigationTest', 'EquipmentReadTest'))
+                    elif 'res/values' in p:
+                        tests.update(('BackNavigationTest', 'HomeSetupTest'))
+                    else:
+                        flags['update'] = True; tests.update(ALL_CLASSES)
+                elif p.startswith(('docker/',)) or p in ('Dockerfile', '.dockerignore'):
+                    flags['image'] = True
+                else:
+                    # Unknown build/storage/security input: fail toward the complete suite.
+                    flags.update(rust=True, web=True, image=True, update=True)
+                    tests.update(ALL_CLASSES)
+            return dict(flags, classes=[c for c in ALL_CLASSES if c in tests])
+
+        def candidate_metadata(value, previous):
+            if set(value) != {'applicationId', 'versionCode', 'versionName'} or value['applicationId'] != IDENTITY:
+                raise ValueError('Unexpected beta identity or metadata')
+            code = str(value['versionCode'])
+            if not re.fullmatch('[1-9][0-9]*', code) or not int(previous['versionCode']) < int(code) <= 2100000000:
+                raise ValueError('A delivery requires a strictly increasing versionCode')
+            if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+-beta\.[1-9][0-9]*', value['versionName']):
+                raise ValueError('Invalid version name')
+            return dict(value, versionCode=int(code))
+
+        def properties(text):
+            result = {}
+            for line in text.splitlines():
+                if not line.strip() or line.lstrip().startswith('#'): continue
+                key, value = line.split('=', 1)
+                if key in result: raise ValueError('Duplicate beta property')
+                result[key] = value
+            return result
+
+        """GitHub read-only provenance. No artifact/project code is executed by this module."""
+        import base64
+        import hashlib
+        import json
+        import os
+        import urllib.request
+        import urllib.error
+
+        class StripAuthRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                if not newurl.startswith('https://'):
+                    raise ValueError('HTTPS redirect required')
+                result = super().redirect_request(req, fp, code, msg, headers, newurl)
+                result.remove_header('Authorization')
+                return result
+
+        def api(path, binary=False, method=None, data=None):
+            if path and (not path.startswith('/') or path.startswith('//') or '\n' in path):
+                raise ValueError('Invalid API path')
+            req = urllib.request.Request('https://api.github.com/repos/'+REPOSITORY+path,
+                headers={'Authorization': 'Bearer '+os.environ.get('GH_TOKEN', ''), 'Accept': 'application/vnd.github+json'},
+                method=method, data=None if data is None else json.dumps(data).encode())
+            if data is not None: req.add_header('Content-Type', 'application/json')
+            with urllib.request.build_opener(StripAuthRedirect()).open(req, timeout=60) as response:
+                body = response.read(100_000_001 if binary else 8_000_001)
+            if len(body) > (100_000_000 if binary else 8_000_000):
+                raise ValueError('Bounded GitHub response exceeded')
+            return body if binary else json.loads(body)
+
+        def tree(source):
+            result = api('/git/trees/'+sha(source)+'?recursive=1')
+            if result.get('truncated'): raise ValueError('Complete input tree required')
+            return [x for x in result['tree'] if x['type'] != 'tree']
+
+        def previous_release():
+            releases = []
+            for page in range(1,11):
+                batch = api('/releases?per_page=100&page='+str(page)); releases.extend(batch)
+                if len(batch)<100: break
+            else: raise ValueError('Release ledger exceeds bounded pagination')
+            delivered = []
+            for release in releases:
+                tag = release['tag_name']
+                if release['draft'] or not tag.startswith('moli-beta-code-'): continue
+                if not tag.removeprefix('moli-beta-code-').isdigit(): raise ValueError('Invalid delivery tag')
+                delivered.append((int(tag.removeprefix('moli-beta-code-')), release))
+            if not delivered:
+                # Bootstrap is an existing, owner-signed and verified delivery, not a new key.
+                return dict(BOOTSTRAP)
+            code, release = max(delivered, key=lambda p:p[0])
+            value = json.loads(release['body'])
+            if value['versionCode'] != code or value['certificate_sha256'] != CERTIFICATE:
+                raise ValueError('Release ledger identity mismatch')
+            sha(value['source_sha'])
+            ref = api('/git/ref/tags/'+release['tag_name'])
+            if ref['object']['type'] != 'commit' or ref['object']['sha'] != value['source_sha']:
+                raise ValueError('Release tag does not pin its source')
+            return value
+
+        def check_run(run, source, owner_id, *, candidate=False):
+            if run['head_sha'] != source or run['head_repository']['full_name'] != REPOSITORY or run['repository']['full_name'] != REPOSITORY:
+                raise ValueError('Fork or source provenance mismatch')
+            if run['status'] != 'completed' or run['conclusion'] != 'success': raise ValueError('Successful validation required')
+            if run['actor']['id'] != owner_id or run['triggering_actor']['id'] != owner_id:
+                raise ValueError('Owner-originated validation required')
+            if candidate and (run['event'] != 'push' or run['head_branch'] != READY_BRANCH or run['path'] != '.github/workflows/android-integrations.yml'):
+                raise ValueError('Explicit trusted ready-branch promotion required')
+
+        REQUIRED_WORKFLOWS = {'check':'.github/workflows/check.yml','audit':'.github/workflows/audit.yml',
+            'Source hygiene':'.github/workflows/source-hygiene.yml','Android home and integrations':'.github/workflows/android-integrations.yml'}
+        def latest_checks(rows):
+            latest={}
+            for row in sorted(rows,key=lambda x:x['id'],reverse=True):
+                if row['event']=='push' and row['head_branch']==READY_BRANCH and row['name'] in REQUIRED_WORKFLOWS and row['path']==REQUIRED_WORKFLOWS[row['name']]:
+                    latest.setdefault(row['name'],row)
+            return latest
+
+        def reusable_proof(source, owner_id):
+            if fingerprint(tree(source)) != fingerprint(tree(PROOF_SHA)): return None
+            run = api('/actions/runs/'+str(PROOF_RUN))
+            check_run(run, PROOF_SHA, owner_id)
+            if run['path'] != '.github/workflows/android-integrations.yml': raise ValueError('Baseline workflow mismatch')
+            return {'source_sha': PROOF_SHA, 'run_id': PROOF_RUN}
+
+        def file_bytes(source, path):
+            result = api('/contents/'+path+'?ref='+sha(source))
+            if result.get('encoding') != 'base64': raise ValueError('Bounded UTF8 source required')
+            return base64.b64decode(result['content'], validate=False)
+
+        def digest(data): return hashlib.sha256(data).hexdigest()
+
+        """Trusted main-only gate, embedded inline. Never imports or executes candidate code."""
+        import io
+        import json
+        import os
+        import time
+        import urllib.error
+        import zipfile
+        from pathlib import Path
+
+        # Filled by the renderer. These are approved CI orchestration bytes, not app source.
+        PIPELINE_PINS = {'.github/workflows/android-integrations.yml': '01a0b9e15a71eb1e6339f6458b510bbe72eac206c8169127429fecec4322a20c', '.github/workflows/audit.yml': 'fa842197d7380b9433798260847824799105df30b00184ca4ef413802ce39102', '.github/workflows/check.yml': 'a6f83eef4632e00bfbf5472f892eb53b10eca3b802bbe788780460ab9c4149b0', '.github/workflows/source-hygiene.yml': '6b6fe592c807aea736e3fe44024c78d44e703137d8701b05f6db4f44baa627e7', 'scripts/check-android-beta.py': '1e7192429d5b9fbf478b6fd63407258a9cd045819064386af5d14c25594e2c97', 'scripts/test-android-beta-metadata.py': 'fcb3e2873866fa86d220ff60d2ef834b62a30d7d074cda7e7b12b290b1f736d8', 'scripts/test-android-beta-update.sh': '04f65c8dc4494f7f4d83bff9e8a0bfc7702861c7b954232f2ad093022bab3b43', 'scripts/test-android-integrations.sh': 'f5d133d9d95f4f83cc737590d64462b668c14ce01290a7303f150459bbb0e823', 'scripts/verify-android-apk.py': '897d16221aaf2945324071035af6a37a41163777ea04ca8978efb1429c5218c5', 'tools/android-ci/build_candidate.sh': '1c6cfee9d2e2c5b2239469e3b9a78ee36364ee91bd06ebd65421e13885861792', 'tools/android-ci/bundle.py': '2233d3cd22d10979bac01b4d314bafcb5cc96284b5f13986de7a97a8307c06d6', 'tools/android-ci/delivery_gate.py': '024fb86e5eab2cc757b98b12c99652c0ee073a7fa3bc78efd162735b5215057d', 'tools/android-ci/plan.py': '1067752c750b81dfd8a50856b031b4753ed25bd8634126c45b06ff420ee275d4', 'tools/android-ci/policy.py': 'eb6000c721bc1f2f75a4b7fdb067ce7319988410e7fb0b23d7f4608b7c8f03d2', 'tools/android-ci/protocol.py': '3c95d1d33b26bcc523f07dedcf9c91dff62f9614f22e2ed76b7bf12ebb332217', 'tools/android-ci/publish.py': 'caf84ee7f1309a1e6943dcd0f607f14c12ee22db8eeb5671bf3bde2d17574000', 'tools/android-signing/check_static.py': 'e66949597ea71fc89642e2b26a92cf8d7a0801dbb14a96b461a1d8b65135fd22', 'tools/android-signing/owner_key.py': '684a9f2fc6b6fecfe09db2aaf40869c91deea612b56017a696729deab38056ca', 'tools/android-signing/sign_step.py': '24b462337f65d605bac5874ec34c9d0f25af9076b695d625f68b6c20bbf17f15'}
+        UPDATE_FILES=['beta-preview-export.txt','beta-legacy-export.txt','beta-migration-a.txt','beta-update-b.txt','beta-after-refusals.txt','beta-legacy-restore.txt']
+
+        def verify_bundle(data, artifact, run, previous, entries, expected_plan):
+            if artifact.get('expired') or artifact['workflow_run']['head_sha']!=run['head_sha'] or artifact['workflow_run']['id']!=run['id']:
+                raise ValueError('Artifact provenance mismatch')
+            if artifact.get('digest')!='sha256:'+digest(data): raise ValueError('GitHub artifact digest mismatch')
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                names=archive.namelist()
+                if len(names)!=len(set(names)) or len(names)>64 or sum(x.file_size for x in archive.infolist())>100_000_000:
+                    raise ValueError('Bounded, unique artifact entries required')
+                for name in names:
+                    if name not in ('unsigned.apk','candidate.json') and not (name.startswith('proof/') and name.removeprefix('proof/') in [c+'.txt' for c in ALL_CLASSES]+UPDATE_FILES):
+                        raise ValueError('Unexpected artifact path')
+                manifest=json.loads(archive.read('candidate.json'))
+                if set(manifest)!={'format','repository','source_sha','run_id','run_attempt','runtime_sha256','toolchains','previous_source_sha','metadata','plan','unsigned_sha256','proofs','jvm_tests'}:
+                    raise ValueError('Unexpected candidate manifest fields')
+                if manifest['format']!=1 or manifest['repository']!=REPOSITORY or manifest['source_sha']!=run['head_sha'] or manifest['run_id']!=run['id'] or manifest['run_attempt']!=run['run_attempt']:
+                    raise ValueError('Candidate source/run mismatch')
+                if manifest['toolchains']!=TOOLCHAINS or manifest['runtime_sha256']!=fingerprint(entries) or manifest['previous_source_sha']!=previous['source_sha']:
+                    raise ValueError('Input fingerprint, toolchain or previous delivery mismatch')
+                if manifest['plan']!=expected_plan: raise ValueError('Validation policy or reused evidence mismatch')
+                metadata=candidate_metadata(manifest['metadata'],previous)
+                wanted=[c+'.txt' for c in expected_plan['classes']]+(UPDATE_FILES if expected_plan['update'] else [])
+                if set(manifest['proofs'])!=set(wanted) or set(names)!={'unsigned.apk','candidate.json',*('proof/'+n for n in wanted)}:
+                    raise ValueError('Incomplete or extra evidence')
+                for name in wanted:
+                    proof=archive.read('proof/'+name)
+                    if len(proof)>262144 or digest(proof)!=manifest['proofs'][name] or b'OK (1 test)' not in proof or b'FAILURES!!!' in proof or b'INSTRUMENTATION_FAILED' in proof:
+                        raise ValueError('Instrumentation validation failed')
+                if not expected_plan['reused'] and manifest['jvm_tests']<24: raise ValueError('JVM preservation/security checks required')
+                apk=archive.read('unsigned.apk')
+                if len(apk)>90_000_000 or digest(apk)!=manifest['unsigned_sha256']: raise ValueError('APK digest mismatch')
+            return manifest,metadata,apk
+
+        def main():
+            event=json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+            if os.environ['GITHUB_REF']!='refs/heads/main' or event['repository']['full_name']!=REPOSITORY:
+                raise ValueError('Trusted default branch required')
+            owner=event['repository']['owner']['id']
+            head=api('/git/ref/heads/'+READY_BRANCH)['object']['sha'];sha(head)
+            if os.environ['GITHUB_EVENT_NAME']=='workflow_run':
+                run=api('/actions/runs/'+str(event['workflow_run']['id']))
+                if run['head_sha']!=head:
+                    print('Obsolete ready milestone; no signature requested');return
+            else:
+                if event.get('sender',{}).get('id')!=owner: raise ValueError('Owner activation or fallback required')
+                runs=api('/actions/runs?event=push&branch='+READY_BRANCH+'&head_sha='+head+'&per_page=100')['workflow_runs']
+                choices=[x for x in runs if x['path']=='.github/workflows/android-integrations.yml']
+                if not choices or choices[0]['status']!='completed':
+                    print('Ready validation not finished; workflow_run will retry automatically');return
+                run=api('/actions/runs/'+str(choices[0]['id']))
+            check_run(run,head,owner,candidate=True)
+            for path,expected in PIPELINE_PINS.items():
+                if digest(file_bytes(head,path))!=expected: raise ValueError('CI policy changed: one-time trusted workflow review required')
+            # Independent source checks can finish in parallel with Android packaging.
+            for attempt in range(121):
+                allruns=api('/actions/runs?head_sha='+head+'&per_page=100')['workflow_runs']
+                latest=latest_checks(allruns);required=REQUIRED_WORKFLOWS
+                if all(name in latest and latest[name]['status']=='completed' for name in required):break
+                if attempt==120: raise ValueError('Source checks did not complete')
+                time.sleep(5)
+            for name in required: check_run(api('/actions/runs/'+str(latest[name]['id'])),head,owner)
+            if latest['Android home and integrations']['id']!=run['id']: raise ValueError('Superseded candidate validation')
+            previous=previous_release()
+            # Tags reserve versionCodes even if an interrupted draft publication remains.
+            metadata=candidate_metadata(properties(file_bytes(head,'android/beta.properties').decode()),previous)
+            try: api('/git/ref/tags/moli-beta-code-'+str(metadata['versionCode']))
+            except urllib.error.HTTPError as error:
+                if error.code!=404: raise
+            else: raise ValueError('This versionCode was already reserved or delivered')
+            delta=api('/compare/'+sha(previous['source_sha'])+'...'+head)
+            # Compare API caps changed files at 300. Fall back to the full suite rather than skip.
+            if delta['status'] not in ('ahead','identical'): raise ValueError('Delivered source must be an ancestor')
+            plan=select([p for x in delta['files'] for p in (x['filename'],x.get('previous_filename',x['filename']))]) if len(delta['files'])<300 else select(['unknown-large-change'])
+            proof=reusable_proof(head,owner)
+            if proof: plan.update(rust=False,web=False,image=False,update=False,classes=[])
+            plan.update(candidate=True,source_sha=head,previous=previous,reused=proof)
+            artifacts=api('/actions/runs/'+str(run['id'])+'/artifacts?per_page=100')['artifacts']
+            choices=[a for a in artifacts if a['name']=='android-beta-candidate']
+            if len(choices)!=1: raise ValueError('Exactly one immutable candidate artifact required')
+            artifact=choices[0];data=api('/actions/artifacts/'+str(artifact['id'])+'/zip',binary=True)
+            manifest,observed,apk=verify_bundle(data,artifact,run,previous,tree(head),plan)
+            if observed!=metadata: raise ValueError('APK metadata does not match the immutable source')
+            out=Path('validated-beta');out.mkdir();(out/'unsigned.apk').write_bytes(apk)
+            (out/'candidate.json').write_text(json.dumps(manifest,sort_keys=True)+'\n')
+            with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+                output.write('approved=true\nmetadata='+json.dumps(dict(metadata,versionCode=str(metadata['versionCode'])),separators=(',',':'))+'\n')
+                output.write('unsigned_sha256='+manifest['unsigned_sha256']+'\nversion='+metadata['versionName']+'\n')
+            print('Approved exact unsigned bytes and validated source:',head)
+
+        if __name__=='__main__':main()
+        PYCODE
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: steps.gate.outputs.approved == 'true'
+      with:
+        name: validated-beta
+        path: validated-beta/*
+        retention-days: 1
+        if-no-files-found: error
+  sign:
+    needs: gate
+    if: needs.gate.outputs.approved == 'true' && github.ref == 'refs/heads/main' && github.repository == 'torshu-hub/moli-os-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: android-beta-signing
+    steps:
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Prepare SDK before secret access
+      run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;35.0.0"'
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: validated-beta
+        path: validated-beta
+    - name: Sign validated bytes with existing owner certificate
+      env:
+        BETA_SIGNING_BUNDLE: ${{ secrets.BETA_SIGNING_BUNDLE }}
+        EXPECTED_CERTIFICATE: ce51eb0755d1e4fd5043d833108f0ed374f44cdac8734e4cf63f2efe1bc3bf37
+        UNSIGNED_SHA256: ${{ needs.gate.outputs.unsigned_sha256 }}
+        BETA_METADATA: ${{ needs.gate.outputs.metadata }}
+        UNSIGNED_APK: validated-beta/unsigned.apk
+        SIGNED_OUTPUT: signed
+      run: "python3 -I - <<'PYCODE'\n\"\"\"Trusted signing step, embedded verbatim in the manual workflow. No project imports.\"\
+        \"\"\nimport base64\nimport hashlib\nimport json\nimport os\nfrom pathlib import Path\nimport re\nimport subprocess\n\
+        import sys\nimport tempfile\n\n\ndef command(args, **kwargs):\n    result = subprocess.run(args, stdout=subprocess.PIPE,\
+        \ stderr=subprocess.PIPE, text=True, **kwargs)\n    if result.returncode:\n        raise ValueError('Signing tool\
+        \ refused the input; no private diagnostic is printed')\n    return result.stdout\n\n\ndef sign():\n    raw = os.environ.pop('BETA_SIGNING_BUNDLE',\
+        \ '')\n    if not raw or len(raw) > 40000:\n        raise ValueError('ATTENTE COPIE UTILISATEUR: configure the owner-held\
+        \ signing bundle')\n    bundle = json.loads(raw)\n    if set(bundle) != {'format', 'p12', 'password', 'certificate_sha256',\
+        \ 'nordpass_confirmed'} or bundle['format'] != 1 or bundle['nordpass_confirmed'] is not True:\n        raise ValueError('Owner\
+        \ recovery confirmation is required')\n    password, expected = bundle['password'], bundle['certificate_sha256']\n\
+        \    if expected != os.environ.get('EXPECTED_CERTIFICATE'):\n        raise ValueError('Existing beta certificate pin\
+        \ is required')\n    if not isinstance(password, str) or not 24 <= len(password) <= 128 or any(not 33 <= ord(c) <=\
+        \ 126 for c in password) or not re.fullmatch('[a-f0-9]{64}', expected):\n        raise ValueError('Invalid signing\
+        \ credentials or public fingerprint')\n    blob = base64.b64decode(bundle['p12'], validate=True)\n    if not 1000\
+        \ <= len(blob) <= 20000:\n        raise ValueError('Invalid signing container')\n    if os.environ.get('GITHUB_ACTIONS')\
+        \ == 'true':\n        for value in (password, bundle['p12']):\n            print('::add-mask::' + value.replace('%',\
+        \ '%25'), flush=True)\n    sdk = Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'\n    source = Path(os.environ['UNSIGNED_APK']).resolve()\n\
+        \    if hashlib.sha256(source.read_bytes()).hexdigest()!=os.environ.get('UNSIGNED_SHA256'):\n        raise ValueError('Unsigned\
+        \ bytes must match the validated artifact')\n    metadata = json.loads(os.environ['BETA_METADATA'])\n    code, version\
+        \ = metadata['versionCode'], metadata['versionName']\n    if metadata['applicationId'] != 'io.moli.android.app.beta'\
+        \ or not re.fullmatch('[1-9][0-9]*', str(code)) or not 16 < int(code) <= 2100000000 or not re.fullmatch(r'[0-9]+\\\
+        .[0-9]+\\.[0-9]+-beta\\.[1-9][0-9]*', version):\n        raise ValueError('Invalid beta metadata')\n    badging =\
+        \ command([str(sdk/'aapt'), 'dump', 'badging', str(source)])\n    prefix = f\"package: name='io.moli.android.app.beta'\
+        \ versionCode='{code}' versionName='{version}'\"\n    if not badging.startswith(prefix) or 'application-debuggable'\
+        \ in badging or \"sdkVersion:'28'\" not in badging or \"targetSdkVersion:'35'\" not in badging or \"native-code: 'arm64-v8a'\"\
+        \ not in badging:\n        raise ValueError('Beta APK identity, version, ABI or debugging state mismatch')\n    permissions\
+        \ = set(re.findall(r\"uses-permission: name='([^']+)'\", badging))\n    allowed = {'android.permission.'+p for p in\
+        \ ('INTERNET','ACCESS_NETWORK_STATE','CHANGE_WIFI_MULTICAST_STATE','FOREGROUND_SERVICE','FOREGROUND_SERVICE_SPECIAL_USE','POST_NOTIFICATIONS')}\n\
+        \    if permissions != allowed:\n        raise ValueError('Unexpected APK permissions')\n    verifier = str(sdk/'apksigner')\n\
+        \    if subprocess.run([verifier, 'verify', str(source)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode\
+        \ == 0:\n        raise ValueError('The build input must be unsigned')\n    output = Path(os.environ['SIGNED_OUTPUT']).resolve()\n\
+        \    if output.exists():\n        raise ValueError('Refusing to overwrite an existing output directory')\n    output.mkdir(mode=0o700,\
+        \ parents=True)\n    release = output/'release'; release.mkdir(mode=0o700)\n    apk = release/f'moli-os-{version}-arm64.apk'\n\
+        \    try:\n        with tempfile.TemporaryDirectory(prefix='moli-sign-', dir=os.environ.get('RUNNER_TEMP')) as temporary:\n\
+        \            keyfile = Path(temporary)/'beta.p12'\n            fd = os.open(keyfile, os.O_WRONLY | os.O_CREAT | os.O_EXCL,\
+        \ 0o600)\n            with os.fdopen(fd, 'wb') as stream:\n                stream.write(blob)\n            child =\
+        \ dict(os.environ, MOLI_KS_PASSWORD=password)\n            pairs = [(source, apk)]\n            if os.environ.get('SIGN_EMULATOR_INPUTS')\
+        \ == 'true':\n                emulator = output/'emulator'; emulator.mkdir(mode=0o700)\n                packages =\
+        \ {'source.apk':'io.moli.android.app.preview.automatic.v0130',\n                            'source-test.apk':'io.moli.android.app.preview.automatic.v0130.test',\n\
+        \                            'beta-a.apk':'io.moli.android.app.beta', 'beta-b.apk':'io.moli.android.app.beta',\n \
+        \                           'beta-test.apk':'io.moli.android.app.beta.test',\n                            'legacy.apk':'io.moli.android.app.preview.receiver',\n\
+        \                            'legacy-test.apk':'io.moli.android.app.preview.receiver.test'}\n                for name,\
+        \ package in packages.items():\n                    candidate = source.parent/name\n                    description\
+        \ = command([str(sdk/'aapt'), 'dump', 'badging', str(candidate)])\n                    if not description.startswith(\"\
+        package: name='\"+package+\"'\"):\n                        raise ValueError('Unexpected emulator package')\n     \
+        \               pairs.append((candidate, emulator/name))\n            for original, signed in pairs:\n           \
+        \     command([verifier, 'sign', '--ks', str(keyfile), '--ks-type', 'PKCS12', '--ks-key-alias', 'moli-beta',\n   \
+        \                      '--ks-pass', 'env:MOLI_KS_PASSWORD', '--key-pass', 'env:MOLI_KS_PASSWORD',\n              \
+        \           '--v1-signing-enabled', 'false', '--v2-signing-enabled', 'true', '--v3-signing-enabled', 'false',\n  \
+        \                       '--v4-signing-enabled', 'false', '--out', str(signed), str(original)], env=child)\n      \
+        \          certificate = command([verifier, 'verify', '--verbose', '--print-certs', str(signed)])\n              \
+        \  found = re.findall(r'Signer #\\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})', certificate)\n              \
+        \  if found != [expected]:\n                    raise ValueError('APK signer does not match the owner recovery fingerprint')\n\
+        \                command([str(sdk/'zipalign'), '-c', '-P', '16', '4', str(signed)])\n        digest = hashlib.sha256(apk.read_bytes()).hexdigest()\n\
+        \        (release/'SHA256SUMS').write_text(digest+'  '+apk.name+'\\n')\n        (release/'CERTIFICATE-SHA256.txt').write_text(expected+'\\\
+        n')\n        (release/'INSTALLATION.txt').write_text('Moli OS B\xEAta \u2014 signature de test r\xE9utilisable.\\\
+        nPremi\xE8re installation : restaurer si utile avant Recherche/Mes appareils.\\nMise \xE0 jour : arr\xEAter Moli puis\
+        \ installer par-dessus, sans d\xE9sinstaller ni effacer les donn\xE9es.\\nEn cas de refus de signature : arr\xEAter\
+        \ et signaler le message.\\n')\n        print('Signed beta verified; public certificate SHA-256: '+expected)\n   \
+        \ except Exception:\n        # Remove only this operation's newly created output; never existing owner data.\n   \
+        \     import shutil\n        shutil.rmtree(output)\n        raise\n\n\nif __name__ == '__main__':\n    try:\n    \
+        \    sign()\n    except Exception:\n        print('Signing stopped: missing owner recovery confirmation, invalid metadata/credentials\
+        \ or SDK verification failure. No key was generated.', file=sys.stderr)\n        sys.exit(1)\nPYCODE\n"
+    - run: cp validated-beta/candidate.json signed/release/candidate.json
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: signed-beta-internal
+        path: signed/release/*
+        retention-days: 1
+        if-no-files-found: error
+  publish:
+    needs:
+    - gate
+    - sign
+    if: github.ref == 'refs/heads/main' && github.repository == 'torshu-hub/moli-os-android'
+    permissions:
+      contents: write
+      actions: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Prepare SDK before secret access
+      run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;35.0.0"'
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: signed-beta-internal
+        path: release
+    - name: Independently verify and publish complete prerelease
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: "python3 -I - <<'PYCODE'\n\"\"\"Conservative Android release policy; also embedded in the trusted delivery gate.\"\
+        \"\"\nimport hashlib\nimport re\n\nREPOSITORY = 'torshu-hub/moli-os-android'\nREADY_BRANCH = 'android/beta-ready'\n\
+        IDENTITY = 'io.moli.android.app.beta'\nCERTIFICATE = 'ce51eb0755d1e4fd5043d833108f0ed374f44cdac8734e4cf63f2efe1bc3bf37'\n\
+        BOOTSTRAP = {'source_sha': 'fde277b8340cb9fea7fd40b75053c3a42a467d88', 'versionCode': 17, 'certificate_sha256': CERTIFICATE}\n\
+        PROOF_SHA = '014ba7baa92865d51e0d56055737f7af4f392ff4'\nPROOF_RUN = 40025382394\nALL_CLASSES = 'AutomaticMerossTest\
+        \ ProfileImportTest EngineDiagnosticsTest WeatherObservationTest BackNavigationTest HomeSetupTest EquipmentReadTest\
+        \ MerossReadTest NetworkDiscoveryTest MerossAccountTest UsabilityJourneyTest GuidedEquipmentTest'.split()\nTOOLCHAINS\
+        \ = {'rust': '1.99.1', 'ndk': '28.2.13676358', 'api': 28, 'sdk': 35, 'node': '24.19.0', 'gradle': '8.11.1', 'java':\
+        \ 21}\n\ndef sha(value):\n    if not isinstance(value, str) or not re.fullmatch('[a-f0-9]{40}', value):\n        raise\
+        \ ValueError('Immutable source SHA required')\n    return value\n\ndef runtime_path(path):\n    # Exclusion list,\
+        \ not an extensible allowlist: unknown inputs stay relevant.\n    return not (path.startswith(('docs/', '.github/',\
+        \ '.claude/', 'tools/android-ci/', 'tools/android-signing/')) or\n                path in ('README.md', 'AGENTS.md')\
+        \ or path.startswith('scripts/test-android-'))\n\ndef fingerprint(entries):\n    lines = [f\"{x['mode']} {x['type']}\
+        \ {x['sha']} {x['path']}\\n\" for x in entries if runtime_path(x['path'])]\n    return hashlib.sha256(''.join(sorted(lines)).encode()).hexdigest()\n\
+        \ndef select(paths):\n    flags = {k: False for k in ('rust', 'web', 'image', 'update', 'pipeline')}\n    tests =\
+        \ set()\n    for p in paths:\n        if not runtime_path(p):\n            flags['pipeline'] |= not p.startswith('docs/')\
+        \ and p not in ('README.md', 'AGENTS.md')\n        elif p == 'android/beta.properties':\n            # Identity, permission\
+        \ and strict monotonic version checks run separately.\n            pass\n        elif p.startswith(('web/', 'locales/')):\n\
+        \            flags['web'] = True\n            tests.update(('BackNavigationTest', 'HomeSetupTest', 'EquipmentReadTest',\
+        \ 'MerossReadTest'))\n        elif p.startswith(('crates/', 'vendor/', '.cargo/')) or p in ('Cargo.toml', 'Cargo.lock',\
+        \ 'rust-toolchain.toml'):\n            flags['rust'] = True\n            tests.update(('ProfileImportTest', 'EquipmentReadTest',\
+        \ 'MerossReadTest'))\n            if p in ('Cargo.toml','Cargo.lock','rust-toolchain.toml') or p.startswith('.cargo/')\
+        \ or any(x in p for x in ('moli-android/', 'moli-runtime/', 'moli-history/', 'moli-api/', 'moli-core/')):\n      \
+        \          flags['update'] = True; tests.update(ALL_CLASSES)\n        elif p.startswith('integrations/'):\n      \
+        \      tests.update(('ProfileImportTest', 'EquipmentReadTest', 'MerossReadTest'))\n        elif p.startswith('android/'):\n\
+        \            if any(x in p for x in ('Backup', 'ProtectedKey', 'ProfileStore', 'EquipmentStore', 'MerossAccountStore',\
+        \ 'EngineHost', 'NativeServer', '.gradle', 'AndroidManifest', 'res/xml/', 'src/androidTest/')):\n                flags['update']\
+        \ = True; tests.update(ALL_CLASSES)\n            elif 'Meross' in p:\n                tests.update(('MerossReadTest',\
+        \ 'MerossAccountTest', 'UsabilityJourneyTest', 'AutomaticMerossTest'))\n            elif 'MainActivity' in p or 'MoliService'\
+        \ in p or 'EngineHealth' in p:\n                tests.update(('EngineDiagnosticsTest', 'BackNavigationTest', 'EquipmentReadTest'))\n\
+        \            elif 'res/values' in p:\n                tests.update(('BackNavigationTest', 'HomeSetupTest'))\n    \
+        \        else:\n                flags['update'] = True; tests.update(ALL_CLASSES)\n        elif p.startswith(('docker/',))\
+        \ or p in ('Dockerfile', '.dockerignore'):\n            flags['image'] = True\n        else:\n            # Unknown\
+        \ build/storage/security input: fail toward the complete suite.\n            flags.update(rust=True, web=True, image=True,\
+        \ update=True)\n            tests.update(ALL_CLASSES)\n    return dict(flags, classes=[c for c in ALL_CLASSES if c\
+        \ in tests])\n\ndef candidate_metadata(value, previous):\n    if set(value) != {'applicationId', 'versionCode', 'versionName'}\
+        \ or value['applicationId'] != IDENTITY:\n        raise ValueError('Unexpected beta identity or metadata')\n    code\
+        \ = str(value['versionCode'])\n    if not re.fullmatch('[1-9][0-9]*', code) or not int(previous['versionCode']) <\
+        \ int(code) <= 2100000000:\n        raise ValueError('A delivery requires a strictly increasing versionCode')\n  \
+        \  if not re.fullmatch(r'[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[1-9][0-9]*', value['versionName']):\n        raise ValueError('Invalid\
+        \ version name')\n    return dict(value, versionCode=int(code))\n\ndef properties(text):\n    result = {}\n    for\
+        \ line in text.splitlines():\n        if not line.strip() or line.lstrip().startswith('#'): continue\n        key,\
+        \ value = line.split('=', 1)\n        if key in result: raise ValueError('Duplicate beta property')\n        result[key]\
+        \ = value\n    return result\n\n\"\"\"GitHub read-only provenance. No artifact/project code is executed by this module.\"\
+        \"\"\nimport base64\nimport hashlib\nimport json\nimport os\nimport urllib.request\nimport urllib.error\n\nclass StripAuthRedirect(urllib.request.HTTPRedirectHandler):\n\
+        \    def redirect_request(self, req, fp, code, msg, headers, newurl):\n        if not newurl.startswith('https://'):\n\
+        \            raise ValueError('HTTPS redirect required')\n        result = super().redirect_request(req, fp, code,\
+        \ msg, headers, newurl)\n        result.remove_header('Authorization')\n        return result\n\ndef api(path, binary=False,\
+        \ method=None, data=None):\n    if path and (not path.startswith('/') or path.startswith('//') or '\\n' in path):\n\
+        \        raise ValueError('Invalid API path')\n    req = urllib.request.Request('https://api.github.com/repos/'+REPOSITORY+path,\n\
+        \        headers={'Authorization': 'Bearer '+os.environ.get('GH_TOKEN', ''), 'Accept': 'application/vnd.github+json'},\n\
+        \        method=method, data=None if data is None else json.dumps(data).encode())\n    if data is not None: req.add_header('Content-Type',\
+        \ 'application/json')\n    with urllib.request.build_opener(StripAuthRedirect()).open(req, timeout=60) as response:\n\
+        \        body = response.read(100_000_001 if binary else 8_000_001)\n    if len(body) > (100_000_000 if binary else\
+        \ 8_000_000):\n        raise ValueError('Bounded GitHub response exceeded')\n    return body if binary else json.loads(body)\n\
+        \ndef tree(source):\n    result = api('/git/trees/'+sha(source)+'?recursive=1')\n    if result.get('truncated'): raise\
+        \ ValueError('Complete input tree required')\n    return [x for x in result['tree'] if x['type'] != 'tree']\n\ndef\
+        \ previous_release():\n    releases = []\n    for page in range(1,11):\n        batch = api('/releases?per_page=100&page='+str(page));\
+        \ releases.extend(batch)\n        if len(batch)<100: break\n    else: raise ValueError('Release ledger exceeds bounded\
+        \ pagination')\n    delivered = []\n    for release in releases:\n        tag = release['tag_name']\n        if release['draft']\
+        \ or not tag.startswith('moli-beta-code-'): continue\n        if not tag.removeprefix('moli-beta-code-').isdigit():\
+        \ raise ValueError('Invalid delivery tag')\n        delivered.append((int(tag.removeprefix('moli-beta-code-')), release))\n\
+        \    if not delivered:\n        # Bootstrap is an existing, owner-signed and verified delivery, not a new key.\n \
+        \       return dict(BOOTSTRAP)\n    code, release = max(delivered, key=lambda p:p[0])\n    value = json.loads(release['body'])\n\
+        \    if value['versionCode'] != code or value['certificate_sha256'] != CERTIFICATE:\n        raise ValueError('Release\
+        \ ledger identity mismatch')\n    sha(value['source_sha'])\n    ref = api('/git/ref/tags/'+release['tag_name'])\n\
+        \    if ref['object']['type'] != 'commit' or ref['object']['sha'] != value['source_sha']:\n        raise ValueError('Release\
+        \ tag does not pin its source')\n    return value\n\ndef check_run(run, source, owner_id, *, candidate=False):\n \
+        \   if run['head_sha'] != source or run['head_repository']['full_name'] != REPOSITORY or run['repository']['full_name']\
+        \ != REPOSITORY:\n        raise ValueError('Fork or source provenance mismatch')\n    if run['status'] != 'completed'\
+        \ or run['conclusion'] != 'success': raise ValueError('Successful validation required')\n    if run['actor']['id']\
+        \ != owner_id or run['triggering_actor']['id'] != owner_id:\n        raise ValueError('Owner-originated validation\
+        \ required')\n    if candidate and (run['event'] != 'push' or run['head_branch'] != READY_BRANCH or run['path'] !=\
+        \ '.github/workflows/android-integrations.yml'):\n        raise ValueError('Explicit trusted ready-branch promotion\
+        \ required')\n\nREQUIRED_WORKFLOWS = {'check':'.github/workflows/check.yml','audit':'.github/workflows/audit.yml',\n\
+        \    'Source hygiene':'.github/workflows/source-hygiene.yml','Android home and integrations':'.github/workflows/android-integrations.yml'}\n\
+        def latest_checks(rows):\n    latest={}\n    for row in sorted(rows,key=lambda x:x['id'],reverse=True):\n        if\
+        \ row['event']=='push' and row['head_branch']==READY_BRANCH and row['name'] in REQUIRED_WORKFLOWS and row['path']==REQUIRED_WORKFLOWS[row['name']]:\n\
+        \            latest.setdefault(row['name'],row)\n    return latest\n\ndef reusable_proof(source, owner_id):\n    if\
+        \ fingerprint(tree(source)) != fingerprint(tree(PROOF_SHA)): return None\n    run = api('/actions/runs/'+str(PROOF_RUN))\n\
+        \    check_run(run, PROOF_SHA, owner_id)\n    if run['path'] != '.github/workflows/android-integrations.yml': raise\
+        \ ValueError('Baseline workflow mismatch')\n    return {'source_sha': PROOF_SHA, 'run_id': PROOF_RUN}\n\ndef file_bytes(source,\
+        \ path):\n    result = api('/contents/'+path+'?ref='+sha(source))\n    if result.get('encoding') != 'base64': raise\
+        \ ValueError('Bounded UTF8 source required')\n    return base64.b64decode(result['content'], validate=False)\n\ndef\
+        \ digest(data): return hashlib.sha256(data).hexdigest()\n\n\"\"\"Trusted publication only, with write permission and\
+        \ no signing secret or checkout.\"\"\"\nimport json\nimport os\nfrom pathlib import Path\nimport re\nimport subprocess\n\
+        import urllib.request\n\ndef verified_release(root):\n    manifest=json.loads((root/'candidate.json').read_text())\n\
+        \    previous=previous_release();metadata=candidate_metadata(manifest['metadata'],previous)\n    source=sha(manifest['source_sha'])\n\
+        \    if api('/git/ref/heads/'+READY_BRANCH)['object']['sha']!=source:\n        raise ValueError('Superseded ready\
+        \ milestone; publication stopped')\n    if manifest['previous_source_sha']!=previous['source_sha']: raise ValueError('Previous\
+        \ delivery changed; regenerate candidate evidence')\n    apk=root/f\"moli-os-{metadata['versionName']}-arm64.apk\"\
+        \n    sdk=Path(os.environ['ANDROID_HOME'])/'build-tools/35.0.0'\n    cert=subprocess.check_output([str(sdk/'apksigner'),'verify','--verbose','--print-certs',str(apk)],text=True)\n\
+        \    if re.findall(r'Signer #\\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})',cert)!=[CERTIFICATE]:\n        raise\
+        \ ValueError('Final certificate does not match the existing beta')\n    subprocess.run([str(sdk/'zipalign'),'-c','-P','16','4',str(apk)],check=True)\n\
+        \    package=subprocess.check_output([str(sdk/'aapt'),'dump','badging',str(apk)],text=True)\n    if not package.startswith(f\"\
+        package: name='{IDENTITY}' versionCode='{metadata['versionCode']}' versionName='{metadata['versionName']}'\"):\n \
+        \       raise ValueError('Signed metadata mismatch')\n    checksum,name=(root/'SHA256SUMS').read_text().split()\n\
+        \    if name!=apk.name or checksum!=digest(apk.read_bytes()) or (root/'CERTIFICATE-SHA256.txt').read_text().strip()!=CERTIFICATE:\n\
+        \        raise ValueError('Signed package digest/fingerprint mismatch')\n    ledger=dict(metadata,source_sha=source,versionCode=metadata['versionCode'],certificate_sha256=CERTIFICATE,\n\
+        \        apk_sha256=checksum,validation_run=manifest['run_id'],delivery_run=int(os.environ['GITHUB_RUN_ID']),runtime_sha256=manifest['runtime_sha256'])\n\
+        \    (root/'beta-release.json').write_text(json.dumps(ledger,sort_keys=True)+'\\n')\n    return ledger,apk\n\ndef\
+        \ main():\n    root=Path('release');ledger,apk=verified_release(root)\n    tag='moli-beta-code-'+str(ledger['versionCode'])\n\
+        \    # Atomic reservation: a repeated/conflicting code must fail, never overwrite.\n    api('/git/refs',method='POST',data={'ref':'refs/tags/'+tag,'sha':ledger['source_sha']})\n\
+        \    release=api('/releases',method='POST',data={'tag_name':tag,'target_commitish':ledger['source_sha'],\n       \
+        \ 'name':'Moli OS '+ledger['versionName'],'body':json.dumps(ledger,sort_keys=True),'draft':True,'prerelease':True})\n\
+        \    for file in [apk,root/'SHA256SUMS',root/'CERTIFICATE-SHA256.txt',root/'INSTALLATION.txt',root/'beta-release.json']:\n\
+        \        if not re.fullmatch('[a-zA-Z0-9_.-]+',file.name): raise ValueError('Invalid public asset name')\n       \
+        \ request=urllib.request.Request('https://uploads.github.com/repos/'+REPOSITORY+'/releases/'+str(release['id'])+'/assets?name='+file.name,\n\
+        \            data=file.read_bytes(),method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Content-Type':'application/octet-stream'})\n\
+        \        with urllib.request.build_opener(StripAuthRedirect()).open(request,timeout=120) as response: receipt=json.load(response)\n\
+        \        if receipt['size']!=file.stat().st_size or receipt.get('digest')!='sha256:'+digest(file.read_bytes()): raise\
+        \ ValueError('Asset upload length mismatch')\n    api('/releases/'+str(release['id']),method='PATCH',data={'draft':False})\n\
+        \    with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as output:\n        output.write(f\"Moli OS {ledger['versionName']}\
+        \ \xB7 code {ledger['versionCode']}\\n\\n\")\n        output.write(f\"[APK ARM64](https://github.com/{REPOSITORY}/releases/download/{tag}/{apk.name})\\\
+        n\\n\")\n        output.write('Install over the existing beta. Do not uninstall or clear its data.\\n')\n    print('Published\
+        \ verified beta:',tag)\n\nif __name__=='__main__':main()\nPYCODE\n"
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: moli-os-${{ needs.gate.outputs.version }}-arm64
+        path: release/*
+        retention-days: 14
+        if-no-files-found: error

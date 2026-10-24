@@ -1,30 +1,30 @@
-# Dependencies against the RustSec advisory database. Separate from check.yml:
-# a new advisory can appear without any change here, so it also runs every week.
-# Ignored advisories, each with its reason: .cargo/audit.toml.
 name: audit
-
-on:
-  push:
-    branches: [main]
+'on':
   pull_request:
     paths:
-      - 'Cargo.lock'
-      - '**/Cargo.toml'
-      - '.cargo/audit.toml'
-      - '.github/workflows/audit.yml'
+    - Cargo.lock
+    - '**/Cargo.toml'
+    - .cargo/audit.toml
+    - .github/workflows/audit.yml
+  push:
+    branches:
+    - main
+    - android/beta-ready
   schedule:
-    - cron: "17 6 * * 1"
-  workflow_dispatch:
-
+  - cron: 17 6 * * 1
+  workflow_dispatch: null
 permissions:
   contents: read
-
 jobs:
   cargo-audit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-audit
-      - run: cargo audit
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283
+      with:
+        tool: cargo-audit@0.22.2
+    - run: cargo audit

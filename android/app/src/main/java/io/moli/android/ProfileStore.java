@@ -1,0 +1,285 @@
+package io.moli.android;
+
+import android.content.Context;
+import android.util.AtomicFile;
+import org.json.JSONObject;
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.charset.*;
+import java.nio.file.Files;
+
+/** Exact-byte approval, immutable profile copies and atomic selection. Engine must be stopped for changes. */
+final class ProfileStore {
+    static final int LIMIT = 65536;
+    static final class Rejected extends Exception { Rejected(String code) { super(code); } }
+    static File data(Context c) throws Exception {
+        File dir = ProtectedKey.dataDirectory(c, ProtectedKey.open(c));
+        try { transaction(dir).recover(); } catch (Exception failure) { throw new Rejected("configuration_storage"); }
+        return dir;
+    }
+    static ConfigurationTransaction transaction(File dir) {
+        return new ConfigurationTransaction(new ConfigurationTransaction.Disk(dir) {
+            @Override void syncDirectory() throws Exception {
+                java.io.FileDescriptor fd = android.system.Os.open(dir.getAbsolutePath(), android.system.OsConstants.O_RDONLY, 0);
+                try { android.system.Os.fsync(fd); } finally { android.system.Os.close(fd); }
+            }
+        });
+    }
+    static String bounded(InputStream stream, int limit) throws Exception {
+        if (stream == null) throw new Rejected("input");
+        try (InputStream in = stream; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] b = new byte[4096]; int n;
+            while ((n = in.read(b)) != -1) { if (out.size() + n > limit) throw new Rejected("size"); out.write(b, 0, n); }
+            return StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(out.toByteArray())).toString();
+        }
+    }
+    static String read(File f, int limit) throws Exception { return bounded(new FileInputStream(f), limit); }
+    static void atomic(File f, String text) throws Exception {
+        AtomicFile target = new AtomicFile(f); FileOutputStream out = target.startWrite();
+        try { out.write(text.getBytes(StandardCharsets.UTF_8)); target.finishWrite(out); }
+        catch (Exception failure) { target.failWrite(out); throw failure; }
+    }
+    static JSONObject nativeResult(String text, int operation) throws Exception {
+        JSONObject result = new JSONObject(NativeServer.profile(text, operation));
+        if (result.has("error")) throw new Rejected(result.getString("error"));
+        return result;
+    }
+    static File stage(Context c) { return new File(c.getCacheDir(), "profile-staged.toml"); }
+    static JSONObject stage(Context c, InputStream in) throws Exception {
+        String text = bounded(in, LIMIT); JSONObject result = nativeResult(text, 0);
+        atomic(stage(c), text); TrialLog.record(TrialJournal.Event.PROFILE_REVIEWED,0,0); return result;
+    }
+    static synchronized JSONObject state(Context c) throws Exception {
+        File f = new File(data(c), "android-integrations.json");
+        return f.exists() ? new JSONObject(bounded(new AtomicFile(f).openRead(), LIMIT)) : new JSONObject();
+    }
+    private static String instance(String item) { return "android-" + item; }
+    private static void intent(JSONObject next, String id, boolean inactive) throws Exception {
+        org.json.JSONArray old = next.optJSONArray("inactive"), ids = new org.json.JSONArray();
+        if (old != null) for (int i=0;i<old.length();i++) if (!id.equals(old.getString(i))) ids.put(old.getString(i));
+        if (inactive) ids.put(id);
+        next.put("inactive",ids);
+    }
+    private static void normalizeSelection(JSONObject next) throws Exception {
+        JSONObject retained = next.optJSONObject("retained");
+        for (String item : new String[]{"import","weather","demo"}) if (next.has(item)) {
+            intent(next,instance(item),false); if (retained != null) retained.remove(item);
+        }
+    }
+    private static synchronized void save(Context c, JSONObject next) throws Exception {
+        File dir = data(c); normalizeSelection(next);
+        java.util.Map<String,String> changes = new java.util.LinkedHashMap<>();
+        changes.put("android-integrations.previous.json",state(c).toString());
+        changes.put("android-integrations.json",next.toString()); transaction(dir).commit(changes);
+        TrialLog.record(TrialJournal.Event.SELECTION_CHANGED,next.optBoolean("demo")?1:0,next.has("weather")?1:0);
+    }
+    static synchronized void saveEquipment(Context c, JSONObject next) throws Exception {
+        File dir=data(c); JSONObject old=EquipmentStore.read(c);
+        for(String key:new String[]{"printer","gateway"}) if(old.has(key) && !next.has(key))
+            next.put(key,new JSONObject(old.getJSONObject(key).toString()).put("enabled",false));
+        org.json.JSONArray before=old.optJSONArray("meross"), after=next.optJSONArray("meross");
+        if(after==null)after=new org.json.JSONArray();
+        if(before!=null)for(int i=0;i<before.length();i++) {
+            JSONObject row=before.getJSONObject(i); String id=row.getString("id"); boolean found=false;
+            for(int j=0;j<after.length();j++)if(id.equals(after.getJSONObject(j).getString("id")))found=true;
+            if(!found)after.put(new JSONObject(row.toString()).put("enabled",false));
+        }
+        next.put("meross",after); next=nativeResult(next.toString(),3);
+        java.util.Map<String,String> changes=new java.util.LinkedHashMap<>();
+        changes.put("android-equipment.json",EquipmentStore.preserve(EquipmentStore.raw(c),next).toString()); transaction(dir).commit(changes);
+    }
+    static String stamp(Context c) throws Exception {
+        File dir=data(c); java.security.MessageDigest hash=java.security.MessageDigest.getInstance("SHA-256");
+        for(String name:new String[]{"moli.toml","home.json","android-concordance.json","android-integrations.json","android-equipment.json"}) {
+            File f=new File(dir,name); hash.update(name.getBytes(StandardCharsets.UTF_8));
+            if(f.exists()) {byte[] bytes=read(f,ConfigurationTransaction.FILE_LIMIT).getBytes(StandardCharsets.UTF_8); hash.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array()); hash.update(bytes);}
+            else hash.update(new byte[]{-1,-1,-1,-1});
+        }
+        StringBuilder text=new StringBuilder(); for(byte b:hash.digest())text.append(String.format(java.util.Locale.ROOT,"%02x",b&255)); return text.toString();
+    }
+    static void checkStamp(Context c,String expected) throws Exception {
+        if(expected==null || !expected.equals(stamp(c)))throw new Rejected("configuration_conflict");
+    }
+    static boolean conflict(Throwable failure) {
+        for(int i=0;i<8 && failure!=null;i++,failure=failure.getCause())if(failure instanceof Rejected && failure.getMessage().startsWith("configuration"))return true;
+        return false;
+    }
+    static void synchronize(Context c) throws Exception {
+        if (EngineHost.state()!=EngineHost.State.STOPPED) return;
+        EngineHost.maintain(() -> { prepare(c,true).close(); return null; }).get();
+    }
+    static void approve(Context c, String expected) throws Exception {
+        String text = read(stage(c), LIMIT); JSONObject info = nativeResult(text, 0);
+        if (!info.getString("sha256").equals(expected)) throw new Rejected("changed");
+        installFile(c, text, info);
+        JSONObject next = state(c); next.put("import", info); save(c, next); TrialLog.record(TrialJournal.Event.PROFILE_APPROVED,0,0);
+    }
+    private static void installFile(Context c, String text, JSONObject info) throws Exception {
+        File dir = new File(data(c), "android-profiles");
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("storage");
+        File target = new File(dir, info.getString("sha256") + ".toml");
+        if (target.exists()) { if (!read(target, LIMIT).equals(text)) throw new Rejected("changed"); }
+        else {
+            String[] entries = dir.list(); if (entries == null || entries.length >= 16) throw new Rejected("quota");
+            atomic(target, text);
+        }
+        File trust = new File(data(c), "trusted-profiles.toml");
+        String old = trust.exists() ? read(trust, 262144) : "";
+        String hash = info.getString("sha256");
+        if (!old.contains("sha256 = \"" + hash + "\"")) {
+            // Paths are app-owned; TOML literal strings avoid escape interpretation.
+            atomic(trust, old + "\n[[trusted]]\npath = '" + target.getAbsolutePath() + "'\nsha256 = \"" + hash + "\"\n");
+        }
+    }
+    static void demo(Context c) throws Exception {
+        JSONObject next = state(c); next.put("demo", true); save(c, next);
+    }
+    static void weather(Context c) throws Exception {
+        String text = bounded(c.getAssets().open("open-meteo.toml"), LIMIT);
+        JSONObject info = nativeResult(text, 0); installFile(c, text, info);
+        JSONObject next = state(c), previous = next.optJSONObject("weather");
+        if (previous != null && previous.has("location")) info.put("location", previous.getJSONObject("location"));
+        next.put("weather", info); save(c, next);
+    }
+    static void configureWeather(Context c, String label, double latitude, double longitude) throws Exception {
+        if (label.trim().isEmpty() || label.length() > 80 || !Double.isFinite(latitude) || Math.abs(latitude) > 90 || !Double.isFinite(longitude) || Math.abs(longitude) > 180) throw new Rejected("location");
+        String text = bounded(c.getAssets().open("open-meteo.toml"), LIMIT);
+        JSONObject info = nativeResult(text, 0); installFile(c, text, info);
+        info.put("location", new JSONObject().put("label", label.trim()).put("latitude", latitude).put("longitude", longitude));
+        JSONObject next = state(c); next.put("weather", info); save(c, next);
+    }
+    static JSONObject home(Context c) throws Exception {
+        File f = new File(data(c), "home.json");
+        return f.exists() || new File(f + ".bak").exists() ? new JSONObject(bounded(new AtomicFile(f).openRead(), 262144)) : new JSONObject();
+    }
+    private static JSONObject withRooms(Context c, String names) throws Exception {
+        org.json.JSONArray rooms = new org.json.JSONArray(); java.util.Set<String> used = new java.util.HashSet<>();
+        for (String line : names.split("\\n")) {
+            String name = line.trim(); if (name.isEmpty() || !used.add(name)) continue;
+            if (name.length() > 60 || rooms.length() >= 32) throw new Rejected("rooms");
+            JSONObject existing = null;
+            org.json.JSONArray old = home(c).optJSONArray("rooms");
+            if (old != null) for (int i=0;i<old.length();i++) if (name.equals(old.getJSONObject(i).optString("name"))) existing = old.getJSONObject(i);
+            rooms.put(existing == null ? new JSONObject().put("name",name) : existing);
+        }
+        JSONObject h = home(c); h.put("rooms",rooms); return h;
+    }
+    static void rooms(Context c,String names) throws Exception { atomic(new File(data(c),"home.json"),withRooms(c,names).toString()); }
+    static void homeSettings(Context c,String names,boolean enabled,String label,double latitude,double longitude) throws Exception {
+        JSONObject h=withRooms(c,names), next=state(c), old=state(c);
+        if(enabled) {
+            if(label.trim().isEmpty() || label.length()>80 || !Double.isFinite(latitude) || Math.abs(latitude)>90 || !Double.isFinite(longitude) || Math.abs(longitude)>180)throw new Rejected("location");
+            String text=bounded(c.getAssets().open("open-meteo.toml"),LIMIT); JSONObject info=nativeResult(text,0); installFile(c,text,info);
+            info.put("location",new JSONObject().put("label",label.trim()).put("latitude",latitude).put("longitude",longitude)); next.put("weather",info);
+        } else {
+            JSONObject retained=next.optJSONObject("retained");if(retained==null)retained=new JSONObject();
+            if(next.has("weather"))retained.put("weather",next.get("weather"));
+            next.remove("weather");next.put("retained",retained);if(retained.has("weather"))intent(next,"android-weather",true);
+        }
+        normalizeSelection(next); java.util.Map<String,String> changes=new java.util.LinkedHashMap<>();
+        changes.put("home.json",h.toString());changes.put("android-integrations.previous.json",old.toString());changes.put("android-integrations.json",next.toString());
+        transaction(data(c)).commit(changes);
+    }
+    private static JSONObject prepareHome(JSONObject h, JSONObject selected, JSONObject equipment) throws Exception {
+        h = new JSONObject(h.toString());
+        JSONObject android = h.optJSONObject("android");
+        if (android == null) android = new JSONObject();
+        android.put("tablet", "android-tablet:tablet");
+        android.put("printer", equipment.has("printer")); android.put("gateway", equipment.has("gateway"));
+        android.put("printer_id", equipment.has("printer") ? "android-printer:" + equipment.getJSONObject("printer").getString("host") : JSONObject.NULL);
+        android.put("meross",equipment.optJSONArray("meross") == null ? new org.json.JSONArray() : equipment.getJSONArray("meross"));
+        JSONObject weather = selected.optJSONObject("weather");
+        android.put("weather", weather == null ? JSONObject.NULL : "android-weather:api.open-meteo.com:443");
+        android.put("location", weather == null ? "" : weather.optJSONObject("location") == null ? "Paris (démo)" : weather.getJSONObject("location").getString("label"));
+        h.put("android",android);
+        JSONObject out = h.optJSONObject("outdoor"); if (out == null) out = new JSONObject();
+        if (weather != null) out.put("weather",android.getString("weather"));
+        else if ("android-weather:api.open-meteo.com:443".equals(out.optString("weather"))) out.remove("weather");
+        h.put("outdoor",out); return h;
+    }
+    static void remove(Context c, String item) throws Exception {
+        if (!item.equals("demo") && !item.equals("weather") && !item.equals("import")) throw new Rejected("input");
+        JSONObject next = state(c), retained=next.optJSONObject("retained");
+        if(retained==null)retained=new JSONObject();
+        if(next.has(item))retained.put(item,next.get(item));
+        next.remove(item); next.put("retained",retained);
+        if(retained.has(item))intent(next,instance(item),true);
+        save(c, next);
+    }
+    static void rollback(Context c) throws Exception {
+        File previous = new File(data(c), "android-integrations.previous.json");
+        JSONObject next = new JSONObject(read(previous, LIMIT));
+        // Revalidate all selected bytes before publishing the previous selection.
+        for (String item : new String[]{"import", "weather"}) if (next.has(item)) checked(c, next.getJSONObject(item));
+        save(c, next);
+    }
+    private static JSONObject checked(Context c, JSONObject entry) throws Exception {
+        String hash = entry.getString("sha256");
+        if (!hash.matches("[a-f0-9]{64}")) throw new Rejected("changed");
+        String text = read(new File(data(c), "android-profiles/" + hash + ".toml"), LIMIT);
+        JSONObject info = nativeResult(text, 0);
+        if (!hash.equals(info.getString("sha256"))) throw new Rejected("changed");
+        JSONObject result = new JSONObject().put("text", text).put("sha256", hash);
+        if (entry.has("location")) result.put("location", entry.getJSONObject("location"));
+        return result;
+    }
+    static JSONObject weatherProbe(Context c) throws Exception {
+        JSONObject selected=state(c), entry=selected.optJSONObject("weather");
+        if(entry==null) entry=selected.optJSONObject("import");
+        if(entry==null || !"weather".equals(entry.optString("mode"))) throw new Rejected("approval");
+        JSONObject input=checked(c,entry); input.put("data",data(c).getAbsolutePath());
+        android.content.SharedPreferences p=c.getSharedPreferences("weather-budget",Context.MODE_PRIVATE);
+        WeatherBudget budget=new WeatherBudget(p.getLong("last",0),p.getLong("window",0),p.getInt("attempts",0));
+        if(!budget.reserve(System.currentTimeMillis())) { TrialLog.record(TrialJournal.Event.PROBE_LIMITED,0,0); throw new Rejected("rate"); }
+        if(!p.edit().putLong("last",budget.last).putLong("window",budget.window).putInt("attempts",budget.attempts).commit()) throw new Rejected("storage");
+        TrialLog.record(TrialJournal.Event.PROBE_START,0,0);
+        try {
+            JSONObject result=nativeResult(input.toString(),2);
+            TrialLog.record(TrialJournal.Event.PROBE_OK,result.getLong("received_ms"),0);
+            return result;
+        } catch(Exception failure) { TrialLog.record(TrialJournal.Event.PROBE_FAILED,0,0); throw failure; }
+    }
+    static SyntheticEndpoint prepare(Context c) throws Exception { return prepare(c,false); }
+    private static SyntheticEndpoint prepare(Context c, boolean editing) throws Exception {
+        File dir = data(c);
+        JSONObject selected = state(c), spec = new JSONObject();
+        spec.put("data", dir.getAbsolutePath()).put("demo", selected.optBoolean("demo") || selected.optJSONObject("retained")!=null && selected.getJSONObject("retained").optBoolean("demo"));
+        spec.put("selected",selected).put("editing",editing);
+        spec.put("equipment", EquipmentStore.read(c));
+        for (String item : new String[]{"import", "weather"}) if (selected.has(item)) {
+            JSONObject checked = checked(c, selected.getJSONObject(item)); spec.put(item, checked);
+        }
+        String tabletText = bounded(c.getAssets().open("tablet.toml"), LIMIT);
+        JSONObject tablet = nativeResult(tabletText, 0); installFile(c, tabletText, tablet);
+        spec.put("tablet", new JSONObject().put("text", tabletText).put("sha256", tablet.getString("sha256")));
+        SyntheticEndpoint endpoint = new SyntheticEndpoint(c.getApplicationContext());
+        try {
+            spec.put("port", endpoint.port());
+            File config = new File(dir, "moli.toml");
+            spec.put("config", config.exists() || new File(config + ".bak").exists() ? bounded(new AtomicFile(config).openRead(), 262144) : "");
+            spec.put("config_present", config.exists());
+            JSONObject currentHome = home(c);
+            spec.put("home", currentHome).put("home_proposal", prepareHome(currentHome, selected, spec.getJSONObject("equipment")));
+            File baseline = new File(dir, "android-concordance.json");
+            if (baseline.exists()) {
+                if (!new File(dir, "home.json").isFile()) throw new Rejected("configuration_conflict");
+                spec.put("baseline", new JSONObject(read(baseline, ConfigurationTransaction.FILE_LIMIT)));
+            }
+            JSONObject updated = nativeResult(spec.toString(), 1);
+            java.util.Map<String,String> changes = new java.util.LinkedHashMap<>();
+            changes.put("moli.toml", updated.getString("config"));
+            changes.put("home.json", updated.getJSONObject("home").toString());
+            changes.put("android-concordance.json", updated.getJSONObject("baseline").toString());
+            if(updated.has("selected"))changes.put("android-integrations.json",updated.getJSONObject("selected").toString());
+            if(updated.has("equipment"))changes.put("android-equipment.json",EquipmentStore.preserve(EquipmentStore.raw(c),updated.getJSONObject("equipment")).toString());
+            File legacy = new File(dir, "android-concordance.legacy.json");
+            if (!legacy.exists()) changes.put(legacy.getName(), new JSONObject().put("version", 1)
+                    .put("config", config.exists() ? read(config, 262144) : JSONObject.NULL)
+                    .put("home", new File(dir, "home.json").exists() ? read(new File(dir, "home.json"), 262144) : JSONObject.NULL).toString());
+            if (selected.optBoolean("demo")) changes.put("android-demo.json", bounded(c.getAssets().open("android-demo.json"), LIMIT));
+            transaction(dir).commit(changes);
+            return endpoint;
+        } catch (Exception failure) { endpoint.close(); if (failure instanceof Rejected) throw failure; throw new Rejected("configuration_storage"); }
+    }
+}

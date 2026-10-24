@@ -24,7 +24,7 @@ public final class AppInfoActivity extends Activity {
         @Override public void run() {
             long[] sample = EngineHealth.snapshot();
             health.setText(getString(R.string.engine_diagnostic,
-                    getString(sample[0] == 1 ? R.string.engine_confirmed : R.string.engine_unconfirmed),
+                    getString(sample[5] == 1 ? R.string.engine_confirmed : sample[5] == 2 ? R.string.engine_observed_failure : sample[5] == 0 ? R.string.engine_no_sample : R.string.engine_not_observed),
                     sample[1] < 0 ? getString(R.string.engine_never) : Long.toString(sample[1] / 1000),
                     sample[2], sample[3], sample[4] / 1000,
                     getSharedPreferences("diagnostics", MODE_PRIVATE).getLong("starts", 0)));
@@ -44,7 +44,7 @@ public final class AppInfoActivity extends Activity {
         health = new TextView(this); health.setTextIsSelectable(true); content.addView(health);
         Button check = new Button(this); check.setText(R.string.engine_check);
         check.setOnClickListener(v -> EngineHealth.check()); content.addView(check);
-        TextView caveat = new TextView(this); caveat.setText(R.string.engine_help); content.addView(caveat);
+        TextView caveat = new TextView(this); caveat.setText(getString(R.string.engine_help) + "\n" + getString(R.string.engine_gap_help)); content.addView(caveat);
         Button settings = new Button(this); settings.setText(R.string.app_settings);
         settings.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 Uri.parse("package:" + getPackageName())))); content.addView(settings);

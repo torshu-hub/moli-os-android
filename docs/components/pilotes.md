@@ -72,7 +72,7 @@ Le hub l'appelle quand une surface demande une image : rien n'est récupéré po
 ```toml
 [[driver]]
 id = "enceinte"         # non vide, sans ':' ni '/', unique ; réservés : core, assistant, automations
-kind = "sonos"          # z2m, hue, tuya, reolink, sonos, philips, frigate, bambu, tapo, igd, helpers, profile
+kind = "sonos"          # z2m, hue, dirigera, tuya, reolink, sonos, philips, frigate, bambu, tapo, igd, helpers, profile
 # enabled = false       # désactive l'instance sans la supprimer
 
 [driver.options]        # s'applique au [[driver]] qui précède ; clés inconnues refusées
@@ -165,6 +165,79 @@ host = "192.168.1.x"
 - **Pièges** : un renommage ou un changement de pièce/zone déclenche un rechargement complet. Flux muet 10 min : réouverture et rechargement. Un message SSE (ou une ligne) qui dépasse 1 Mio sans fin : flux fermé, rouvert et rechargement complet. Les commandes tournent à côté du flux avec un budget de 4,5 s (sous les 5 s du hub). Le message « certificat changé » donne la commande `secrets forget <instance> cert_sha256` avec l'identifiant réel de l'instance. `Bridge` n'affiche jamais la clé en `Debug`.
 - **Tests** : `src/model.rs` sur `integrations/hue/fixtures/resources.json` (pont réel) : pièces commandables, zones jamais, boutons, capteurs, événements partiels, encodage ; `src/bridge.rs` : parseur SSE découpé en morceaux, plafond de 1 Mio (ligne sans fin, `data:` sans ligne vide).
 
+## `dirigera` : hub IKEA Dirigera (`crates/moli-dirigera`)
+
+- **Couvre** : lampes (marche, luminosité, température de couleur, couleur), prises (marche,
+  puissance, courant, tension, énergie), capteurs (température, humidité, PM2,5, COV, CO₂,
+  mouvement, éclairement, ouverture, fuite d'eau), boutons de raccourci (appuis) et batteries.
+  Pas encore : stores, purificateurs, enceintes, pièces et scènes IKEA.
+- **Protocole** : API locale **non officielle**, HTTPS sur **8443**, certificat épinglé (un
+  certificat d'usine P-384 valable jusqu'en 2071). Chargement complet `GET /v1/home`, puis
+  WebSocket `wss://<hub>:8443/v1` (événements `deviceStateChanged`, `remotePressEvent`…), un
+  événement `ping` toutes les 30 s (le hub répond `pong`). Commandes en
+  `PATCH /v1/devices/<id>` avec `[{"attributes": {…}}]`.
+- **Configuration** :
+
+```toml
+[[driver]]
+id = "ikea"
+kind = "dirigera"
+[driver.options]
+host = "192.168.1.x"
+# cert_sha256 = "…"   # optionnel : empreinte du hub si le coffre est indisponible
+```
+
+- **Secrets** (instance) : `cert_sha256`, `token` (un JWT ES256 valable 10 ans) et
+  `token_cert_sha256` (l'empreinte sous laquelle le jeton a été donné), écrits par le pilote
+  lui-même lors de l'appairage. Il faut donc une clé maître. Plusieurs jetons cohabitent
+  (celui de Moli et celui d'un autre client restent valables). **Le jeton est lié à son
+  certificat** : sans empreinte connue (oubliée après un « certificat changé »), ou avec une
+  autre dans les options, il est oublié **avant** tout contact et l'appairage recommence ;
+  celui qui répond à la place du hub ne le reçoit jamais.
+- **Appairage** (OAuth PKCE `S256`) : statut `waiting` « Appuie sur le bouton d'action sous le
+  hub Dirigera », affiché **seulement** quand Moli tient un code. Le pilote demande un code
+  (`/v1/oauth/authorize`, valable 60 s), puis le
+  jeton toutes les 2 s (`/v1/oauth/token`) : `403 Button not pressed…` = pas encore,
+  `403 Pairing request timed out` ou `401 Invalid authorization code` = code périmé, un autre
+  est demandé. Le hub n'appaire qu'un client à la fois (`409 Already one ongoing pairing
+  request`) : le statut dit alors de **ne pas** appuyer (l'appui pourrait profiter à l'autre
+  client), et le pilote attend que l'autre demande expire ; tant que Moli attend l'appui, le
+  hub refuse donc tout autre appairage. Une réponse lente ne fait pas perdre l'appui
+  (nouvel essai ; 16 en 10 h d'attente sur un vrai hub). L'empreinte est
+  stockée **avant** le premier code. Jeton refusé (401/403 sur `/v1/home`) : oublié, et
+  l'appairage recommence. Certificat changé : statut `waiting` avec l'empreinte épinglée et
+  celle présentée, et la commande pour oublier l'empreinte (le jeton part avec elle).
+- **Points** : selon les attributs présents (deux appareils d'un même type peuvent différer).
+  Lampe : `on`, `brightness` (1-100 %), `color_temp` (mired, converti depuis les kelvins ;
+  bornes en mireds acceptées, KAJPLATS), `color` (« #rrggbb », envoyé en teinte et saturation)
+  ; **écrivables** si l'attribut est dans `capabilities.canReceive`. En mode couleur,
+  `color_temp` vaut `null` ; en mode blanc (`colorMode: temperature`), `color` vaut `null`. Prise : `on` ✎, `power`, `current`, `voltage`, `energy` (kWh).
+  Capteurs : `temperature`, `humidity`, `pm25`, `voc_index`, `co2`, `motion` (`isDetected`),
+  `illuminance`, `contact` (vrai = fermé, comme Hue), `leak`. Bouton de raccourci : `button`
+  (`single`, `double`, `long`, en `pulse`). `battery` partout où il y a une pile.
+  Disponibilité : `isReachable` (aussi dans chaque événement).
+- **Identité** : `id` du Dirigera (un UUID suivi de `_1`, `_2`… : un produit Matter comme le
+  MYGGSPRAY se présente en deux appareils). Nom natif = `customName` (sinon le modèle), pièce
+  native = la pièce IKEA, sans l'espace insécable que le hub laisse parfois au bout. Le hub, les répéteurs et les télécommandes de lampes (qui pilotent leurs
+  lampes elles-mêmes) ne publient que leur pile, ou rien.
+- **Pièges** : un renommage, un changement de pièce, un ajout ou un retrait recharge tout. Le
+  WebSocket coupé (redémarrage du hub) ou muet 95 s : rechargement complet puis reconnexion ;
+  refermé en moins de 10 s : le superviseur reprend la main (attente croissante). Hub
+  redémarré : appareils hors ligne le temps du démarrage, puis rechargés sans nouvel appairage. Les
+  commandes tournent à côté des événements avec un budget de 4,5 s (le hub répond `202` en
+  0,3 s environ) ; la confirmation revient par le WebSocket, valeurs intermédiaires comprises
+  (une luminosité varie en fondu : 60 puis 30). **Un attribut par `PATCH`** : `isOn` et
+  `lightLevel` ensemble, le hub répond `202` mais ignore la luminosité. Le hub arrondit teinte
+  et saturation (pas de 1/254). `Hub` et `Grant` n'affichent jamais le jeton en `Debug`.
+- **Tests** : `src/pkce.rs` (vecteur de l'annexe B de la RFC 7636, base64url de la RFC 4648,
+  formulaire du jeton) ; `src/hub.rs` (réponses d'appairage vues sur un hub) ; `src/lib.rs`,
+  avec le vrai coffre du runtime : un jeton sans son empreinte est oublié avant tout
+  contact, et « Appuie sur le bouton » ne vient qu'après un code (jamais pendant un 409) ;
+  `src/model.rs` sur `integrations/dirigera/fixtures/home.json` (un hub réel anonymisé : lampes
+  TRADFRI et ORMANAS, détecteur MYGGSPRAY, le hub lui-même) et `events.json` (événements
+  réels : marche/arrêt, fondu, couleur, blanc), plus chaque famille, bornes en mireds, contact
+  inversé, couleur partielle, types inconnus ignorés, encodage des commandes.
+
 ## `tuya` : Tuya Wi-Fi en local (`crates/moli-tuya`)
 
 - **Couvre** : interrupteurs, prises, volets et tout appareil Tuya Wi-Fi joignable directement. **Par le cloud** (`src/cloud.rs`, lecture seule), quand les clés du projet cloud du foyer sont là : les capteurs **sur pile** sans adresse (catégories `mcs` porte, `sj` fuite, `ywbj` fumée, `pir`, `wsdcg`, `rqbj`, `cobj`, `sos`), qui ne parlent jamais sur le réseau local, et les **sous-appareils derrière une passerelle** Tuya. Mêmes identifiants Moli qu'en local (historique, étiquettes, portes de l'Accueil inchangés).
@@ -193,10 +266,10 @@ docker exec -i homeassistant python3 - < tuya-export.py \
   Le script ne rafraîchit jamais le jeton de HA (cela révoquerait celui de HA) et refuse de tourner s'il expire dans moins de 15 min. `moli-os tuya import [--instance tuya] [--devices-file …]` refuse un terminal, range les clés dans le coffre et écrit `tuya.json` **sans clé**. Les champs `ip`, `version` et `room` modifiés à la main sont conservés. Redémarrer ensuite.
 - **`tuya.json`** : `id`, `name`, `category`, `product`, `ip`, `version` (`"3.3"`, `"3.4"`, `"3.5"`), `room`, `gateway`, `dps[]` (`id`, `code`, `type`, `writable`, `unit`, `scale`, `min`, `max`, `step`, `range`).
 - **Points** : clé = code du DP (`switch_1`, `cur_power`). Booléen → binaire ; entier → numérique divisé par `10^scale` ; enum → enum ; texte → texte ; `Json`, `Raw`, `Bitmap` ignorés. Unités : `mA` affiché en A, `℃` en °C, `度` en kWh. Écrivable si `writable` **et** type booléen, entier ou enum (jamais le texte libre). À l'envoi, un entier est arrondi au pas de l'appareil (si `step` > 1).
-- **Découverte** : écoute UDP **6666, 6667** (jusqu'à 3.3) et **7000** (3.4+), sockets partagées (`SO_REUSEPORT`) avec localtuya de HA. L'adresse retenue est celle d'où vient la diffusion. Un appareil avec `ip` **et** `version` dans le fichier n'est pas modifié par la découverte. Sans `ip`, version par défaut 3.3. Une diffusion (n'importe qui peut en envoyer) ne fait jamais redescendre la version : quand le fichier dit 3.4/3.5, ou après une session 3.4/3.5 négociée (preuve que l'appareil a sa clé, gardée en mémoire jusqu'au redémarrage), seule l'adresse suit, et une version plus ancienne annoncée est dite une fois dans le journal.
-- **Recherche par clé** (`src/seek.rs`, `seek = true` par défaut) : quand HA tourne sur la même machine, il tient 6666/6667 sous un autre utilisateur, donc `SO_REUSEPORT` ne partage rien et la découverte n'entend rien. Pour chaque appareil sans `ip`, Moli cherche qui écoute sur 6668 dans le /24 des appareils connus (adresses déjà prises exclues), puis demande à chaque adresse, avec la clé de l'appareil : en 3.3 un état chiffré par cette clé (`dps` lisible), en 3.4/3.5 la preuve de la négociation. Seule la bonne clé ouvre la conversation : aucune adresse n'est devinée. Au démarrage puis toutes les 15 min pour ceux qui manquent ; une paire adresse/appareil déjà essayée n'est jamais redemandée. Les capteurs Wi-Fi sur pile (portes `mcs`) n'écoutent jamais : jamais trouvés, c'est normal (ils ne parlent qu'au cloud).
-- **Pièges** : heartbeat toutes les 10 s, connexion jugée morte après 35 s de silence, reconnexion avec attente jusqu'à 5 min. Les prises ne publient la puissance que sur demande : DP 18/19/20 redemandés toutes les 30 s. Un ordre de plus de 5 s n'est jamais envoyé (« un radiateur allumé des heures plus tard est pire qu'un refus ») ; un ordre non acquitté en 5 s est signalé. Appareil sans clé : ignoré avec un avertissement (relancer l'import).
-- **Tests** : `src/protocol.rs` vérifié **octet par octet** contre pytuya (localtuya) pour les trois versions, négociation contre un appareil simulé, trames tronquées ou altérées ; `src/model.rs` (unités, échelle, écriture) ; `src/lib.rs` (fusion d'import sans clé dans le fichier) ; `src/device.rs` (jamais une version plus ancienne que celle prouvée ou que celle du fichier).
+- **Découverte** : écoute UDP **6666, 6667** (jusqu'à 3.3) et **7000** (3.4+), sockets partagées (`SO_REUSEPORT`) avec localtuya de HA. L'adresse retenue est celle d'où vient la diffusion. `ip` et `version` servent au premier essai ; une connexion validée et saine reste intacte, un appareil hors ligne peut suivre une nouvelle annonce. La connexion doit prouver sa clé avant de devenir disponible ou de recevoir un ordre : état `dps` déchiffré en 3.3, négociation authentifiée en 3.4/3.5, avec un délai global de 5 s après la connexion TCP. Un simple heartbeat ou un retour d'erreur ne suffit jamais. Ni une diffusion ni une recherche par clé ne peuvent descendre sous la version 3.4/3.5 du fichier ou celle prouvée depuis le démarrage.
+- **Recherche par clé** (`src/seek.rs`, `seek = true` par défaut) : si les diffusions ne sont pas entendues, Moli recherche les appareils locaux hors ligne dans le /24 des adresses connues, même si une ancienne `ip` figure dans le fichier. Après 12 s laissées aux premières connexions, puis 60 s après chaque recherche, les adresses sont vérifiées avec les clés connues : état chiffré en 3.3, preuve de négociation en 3.4/3.5. Seules les adresses des connexions actuellement validées sont exclues ; deux appareils hors ligne peuvent donc retrouver leurs IP après un échange de baux DHCP. Les échecs sont retentés à la recherche suivante. Les capteurs sur pile sans IP et les enfants des passerelles ne sont jamais recherchés. Une preuve retrouvée réveille immédiatement la reconnexion, même à adresse inchangée. Les adresses apprises restent en mémoire ; le fichier d'import est conservé.
+- **Pièges** : heartbeat toutes les 10 s, connexion jugée morte après 35 s de silence, reconnexion avec attente jusqu'à 5 min. Une adresse retrouvée, même identique, remet l'attente à 2 s avant le nouvel essai : un refus transitoire après la découverte est ainsi retenté rapidement. Seule une minuterie écoulée augmente l'attente. Liens et recherches réservent chaque IP avant d'ouvrir TCP, y compris pendant l'authentification : une ancienne configuration ne doit pas évincer la connexion d'un autre appareil. La réservation est libérée à la fermeture, sur erreur, délai dépassé ou annulation ; les autres IP restent indépendantes. Les prises ne publient la puissance que sur demande : DP 18/19/20 redemandés toutes les 30 s. Un ordre de plus de 5 s n'est jamais envoyé (« un radiateur allumé des heures plus tard est pire qu'un refus ») ; un ordre non acquitté en 5 s est signalé. Appareil sans clé : ignoré avec un avertissement (relancer l'import).
+- **Tests** : `src/protocol.rs` vérifié **octet par octet** contre pytuya (localtuya) pour les trois versions, négociation contre un appareil simulé, trames tronquées ou altérées ; `src/model.rs` (unités, échelle, écriture) ; `src/lib.rs` (fusion d'import sans clé dans le fichier) ; appareils TCP simulés dans `src/device.rs` et `src/seek.rs` (heartbeat ou mauvaise clé refusés, délai de négociation borné, commande après preuve, file de reconnexion rejetée, échange DHCP, nouvel essai après échec, plancher protocole, connexions saines épargnées).
 
 ## `reolink` : caméras Reolink (`crates/moli-reolink`)
 
@@ -353,7 +426,8 @@ name = "Bambu A1"              # optionnel
 id = "box"
 kind = "igd"
 [driver.options]
-location = "http://<box>:<port>/<chemin>/gatedesc.xml"   # optionnel : saute la découverte
+location = "http://<box>:<port>/<chemin>/gatedesc.xml"   # optionnel
+discovery = false  # lecture de cette seule URL ; pas de SSDP/annonces (défaut true)
 ```
 
 - **Secrets** : aucun.
@@ -372,6 +446,7 @@ location = "http://<box>:<port>/<chemin>/gatedesc.xml"   # optionnel : saute la 
 - **Points** : `state` (`idle`/`processing`/`stopped`), `status` (texte), `ink_N` (%, `null` = inconnu), `ink_low`, `jobs`, `job` ; boutons `identify`, `cancel` (Control : un agent passe par un humain).
 - **Impression** : `POST /api/devices/<id>/print` (JPEG, 16 Mo par page), tableau de bord de la maison seulement, vérifié avant de lire le corps, 40 pages / 10 s. File en mémoire bornée à 32 Mo (Moli vit dans 128 Mo), envoyée page par page par une tâche à part ; « Annuler » vide la file (époque) et annule la page en cours ; la file attend quand le papier manque ou bourre.
 - **Pièges** : une jet d'encre lit le document en imprimant (envoi jusqu'à 15 min) ; une Canon dont les cartouches sont rechargées annonce 0 % ; éteinte au bouton = hors ligne (normal), sauf « Auto power on ».
+- **Mode Android lecture seule** : `read_only = true` supprime les points de commande et le service d’impression ; le transport n’autorise que `Get-Printer-Attributes`. Point `responding` daté pour constater une vraie réponse IPP. Sans ce réglage (défaut false), les fonctions Linux existantes sont conservées. Configuration sans TOML dans Équipements sur Android.
 - **Tests** : réponse réelle d'une Canon MG3600 (`integrations/ipp/fixtures/`), file bornée, annulation, pause sans papier.
 
 ## `host` : la machine de Moli et les ordinateurs (`crates/moli-host`)
@@ -446,6 +521,29 @@ pièces ; il commande ensuite les membres en origine `system` (journal : `lumina
 - **Points** : `home` (binaire, sémantique occupation), lecture seule.
 - **Machines** : `[[driver.options.machine]]` avec `id`, `name`, `ip` (sur le réseau déclaré) : appareil « Machine » (`description` = son adresse), point `online` (allumée tant qu'elle répond, éteinte après deux relevés sans réponse). C'est l'équivalent de l'intégration `ping` de HA pour un ordinateur.
 
+## `esphome` : satellites vocaux (`crates/moli-esphome`)
+
+- **Couvre** : les appareils ESPHome, d'abord les satellites vocaux (Home Assistant Voice
+  Preview Edition, ou un ESP32-S3 monté à la main) : le mot de réveil, la conversation, la voix.
+- **Protocole** : l'API native d'ESPHome, TCP **6053**, chiffrée par **Noise** — écrite depuis la
+  spécification, **sans bibliothèque ESPHome** (`noise.rs`, `frame.rs`, `api.rs` ; identifiants et
+  numéros de champs de `api.proto`, ESPHome 2026.3, version d'API 1.14). Une connexion tenue
+  ouverte, ping toutes les 20 s, silence de 90 s = connexion morte ; l'appareil redémarre après
+  15 min sans aucun client.
+- **Configuration** : `host`, et **`media_base` sans laquelle il n'y a pas de voix** : l'appareil
+  va chercher lui-même le WAV que Moli publie. Le détail (firmware compris) est dans
+  [satellite-vocal.md](satellite-vocal.md).
+- **Secrets** : `api_key` (base64 : la clé `api: encryption:` du firmware). Un appareil **sans**
+  clé en reçoit une de Moli — si `mac` correspond, et seulement s'il n'en tient aucune déjà.
+- **Points** : `state` (`idle`, `listening`, `thinking`, `speaking`), `volume` et `muted` (le
+  `media_player` de l'appareil), `wake_word`, `say` (texte, 500 caractères).
+- **Identité** : la MAC de l'appareil (`ctx.device_id(&hello.mac)`).
+- **Pièges** : ⚠️ l'assistant vocal d'ESPHome n'accepte **qu'un client**, et Home Assistant s'y
+  abonne dès qu'il gère l'appareil : si les deux sont branchés, **HA gagne et Moli se tait sans
+  le dire**. Un seul `media_player` (le pilote retient le dernier annoncé).
+- **Tests** : `src/lib.rs` (un appareil qui parle en clair ne remplace jamais la clé que Moli
+  tient ; provisionnement borné par la MAC).
+
 ## `profile` : profils déclaratifs (`crates/moli-profile`)
 
 Un seul pilote générique pour tout appareil HTTP décrit en TOML. Voir [profils.md](profils.md).
@@ -476,6 +574,7 @@ ni pièce native). Il ne déplace jamais rien. Sans argument : plan à blanc ; `
 |---|---|---|---|---|
 | `z2m` | `moli-z2m` | MQTT local (Zigbee2MQTT) | oui, selon les `exposes` | Zigbee2MQTT (appareils variés) |
 | `hue` | `moli-hue` | HTTPS CLIP v2 + SSE, local, épinglé | oui : lumières, pièces ; zones non | pont Philips Hue (CLIP v2) |
+| `dirigera` | `moli-dirigera` | HTTPS 8443 + WebSocket, local, épinglé (API non officielle) | oui : lampes, prises | hub Dirigera (firmware 2.975) : lampes TRADFRI et ORMANAS (commandes comprises), détecteur MYGGSPRAY (lecture), redémarrage du hub ; prises, boutons, autres capteurs : pas encore |
 | `tuya` | `moli-tuya` | TCP 6668 chiffré 3.3/3.4/3.5, UDP 6666/6667/7000 ; cloud en lecture | oui : DP booléens, entiers, enum (local seulement) | prises Tuya (local, écriture comprise) ; capteurs sur pile et passerelles (cloud) |
 | `reolink` | `moli-reolink` | HTTPS API locale, épinglé (X.509 v1) | non (+ images) | Reolink Home Hub (caméras, sonnette) |
 | `sonos` | `moli-sonos` | UPnP/SOAP HTTP 1400 ; annonces en WebSocket TLS 1443 | oui : lecture, volume, sourdine, annonces | Sonos Beam |
@@ -488,6 +587,7 @@ ni pièce native). Il ne déplace jamais rien. Sans argument : plan à blanc ; `
 | `ipp` | `moli-ipp` | IPP 2.0 HTTP 631 | identifier, annuler, imprimer (tableau de bord) | Canon MG3600 |
 | `host` | `moli-host` | /proc, /sys ; WoL ; agent HTTP sortant | allumer, éteindre, veille, Claude et Codex pour le téléphone (PIN) | hôte Linux ; PC Windows avec l'agent |
 | `presence` | `moli-presence` | UDP + table ARP de l'hôte | non | téléphones sur le Wi-Fi |
+| `esphome` | `moli-esphome` | API native ESPHome, TCP 6053, Noise écrite à la main | oui : volume, sourdine, `say` | pas encore (cible : satellite ESP32-S3) |
 | `phones` | `moli-phones` | rapports HTTP de l'appli (jeton) | `notify` (notification) | iPhone (appli Moli) |
 | `telegram` | `moli-telegram` | HTTPS, API des bots | `notify` (message) | oui (API des bots) |
 | `profile` | `moli-profile` | HTTP/HTTPS GET, Meross signé | oui si le profil déclare `[[write]]` (Daikin) | Daikin BRP069 (lecture), Meross EM06, Open-Meteo, Tempo, iopool EcO (voir [profils.md](profils.md#les-profils-du-catalogue)) |

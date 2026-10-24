@@ -26,8 +26,10 @@ python3 scripts/verify-android-apk.py android/app/build/outputs/apk/debug/app-de
 ```
 
 The default debug APK now uses `io.moli.android.app.preview` (**Moli OS Preview**,
-localized), independent of earlier prototypes. The proposed durable identity is
-`io.moli.android.app`; release builds remain unsigned pending an owner decision.
+localized), independent of earlier prototypes. The prepared beta identity is
+`io.moli.android.app.beta` (fixed label, version metadata in `android/beta.properties`);
+`:app:assembleBeta` is non-debuggable and intentionally unsigned pending signing approval.
+Production `io.moli.android.app` remains separate and unsigned.
 See [identity, paired updates, signing proposal and sleep preparation](android-updates.md).
 The debug APK contains only ARM64 by default, with provisional API 28 minimum.
 Packaging and emulator results do not substitute for physical device validation.
@@ -45,6 +47,17 @@ does not automatically restart it. Android/Samsung power management still needs
 physical testing. No wake locks or battery-optimization exemptions are enabled.
 On recent Android, the user can choose whether to allow notifications.
 
+The native home and dashboard header expose Start, Stop and Restart independently
+of the WebView. Restart drains the existing engine before starting a new lease;
+it never recreates keys or clears configuration. Status uses bounded authenticated
+HTTP observations, distinguishing failed checks from checks not yet performed.
+Returning from settings reauthenticates/reloads the dashboard, even when a new
+engine reuses the same local address; failed page loads retry every five seconds.
+Reconnect dashboard reloads only the display, without restarting the engine.
+Equipment cards show one compact receipt time, with per-point times under Details.
+Meross startup/brief loss of confirmation is labelled as pending, never as fresh;
+expired readings remain visibly old and persistent loss remains unavailable.
+
 The Rust library reuses the Linux engine's workers and shutdown flushes with an
 external cancellation token. It binds an ephemeral **127.0.0.1** socket before
 spawning workers, never the LAN. A random per-service token is installed as an
@@ -59,10 +72,18 @@ host overrides storage/listening paths at startup rather than trusting machine
 paths copied from another platform. No real driver is configured by default.
 Linux-only host/ARP presence integrations are not enabled by this preview.
 
+Configuration preparation now uses [non-destructive reconciliation and recovery](android-concordance.md).
+Conflicts keep the engine stopped and preserve existing files.
+
 ## Keys and future migration
 
-At first start the user chooses the dashboard PIN. A random portable 256-bit
-Moli master key and that bootstrap PIN are wrapped with AES-GCM under Android
+Fresh 0.13 previews open a single trial home: Search, My devices and Export report.
+The first deliberate search or device consultation creates independent random
+256-bit master and bootstrap credentials, without asking for a PIN. Before that,
+Settings → Backup/transfer can restore an existing encrypted archive.
+Legacy numeric PIN credentials remain valid and are never automatically rekeyed.
+Format-2 random bootstrap credentials survive encrypted archive round trips.
+The random portable Moli master key and bootstrap are wrapped with AES-GCM under Android
 Keystore and stored in noBackupFilesDir. The master key is passed to Rust only
 in memory; Android does not use the engine's plaintext master.key fallback.
 Existing encrypted stores without their wrapping material are never silently

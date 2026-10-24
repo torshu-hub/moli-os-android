@@ -4,6 +4,7 @@ import { setLanguage, t } from './i18n.svelte.js';
 
 export const hub = $state({
   connected: false,
+  observedAt: 0, // Local receipt clock; never infer receipt from a remote sample timestamp.
   /** @type {Record<string, any>} device id → DeviceView */
   devices: {},
   /** @type {any[]} */
@@ -37,12 +38,31 @@ export const hub = $state({
 const JOURNAL_MAX = 60;
 
 function applySnapshot(snapshot) {
+  hub.observedAt=Date.now();
   const devices = {};
   for (const d of snapshot.devices) devices[d.id] = d;
   hub.devices = devices;
   hub.drivers = snapshot.drivers;
   hub.approvals = snapshot.approvals ?? [];
   hub.guard = snapshot.guard ?? null;
+}
+
+/** Re-read sample timestamps: unchanged values intentionally produce no SSE event. */
+export async function refreshSnapshot() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch('/api/devices', { signal: controller.signal });
+    if (!res.ok) return false;
+    const snapshot = await res.json();
+    if (!Array.isArray(snapshot.devices) || !Array.isArray(snapshot.drivers)) return false;
+    applySnapshot(snapshot);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function splitPoint(point) {
@@ -66,6 +86,7 @@ function applyEvent(e) {
       delete hub.devices[e.device];
       break;
     case 'state': {
+      hub.observedAt=Date.now();
       const [id, key] = splitPoint(e.point);
       const device = hub.devices[id];
       if (!device) break;

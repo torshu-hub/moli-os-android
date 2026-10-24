@@ -60,7 +60,7 @@ impl Val {
 /// A request: the operation attributes every request carries (charset,
 /// language, printer), then what the caller adds.
 pub struct Request {
-    op: u16,
+    pub(crate) op: u16,
     id: u32,
     operation: Vec<u8>,
     job: Vec<u8>,

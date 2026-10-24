@@ -30,7 +30,8 @@ final class EngineHealth {
         long age = lastSuccess < 0 ? -1 : now - lastSuccess;
         long gap = Math.max(maxGap, lastAttempt < 0 ? 0 : now - lastAttempt);
         boolean ready = lease == EngineHost.currentLease() && EngineHost.state() == EngineHost.State.RUNNING && lastOk && age >= 0 && age <= FRESH;
-        return new long[]{ready ? 1 : 0, age, successes, failures, gap};
+        long observation = successes + failures == 0 ? 0 : !lastOk ? 2 : ready ? 1 : 3;
+        return new long[]{ready ? 1 : 0, age, successes, failures, gap, observation};
     }
     static synchronized void check() {
         if (busy || EngineHost.state() != EngineHost.State.RUNNING) return;
@@ -38,7 +39,10 @@ final class EngineHealth {
         final String origin = EngineHost.origin(), token = EngineHost.token();
         if (generation != lease) reset(generation);
         long now = SystemClock.elapsedRealtime();
-        if (lastAttempt >= 0) maxGap = Math.max(maxGap, now - lastAttempt);
+        if (lastAttempt >= 0) {
+            long gap=now-lastAttempt; maxGap = Math.max(maxGap,gap);
+            if(gap>FRESH) TrialLog.record(TrialJournal.Event.CHECK_GAP,gap,0);
+        }
         lastAttempt = now; busy = true;
         CHECKS.execute(() -> {
             boolean ok = request(origin, token);
@@ -50,6 +54,7 @@ final class EngineHealth {
                 if (ok) { successes++; lastSuccess = SystemClock.elapsedRealtime(); }
                 else failures++;
             }
+            TrialLog.record(ok?TrialJournal.Event.HEALTH_OK:TrialJournal.Event.HEALTH_FAILED,0,0);
         });
     }
     static boolean request(String origin, String token) {

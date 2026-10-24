@@ -1,0 +1,33 @@
+Moli OS 0.6.0 — ARM64 — Android 9 minimum
+
+Installer moli-os-android-0.6.0-arm64.apk : application Moli OS 0.6.0.
+Signature debug temporaire, paquet .preview.home.v060 : installation distincte.
+Les anciennes apps avec seulement des essais jetables peuvent être désinstallées
+par leur propriétaire. Si elles contiennent des données utiles, exporter chiffré
+avant de les supprimer ; restauration facultative en 0.6.0 vierge avant un PIN.
+La signature permanente reste suspendue. Ne pas forcer une mise à jour avec un
+certificat différent. Aucune installation ou désinstallation automatique.
+
+UTILISATION
+1. Démarrer et choisir un PIN local lors de la première ouverture.
+2. Maison et météo : Arrêter, nommer le lieu, saisir latitude/longitude (virgule
+   ou point), cocher Open-Meteo. Aucun GPS requis. Exemple public : Paris,
+   48,8566 / 2,3522. Enregistrer autorise l’envoi des coordonnées à Open-Meteo.
+3. Saisir les pièces souhaitées, une par ligne. Enregistrer, Démarrer puis
+   Retour au tableau de bord. Les réglages sont conservés et sauvegardés.
+4. Accueil : météo reçue et datée, état des sources, batterie/alimentation/réseau
+   réels de la tablette. Météo détaillée : vue Dehors existante de Moli.
+   Le nom du lieu reste local. Attribution : https://open-meteo.com/.
+5. La météo se renouvelle toutes les 15 min ; la tablette est relue toutes les
+   30 s lorsque le moteur tourne. Le tableau de bord utilise le flux en direct
+   du moteur, avec relecture locale des échantillons toutes les 15 s à l’écran
+   (aucune requête météo supplémentaire). Une donnée ancienne ou indisponible est indiquée explicitement.
+
+Les pièces sont préparées pour les équipements futurs ; aucune intégration
+matérielle réelle n’est configurée par ce lot. Les pièces sans appareil sont
+listées à l’Accueil ; la vue Pièces originale montre les appareils associés.
+Les profils fictifs, import TOML et journaux restent dans Outils de diagnostic.
+Le contrôle météo ponctuel est un résultat séparé ; il respecte le budget existant
+(1/minute, 10/heure), sans remplacer le cycle normal du moteur.
+Les informations réseau ne comprennent ni SSID, adresse IP, MAC ou GPS.
+Aucune garantie 24 h/24 ou de continuité en veille Samsung : à qualifier séparément.

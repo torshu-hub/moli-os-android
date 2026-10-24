@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
+        android:name=".MoliApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -12,13 +15,22 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:networkSecurityConfig="@xml/network_security_config">
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name=".MainActivity" android:exported="true" android:enableOnBackInvokedCallback="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".SearchHomeActivity" android:exported="false" />
+        <activity android:name=".PreviewSettingsActivity" android:exported="false" />
+        <activity android:name=".MerossManualActivity" android:exported="false" />
+        <activity android:name=".HomeSettingsActivity" android:exported="false" />
+        <activity android:name=".EquipmentSettingsActivity" android:exported="false" />
+        <activity android:name=".MerossAccountActivity" android:exported="false" />
+        <activity android:name=".LocalNetworkActivity" android:exported="false" />
+        <activity android:name=".TrialJournalActivity" android:exported="false" />
         <activity android:name=".BackupActivity" android:exported="false" />
+        <activity android:name=".IntegrationsActivity" android:exported="false" />
         <activity android:name=".AppInfoActivity" android:exported="false" />
         <service android:name=".MoliService" android:exported="false"
             android:foregroundServiceType="specialUse">

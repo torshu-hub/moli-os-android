@@ -54,8 +54,8 @@ impl EmbeddedEngine {
         if !data.is_absolute() {
             bail!("embedded data directory must be absolute");
         }
-        if pin.len() < 4 || pin.len() > 32 || !pin.bytes().all(|b| b.is_ascii_digit()) {
-            bail!("embedded PIN must contain 4 to 32 digits");
+        if !bootstrap_valid(pin) {
+            bail!("invalid embedded bootstrap credential");
         }
         let gate = Arc::new(ClientGate::new(token)?);
         std::fs::create_dir_all(data)?;
@@ -230,6 +230,15 @@ pub(crate) async fn authenticate(
     next.run(request).await
 }
 
+// Legacy human PINs remain accepted; new private previews use a 256-bit random bootstrap.
+fn bootstrap_valid(value: &str) -> bool {
+    ((4..=32).contains(&value.len()) && value.bytes().all(|b| b.is_ascii_digit()))
+        || (value.len() == 64
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,6 +259,22 @@ mod tests {
         let mut response = String::new();
         socket.read_to_string(&mut response).unwrap();
         response
+    }
+
+    #[test]
+    fn random_bootstrap_and_legacy_pin_formats_are_distinct() {
+        assert!(bootstrap_valid("4826"));
+        assert!(bootstrap_valid(TOKEN));
+        for bad in [
+            "",
+            "123",
+            "abcd",
+            "0123456789abcdef",
+            &"a".repeat(63),
+            &"g".repeat(64),
+        ] {
+            assert!(!bootstrap_valid(bad));
+        }
     }
 
     #[test]

@@ -11,6 +11,8 @@
   import AmbiancePicker from '../ui/AmbiancePicker.svelte';
   import Routines from '../ui/Routines.svelte';
   import SkyHero from '../ui/SkyHero.svelte';
+  import AndroidSources from '../ui/AndroidSources.svelte';
+  import AndroidEquipment from '../ui/AndroidEquipment.svelte';
 
   const cfg = $derived(home.config ?? {});
   const out = $derived(cfg.outdoor ?? {});
@@ -170,10 +172,12 @@
     {#each notices as n (n.text)}
       <a class="chip {n.tone}" href={n.href}><Icon name={n.icon} size={16} />{n.text}</a>
     {:else}
-      <span class="chip good"><Icon name="leaf" size={16} />{t('maison.accueil.calme')}</span>
+      {#if !cfg.android}<span class="chip good"><Icon name="leaf" size={16} />{t('maison.accueil.calme')}</span>{/if}
     {/each}
   </section>
 
+  {#if cfg.android}<AndroidSources /><AndroidEquipment />{/if}
+  {#if !cfg.android || cfg.favorites}
   <div class="grid">
     <section class="card lights">
       <div class="card-head">
@@ -247,6 +251,7 @@
       </div>
     </a>
   </div>
+  {/if}
 </div>
 
 <style>

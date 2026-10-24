@@ -4,8 +4,19 @@ mod backup;
 mod catalogue;
 mod config;
 mod embedded;
+mod inventory;
 
 pub use embedded::EmbeddedEngine;
+
+/// Validate a proposed host configuration in memory before any persistence.
+/// This performs the same structural/policy checks as loading `moli.toml`.
+///
+/// # Errors
+/// Returns an error for invalid syntax, duplicate IDs or invalid engine settings.
+pub fn validate_configuration(text: &str) -> anyhow::Result<()> {
+    let config: config::Config = toml::from_str(text)?;
+    config.check()
+}
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -391,6 +402,7 @@ async fn serve(
         phones: gates.phones,
         machines: gates.machines,
         weather: weather(&config),
+        integration_inventory: inventory::inventory(&config),
     };
     // Client addresses matter: human sessions are bound to them.
     let is_embedded = embedded.is_some();
@@ -889,6 +901,7 @@ fn start_history(
 const KINDS: &[&str] = &[
     "z2m",
     "hue",
+    "dirigera",
     "igd",
     "tapo",
     "philips",
@@ -1027,6 +1040,9 @@ fn build_driver(
             config.options.clone().try_into().with_context(context)?,
         )),
         "hue" => Arc::new(moli_hue::Hue::new(
+            config.options.clone().try_into().with_context(context)?,
+        )),
+        "dirigera" => Arc::new(moli_dirigera::Dirigera::new(
             config.options.clone().try_into().with_context(context)?,
         )),
         "igd" => Arc::new(moli_igd::Igd::new(

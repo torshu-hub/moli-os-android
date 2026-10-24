@@ -1,5 +1,12 @@
-//! The only exported symbols are the Java bridge's start/stop methods.
+//! Narrow Java bridge for engine lifetime, profile onboarding, local equipment consent and explicit weather checks.
 //! Inputs are copied through the jni crate; panics never unwind into the JVM.
+
+mod concordance;
+mod concordance_state;
+mod discovery;
+mod equipment;
+mod meross_account;
+mod profiles;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
@@ -79,4 +86,54 @@ pub extern "system" fn Java_io_moli_android_NativeServer_stop(
             "Native server could not stop cleanly",
         );
     }
+}
+
+// SAFETY: private Java bridge; text is copied, all errors are bounded codes.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_moli_android_NativeServer_profile(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+    text: JString<'_>,
+    operation: jint,
+) -> jni::sys::jstring {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        let text: String = env.get_string(&text).map_err(|_| "input")?.into();
+        if text.len() > if operation == 1 { 2_097_152 } else { 524_288 } {
+            return Err("size");
+        }
+        match operation {
+            0 => profiles::review(&text),
+            1 => concordance::prepare(&text),
+            2 => profiles::weather_probe(&text),
+            3 => equipment::validate(&serde_json::from_str(&text).map_err(|_| "input")?),
+            4 => {
+                let slot = engine()
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if slot.is_some() {
+                    return Err("running");
+                }
+                equipment::store_keys(&serde_json::from_str(&text).map_err(|_| "input")?)
+            }
+            5 => discovery::review(&serde_json::from_str(&text).map_err(|_| "input")?),
+            6 => {
+                let input: serde_json::Value = serde_json::from_str(&text).map_err(|_| "input")?;
+                let slot = engine()
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if slot.is_some() && input["action"] != "status" {
+                    return Err("running");
+                }
+                meross_account::run(&input)
+            }
+            _ => Err("input"),
+        }
+    }));
+    let reply = match result {
+        Ok(Ok(value)) => value,
+        Ok(Err(code)) => serde_json::json!({"error":code}),
+        Err(_) => serde_json::json!({"error":"internal"}),
+    };
+    env.new_string(reply.to_string())
+        .map_or(std::ptr::null_mut(), jni::objects::JString::into_raw)
 }
