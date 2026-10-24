@@ -66,15 +66,18 @@ public final class MainActivity extends Activity {
         TrialLog.begin(this);
         LinearLayout root = TrialUi.screen(this);
         LinearLayout controls=TrialUi.card(this,root);
+        controls.setPadding(TrialUi.dp(this,8),0,TrialUi.dp(this,8),0);
         status=TrialUi.text(this,controls,R.string.stopped);
+        status.setTextSize(13);status.setPadding(0,0,0,0);
         LinearLayout buttons=new LinearLayout(this);controls.addView(buttons);
         startButton=TrialUi.button(this,buttons,R.string.start,true,this::prepare);
         stopButton=TrialUi.button(this,buttons,R.string.stop,false,()->sendCommand(MoliService.STOP));
         restartButton=TrialUi.button(this,buttons,R.string.engine_restart,false,()->sendCommand(MoliService.RESTART));
-        for(Button button:new Button[]{startButton,stopButton,restartButton}) {
+        Button reconnectButton=TrialUi.button(this,buttons,R.string.engine_reconnect,false,()->{invalidateDashboard();EngineHealth.check();});
+        for(Button button:new Button[]{startButton,stopButton,restartButton,reconnectButton}) {
+            button.setTextSize(13);button.setMinHeight(TrialUi.dp(this,48));button.setMinimumHeight(TrialUi.dp(this,48));
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.setMargins(TrialUi.dp(this,2),0,TrialUi.dp(this,2),0);button.setLayoutParams(lp);
         }
-        TrialUi.button(this,controls,R.string.engine_reconnect,false,()->{invalidateDashboard();EngineHealth.check();});
         ScrollView homeScroll=new ScrollView(this);homeScroll.setFillViewport(true);home=homeScroll;
         root.addView(home,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout front=new LinearLayout(this);front.setOrientation(LinearLayout.VERTICAL);
@@ -89,7 +92,9 @@ public final class MainActivity extends Activity {
         TrialUi.text(this,front,R.string.preview_report_auto);
         TrialUi.button(this,front,R.string.preview_settings,false,()->startActivity(new Intent(this,PreviewSettingsActivity.class)));
         dashboard=new LinearLayout(this);dashboard.setOrientation(LinearLayout.VERTICAL);root.addView(dashboard,new LinearLayout.LayoutParams(-1,0,1));dashboard.setVisibility(View.GONE);
-        TrialUi.button(this,dashboard,R.string.preview_home_title,false,this::showHome);
+        Button homeButton=TrialUi.button(this,dashboard,R.string.preview_home_title,false,this::showHome);
+        homeButton.setTextSize(14);homeButton.setMinHeight(TrialUi.dp(this,48));homeButton.setMinimumHeight(TrialUi.dp(this,48));
+        LinearLayout.LayoutParams homeParams=(LinearLayout.LayoutParams)homeButton.getLayoutParams();homeParams.setMargins(0,0,0,0);
         dashboardStatus=TrialUi.text(this,dashboard,R.string.starting);
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);

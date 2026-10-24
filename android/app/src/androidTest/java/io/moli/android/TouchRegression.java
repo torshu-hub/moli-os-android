@@ -49,6 +49,12 @@ final class TouchRegression {
     }
     static void verifyDevices(ActivityScenario<MainActivity> ui)throws Exception {
         until(()->{AtomicReference<Boolean> ready=new AtomicReference<>(false);ui.onActivity(a->ready.set(a.hasWindowFocus()&&a.web.getHeight()>300));return ready.get();});
+        ui.onActivity(a->{ViewGroup root=a.findViewById(android.R.id.content);View controls=((ViewGroup)root.getChildAt(0)).getChildAt(0);
+            assertTrue("Native engine controls compact",controls.getHeight()<=TrialUi.dp(a,120));
+            assertTrue("Dashboard retains most of portrait screen",a.web.getHeight()>a.getResources().getDisplayMetrics().heightPixels*0.7);
+            for(int label:new int[]{R.string.start,R.string.stop,R.string.engine_restart,R.string.engine_reconnect}){
+                Button b=MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(label));assertNotNull(b);assertTrue(b.isShown());assertTrue("Accessible touch target",b.getHeight()>=TrialUi.dp(a,48));
+            }});
         assertEquals("true",js(ui,"document.querySelectorAll('[data-equipment=meross]').length===4 && document.documentElement.scrollHeight>innerHeight+100"));
         // Reconstruct the former native parent + oversized WebView within the same
         // running screen. Record which scroller receives the physical gesture.

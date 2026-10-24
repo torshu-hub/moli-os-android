@@ -75,6 +75,11 @@ raisonnement » (gpt-5…, o…) sont reconnus (`max_completion_tokens`, `reason
   consommation » = le compteur général).
 - Modifier un automatisme existant : le graphe actuel est donné, les positions des nœuds
   conservées sont gardées.
+- Les règles `stale` sont disponibles dans `if.rules[]` et `wait_for.rule`, y compris
+  lors d'une retouche : `point` et `for_s` entier de 1 à 86 400 secondes. Elles vérifient
+  le silence du capteur, pas l'absence de changement de sa valeur. Dans la sortie stricte,
+  `for_s` vaut `null` pour les autres règles ; les champs inutilisés sont retirés avant
+  la vérification du graphe par le moteur.
 
 ## Importer les automatisations de Home Assistant (`import.rs`)
 
@@ -193,6 +198,21 @@ la voix démarre vite ; phrases de fin), `player.js` (un seul `AudioContext` dé
 toucher, indispensable sur iOS), `conversation.svelte.js` (états `listening → hearing →
 thinking → speaking`). Le bouton micro (une seule question) enregistre aussi en WAV.
 Tests : `cd web && npm test`.
+
+### Satellites ESPHome (`crates/moli-esphome/`)
+
+Les réponses de conversation et le carillon de fin passent tous deux par le lecteur
+d'annonces du firmware, via l'événement `TTS_END`. Certains firmwares n'embarquent que
+les décodeurs FLAC et MP3 : Moli fournit donc ces deux sons en **FLAC**, y compris pendant
+une conversation. L'enregistrement envoyé à la transcription reste en WAV. Le pilote
+demande `VoiceBrain::announcement_url` pour la réponse et publie le carillon en
+`audio/flac`. Les tests relisent les événements chiffrés remis au satellite et décodent
+le carillon avec un véritable décodeur FLAC.
+
+Un journal `voice spoken` ne prouve pas que le haut-parleur a joué la phrase : il est
+aussi émis lorsque le destinataire ferme le flux. La validation physique demande de
+vérifier la lecture sur le boîtier, après les tests de protocole et de format.
+
 ## Côté dashboard
 
 Bulle sur toutes les pages (réponse courte, 2 à 4 cartes) et page Moli (l'écran se compose à

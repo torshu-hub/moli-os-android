@@ -889,6 +889,7 @@ fn start_history(
 const KINDS: &[&str] = &[
     "z2m",
     "hue",
+    "dirigera",
     "igd",
     "tapo",
     "philips",
@@ -1027,6 +1028,9 @@ fn build_driver(
             config.options.clone().try_into().with_context(context)?,
         )),
         "hue" => Arc::new(moli_hue::Hue::new(
+            config.options.clone().try_into().with_context(context)?,
+        )),
+        "dirigera" => Arc::new(moli_dirigera::Dirigera::new(
             config.options.clone().try_into().with_context(context)?,
         )),
         "igd" => Arc::new(moli_igd::Igd::new(
