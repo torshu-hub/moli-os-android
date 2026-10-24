@@ -190,7 +190,10 @@ final class ProfileStore {
             JSONObject currentHome = home(c);
             spec.put("home", currentHome).put("home_proposal", prepareHome(currentHome, selected, spec.getJSONObject("equipment")));
             File baseline = new File(dir, "android-concordance.json");
-            if (baseline.exists()) spec.put("baseline", new JSONObject(read(baseline, ConfigurationTransaction.FILE_LIMIT)));
+            if (baseline.exists()) {
+                if (!new File(dir, "home.json").isFile()) throw new Rejected("configuration_conflict");
+                spec.put("baseline", new JSONObject(read(baseline, ConfigurationTransaction.FILE_LIMIT)));
+            }
             JSONObject updated = nativeResult(spec.toString(), 1);
             java.util.Map<String,String> changes = new java.util.LinkedHashMap<>();
             changes.put("moli.toml", updated.getString("config"));

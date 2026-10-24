@@ -28,7 +28,7 @@ There is no automatic reverse synchronization of Moli edits into Android forms y
 Without a baseline, only exact legacy generated instances can be adopted, except
 for the private loopback lease port. An absent generated instance may be added;
 an existing unmatched/customized instance, inconsistent home projection, malformed
-baseline or invalid configuration blocks startup. A missing/empty configuration
+baseline or invalid configuration blocks startup. A missing/empty configuration or missing `home.json`
 beside an established baseline also blocks. The files are preserved, not replaced
 with a new empty installation.
 

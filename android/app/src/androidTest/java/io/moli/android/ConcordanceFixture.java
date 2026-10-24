@@ -68,6 +68,11 @@ final class ConcordanceFixture {
             catch(ProfileStore.Rejected expected) { assertEquals("configuration_conflict", expected.getMessage()); }
             assertArrayEquals(before, Files.readAllBytes(new File(dir,"moli.toml").toPath()));
             assertArrayEquals(oldHome, Files.readAllBytes(new File(dir,"home.json").toPath()));
+            Files.delete(new File(dir,"home.json").toPath());
+            try { ProfileStore.prepare(fixture).close(); fail("missing established home must not be recreated"); }
+            catch(ProfileStore.Rejected expected) { assertEquals("configuration_conflict", expected.getMessage()); }
+            assertFalse(new File(dir,"home.json").exists());
+            assertArrayEquals(before, Files.readAllBytes(new File(dir,"moli.toml").toPath()));
         } finally {
             try (java.util.stream.Stream<Path> stream = Files.walk(root.toPath())) {
                 for (Path path : (Iterable<Path>)stream.sorted(java.util.Comparator.reverseOrder())::iterator) Files.delete(path);
