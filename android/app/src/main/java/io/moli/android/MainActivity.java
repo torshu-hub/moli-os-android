@@ -64,7 +64,7 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved); TrialLog.attach(this);
         TrialLog.begin(this);
-        LinearLayout root = TrialUi.page(this);
+        LinearLayout root = TrialUi.screen(this);
         LinearLayout controls=TrialUi.card(this,root);
         status=TrialUi.text(this,controls,R.string.stopped);
         LinearLayout buttons=new LinearLayout(this);controls.addView(buttons);
@@ -75,8 +75,10 @@ public final class MainActivity extends Activity {
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.setMargins(TrialUi.dp(this,2),0,TrialUi.dp(this,2),0);button.setLayoutParams(lp);
         }
         TrialUi.button(this,controls,R.string.engine_reconnect,false,()->{invalidateDashboard();EngineHealth.check();});
-        home=new LinearLayout(this);((LinearLayout)home).setOrientation(LinearLayout.VERTICAL);root.addView(home);
-        LinearLayout front=(LinearLayout)home;
+        ScrollView homeScroll=new ScrollView(this);homeScroll.setFillViewport(true);home=homeScroll;
+        root.addView(home,new LinearLayout.LayoutParams(-1,0,1));
+        LinearLayout front=new LinearLayout(this);front.setOrientation(LinearLayout.VERTICAL);
+        int padding=TrialUi.dp(this,12);front.setPadding(padding,padding,padding,padding);homeScroll.addView(front);
         TrialUi.title(this,front,R.string.preview_home_title);
         TrialUi.text(this,front,R.string.preview_home_help);
         LinearLayout actions=TrialUi.card(this,front);
@@ -86,7 +88,7 @@ public final class MainActivity extends Activity {
         TrialUi.button(this,actions,R.string.report_export,false,report::choose);
         TrialUi.text(this,front,R.string.preview_report_auto);
         TrialUi.button(this,front,R.string.preview_settings,false,()->startActivity(new Intent(this,PreviewSettingsActivity.class)));
-        dashboard=new LinearLayout(this);dashboard.setOrientation(LinearLayout.VERTICAL);root.addView(dashboard);dashboard.setVisibility(View.GONE);
+        dashboard=new LinearLayout(this);dashboard.setOrientation(LinearLayout.VERTICAL);root.addView(dashboard,new LinearLayout.LayoutParams(-1,0,1));dashboard.setVisibility(View.GONE);
         TrialUi.button(this,dashboard,R.string.preview_home_title,false,this::showHome);
         dashboardStatus=TrialUi.text(this,dashboard,R.string.starting);
         web = new WebView(this);
@@ -126,7 +128,9 @@ public final class MainActivity extends Activity {
                 return new WebResourceResponse("text/plain", "UTF-8", 403, "Blocked", java.util.Collections.emptyMap(), new java.io.ByteArrayInputStream(new byte[0]));
             }
         });
-        dashboard.addView(web,new LinearLayout.LayoutParams(-1,Math.max(TrialUi.dp(this,480),getResources().getDisplayMetrics().heightPixels-TrialUi.dp(this,160))));
+        // The WebView owns its viewport and vertical gestures. Never place it inside
+        // the native home ScrollView or size it from the full display height.
+        dashboard.addView(web,new LinearLayout.LayoutParams(-1,0,1));
         if (Build.VERSION.SDK_INT >= 33) unregisterBack = ModernBack.register(this);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
         if(saved==null && getIntent().getBooleanExtra("devices",false))showDevices();

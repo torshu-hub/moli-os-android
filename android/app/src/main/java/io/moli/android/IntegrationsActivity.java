@@ -70,11 +70,19 @@ public final class IntegrationsActivity extends Activity {
         }); approve.setEnabled(false);
         button(body,R.string.integration_demo, () -> confirm(R.string.integration_demo_permission, () -> { ProfileStore.demo(this); return null; }));
         button(body,R.string.integration_weather, () -> confirm(R.string.integration_weather_permission, () -> { ProfileStore.weather(this); return null; }));
-        button(body,R.string.integration_remove_import, () -> change(() -> { ProfileStore.remove(this,"import"); return null; }));
+        Button removeImport=button(body,R.string.integration_remove_import, () -> change(() -> { ProfileStore.remove(this,"import"); return null; }));
         button(body,R.string.integration_remove_demo, () -> change(() -> { ProfileStore.remove(this,"demo"); return null; }));
         button(body,R.string.integration_remove_weather, () -> change(() -> { ProfileStore.remove(this,"weather"); return null; }));
-        button(body,R.string.integration_rollback, () -> change(() -> { ProfileStore.rollback(this); return null; }));
-        button(body,R.string.back, this::finish); setContentView(scroll);
+        Button rollback=button(body,R.string.integration_rollback, () -> change(() -> { ProfileStore.rollback(this); return null; }));
+        Button back=button(body,R.string.back, this::finish);
+        if(getIntent().getBooleanExtra("maintenance",false)) {
+            heading.setText(R.string.maintenance_profiles);message.setText(R.string.maintenance_profiles_help);
+            // Keep the real import/approval/recovery machinery; trial shortcuts and
+            // synthetic profiles remain available only to the diagnostic test screen.
+            java.util.Set<android.view.View> useful=new java.util.HashSet<>(java.util.Arrays.asList(heading,values,message,choose,review,approve,removeImport,rollback,back));
+            for(int i=0;i<body.getChildCount();i++)if(!useful.contains(body.getChildAt(i)))body.getChildAt(i).setVisibility(android.view.View.GONE);
+        }
+        setContentView(scroll);
         renderGuide(new JSONObject(),new TrialEvidence());
     }
     private Button button(LinearLayout parent, int label, Runnable action) {
@@ -223,7 +231,8 @@ public final class IntegrationsActivity extends Activity {
             runOnUiThread(() -> {
                 reading = false;
                 if (!isDestroyed()) {
-                    values.setText(result); renderGuide(selected,observed); updateTrialStatus();
+                    values.setText(getIntent().getBooleanExtra("maintenance",false)
+                            ? getString(R.string.maintenance_current_profile,selected.optJSONObject("import")==null?"—":selected.optJSONObject("import").optString("name","—")) : result); renderGuide(selected,observed); updateTrialStatus();
                     if (observedAt > 0) {
                         successfulReads++;
                         refreshStatus.setText(getString(R.string.integration_read_status,

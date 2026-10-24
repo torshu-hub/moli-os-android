@@ -91,15 +91,19 @@ public final class MerossReadTest {
                 assertTrue(device(2).getJSONObject("state").getJSONObject("voltage").isNull("value"));
                 assertEquals(246.912,device(2).getJSONObject("state").getJSONObject("power").getDouble("value"),0.0001);
                 assertFalse(device(2).getJSONObject("state").getJSONObject("on").getBoolean("value"));assertNull(device(3));
-                try(ActivityScenario<MainActivity> home=ActivityScenario.launch(MainActivity.class)) {
+                try(AutoCloseable display=TouchRegression.tablet();ActivityScenario<MainActivity> home=ActivityScenario.launch(MainActivity.class)) {
                 home.onActivity(MainActivity::showDevices);
                     until(()->"true".equals(js(home,"document.querySelectorAll('[data-equipment=meross]').length===4 && document.querySelectorAll('[data-equipment=meross][data-equipment-status=fresh]').length===3")));
                     assertEquals("true",js(home,"(()=>{const cards=[...document.querySelectorAll('[data-equipment=meross][data-equipment-status=fresh]')];return cards.every(c=>c.querySelectorAll('[data-equipment-received]').length===1 && !c.querySelector('details').open && c.querySelector('details dl') && !c.querySelector(':scope > dl small'))})()"));
+                    TouchRegression.verifyDevices(home);home.onActivity(MainActivity::showDevices);
                     long lease=EngineHost.currentLease();four.available=false;
                     until(()->"true".equals(js(home,"document.querySelectorAll('[data-equipment=meross][data-equipment-status=fresh]').length===2")));
                     assertEquals(lease,EngineHost.currentLease());assertNotNull(device(1));
                 }
                 app.startService(new Intent(app,MoliService.class).setAction(MoliService.STOP));until(()->EngineHost.state()==EngineHost.State.STOPPED);
+                String preserved=EquipmentStore.read(app).toString(),master=ProtectedKey.open(app).getString("master");
+                try(ActivityScenario<MainActivity> settings=ActivityScenario.launch(MainActivity.class)) {TouchRegression.maintenance(settings);}
+                assertEquals(preserved,EquipmentStore.read(app).toString());assertEquals(master,ProtectedKey.open(app).getString("master"));
                 four.available=true;
                 app.startForegroundService(new Intent(app,MoliService.class));until(()->EngineHost.state()==EngineHost.State.RUNNING);
                 until(()->device(1)!=null && device(4)!=null);assertEquals(stable,device(1).getString("id"));

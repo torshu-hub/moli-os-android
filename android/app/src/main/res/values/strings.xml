@@ -30,7 +30,7 @@
     <string name="backup_failed">Opération refusée ou interrompue : vérifiez le mot de passe, le fichier, l’espace disponible et sa compatibilité. Aucune donnée active n’a été remplacée. Un export interrompu doit être recréé.</string>
     <string name="app_name_receiver">Moli OS Restauration</string>
     <string name="app_name_preview">Moli OS Aperçu</string>
-    <string name="app_info">Application / Mises à jour</string>
+    <string name="app_info">Application et diagnostic</string>
     <string name="back">Retour</string>
     <string name="app_settings">Réglages Android de cette application</string>
     <string name="app_identity">Version %1$s (%2$d)\nApplication : %3$s\nCertificat public SHA-256 :\n%4$s</string>
@@ -279,8 +279,8 @@
     <string name="preview_settings">Paramètres</string>
     <string name="preview_report_auto">Le rapport d’essai enregistre automatiquement les étapes utiles, sans secret.</string>
     <string name="preview_engine_ready">Moteur actif · rapport automatique</string>
-    <string name="preview_advanced">Avancé</string>
-    <string name="preview_transfer_help">Sauvegarde / transfert : facultatif pour un essai neuf. Pour reprendre vos données, restaurez avant la première recherche ou ouverture de Mes appareils. Le mot de passe protège les secrets de la sauvegarde.</string>
+    <string name="preview_advanced">Configuration experte</string>
+    <string name="preview_transfer_help">Créez une sauvegarde chiffrée ou restaurez vos données. Conservez son mot de passe pour récupérer vos réglages et identifiants.</string>
     <string name="preview_other">Imprimante, box et autres appareils</string>
     <string name="preview_other_help">Une recherche ponctuelle vous permet de choisir le type à configurer. Aucune impression ni modification de box.</string>
     <string name="auto_meross_title">Mes prises Meross</string>
@@ -325,4 +325,8 @@
     <string name="engine_reconnect">Reconnecter l’affichage</string>
     <string name="engine_live">Moteur joignable · vérifié il y a %1$d s</string>
     <string name="engine_display_retry">Affichage déconnecté : nouvelle tentative en cours. Les commandes du moteur restent accessibles.</string>
+    <string name="maintenance_expert_help">Pour les adresses manuelles ou les profils personnalisés. Les appareils existants conservent leurs réglages.</string>
+    <string name="maintenance_profiles">Profils personnalisés (TOML)</string>
+    <string name="maintenance_profiles_help">Choisissez un fichier TOML, vérifiez ses permissions et approuvez-le explicitement. Les changements prennent effet au prochain démarrage du moteur.</string>
+    <string name="maintenance_current_profile">Profil importé actif : %1$s</string>
 </resources>

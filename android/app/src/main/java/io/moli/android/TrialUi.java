@@ -10,9 +10,18 @@ import android.widget.*;
 final class TrialUi {
     static final int INK=Color.rgb(28,47,55), TEAL=Color.rgb(17,100,105);
     static int dp(Activity a,int n){return Math.round(n*a.getResources().getDisplayMetrics().density);}
-    static LinearLayout page(Activity a){
+    private static void window(Activity a){
         a.getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR|android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         a.getWindow().setStatusBarColor(Color.rgb(240,245,244));a.getWindow().setNavigationBarColor(Color.rgb(240,245,244));
+    }
+    /** A bounded viewport for screens with their own scrolling surface (WebView). */
+    static LinearLayout screen(Activity a){
+        window(a);LinearLayout root=new LinearLayout(a);root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.rgb(240,245,244));int p=dp(a,12);root.setPadding(p,0,p,0);
+        a.setContentView(root);return root;
+    }
+    static LinearLayout page(Activity a){
+        window(a);
         ScrollView scroll=new ScrollView(a);scroll.setFillViewport(true);scroll.setBackgroundColor(Color.rgb(240,245,244));
         FrameLayout frame=new FrameLayout(a);scroll.addView(frame);
         LinearLayout body=new LinearLayout(a);body.setOrientation(LinearLayout.VERTICAL);int p=dp(a,24);body.setPadding(p,p,p,p);
