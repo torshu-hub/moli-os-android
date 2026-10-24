@@ -63,7 +63,8 @@ final class TouchRegression {
                 }
             }
             assertTrue("Original menu reachable by touch: "+route,tapped);
-            until(()->JSONObject.quote("#/"+route).equals(js(ui,"location.hash")));
+            until(()->"true".equals(js(ui,"location.hash==="+JSONObject.quote("#/"+route))));
+            evidence("ORIGINAL MENU touch destination reached: "+route);
         }
         until(()->"true".equals(js(ui,"!document.querySelector('.maison')")));
         js(ui,"location.hash='#/'");until(()->"true".equals(js(ui,"document.querySelectorAll('[data-equipment=meross]').length===4")));
