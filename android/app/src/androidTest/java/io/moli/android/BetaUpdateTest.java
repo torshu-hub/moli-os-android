@@ -147,6 +147,8 @@ public final class BetaUpdateTest {
         assertFalse(c.getSharedPreferences("host",Context.MODE_PRIVATE).getBoolean("wanted",true));
         try(ActivityScenario<MainActivity> home=ActivityScenario.launch(MainActivity.class)) {assertEquals(EngineHost.State.STOPPED,EngineHost.state());}
         assertEquals(before.getString("wrapper"),wrapper(c)); // No regeneration on reopening.
+        ConcordanceFixture.verify(c); // Exercise the new stopped-engine persistence after install -r.
+        checkPreserved(c); // The upgraded app's original vault, UID data and approvals remain untouched.
     }
     @Test public void restoreLegacyPinInIndependentUid()throws Exception {
         Context c=context();assertEquals("io.moli.android.app.preview.receiver",c.getPackageName());assertFalse(ProtectedKey.exists(c));

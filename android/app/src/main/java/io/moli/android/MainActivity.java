@@ -48,7 +48,7 @@ public final class MainActivity extends Activity {
                 }
                 web.setVisibility(View.GONE); status.setVisibility(View.VISIBLE);
                 status.setText(state == EngineHost.State.STARTING ? R.string.starting : state == EngineHost.State.STOPPING ? R.string.stopping :
-                        state == EngineHost.State.ERROR ? (EngineHost.profileFailure ? R.string.integration_changed : R.string.failed) : state == EngineHost.State.MAINTENANCE ? R.string.backup_working : R.string.stopped);
+                        state == EngineHost.State.ERROR ? (EngineHost.configurationFailure ? R.string.configuration_blocked : EngineHost.profileFailure ? R.string.integration_changed : R.string.failed) : state == EngineHost.State.MAINTENANCE ? R.string.backup_working : R.string.stopped);
             }
             long generation=EngineHost.currentLease();
             if (state==EngineHost.State.RUNNING && EngineHost.origin()!=null &&

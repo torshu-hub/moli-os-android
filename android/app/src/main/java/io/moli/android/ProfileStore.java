@@ -12,7 +12,19 @@ import java.nio.file.Files;
 final class ProfileStore {
     static final int LIMIT = 65536;
     static final class Rejected extends Exception { Rejected(String code) { super(code); } }
-    static File data(Context c) throws Exception { return ProtectedKey.dataDirectory(c, ProtectedKey.open(c)); }
+    static File data(Context c) throws Exception {
+        File dir = ProtectedKey.dataDirectory(c, ProtectedKey.open(c));
+        try { transaction(dir).recover(); } catch (Exception failure) { throw new Rejected("configuration_storage"); }
+        return dir;
+    }
+    private static ConfigurationTransaction transaction(File dir) {
+        return new ConfigurationTransaction(new ConfigurationTransaction.Disk(dir) {
+            @Override void syncDirectory() throws Exception {
+                java.io.FileDescriptor fd = android.system.Os.open(dir.getAbsolutePath(), android.system.OsConstants.O_RDONLY, 0);
+                try { android.system.Os.fsync(fd); } finally { android.system.Os.close(fd); }
+            }
+        });
+    }
     static String bounded(InputStream stream, int limit) throws Exception {
         if (stream == null) throw new Rejected("input");
         try (InputStream in = stream; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
@@ -90,7 +102,7 @@ final class ProfileStore {
     }
     static JSONObject home(Context c) throws Exception {
         File f = new File(data(c), "home.json");
-        return f.exists() ? new JSONObject(read(f, 262144)) : new JSONObject();
+        return f.exists() || new File(f + ".bak").exists() ? new JSONObject(bounded(new AtomicFile(f).openRead(), 262144)) : new JSONObject();
     }
     static void rooms(Context c, String names) throws Exception {
         org.json.JSONArray rooms = new org.json.JSONArray(); java.util.Set<String> used = new java.util.HashSet<>();
@@ -104,11 +116,11 @@ final class ProfileStore {
         }
         JSONObject h = home(c); h.put("rooms",rooms); atomic(new File(data(c),"home.json"),h.toString());
     }
-    private static void prepareHome(Context c, JSONObject selected) throws Exception {
-        JSONObject h = home(c), android = h.optJSONObject("android");
+    private static JSONObject prepareHome(JSONObject h, JSONObject selected, JSONObject equipment) throws Exception {
+        h = new JSONObject(h.toString());
+        JSONObject android = h.optJSONObject("android");
         if (android == null) android = new JSONObject();
         android.put("tablet", "android-tablet:tablet");
-        JSONObject equipment = EquipmentStore.read(c);
         android.put("printer", equipment.has("printer")); android.put("gateway", equipment.has("gateway"));
         android.put("printer_id", equipment.has("printer") ? "android-printer:" + equipment.getJSONObject("printer").getString("host") : JSONObject.NULL);
         android.put("meross",equipment.optJSONArray("meross") == null ? new org.json.JSONArray() : equipment.getJSONArray("meross"));
@@ -119,7 +131,7 @@ final class ProfileStore {
         JSONObject out = h.optJSONObject("outdoor"); if (out == null) out = new JSONObject();
         if (weather != null) out.put("weather",android.getString("weather"));
         else if ("android-weather:api.open-meteo.com:443".equals(out.optString("weather"))) out.remove("weather");
-        h.put("outdoor",out); atomic(new File(data(c),"home.json"),h.toString());
+        h.put("outdoor",out); return h;
     }
     static void remove(Context c, String item) throws Exception {
         if (!item.equals("demo") && !item.equals("weather") && !item.equals("import")) throw new Rejected("input");
@@ -173,12 +185,24 @@ final class ProfileStore {
         try {
             spec.put("port", endpoint.port());
             File config = new File(dir, "moli.toml");
-            spec.put("config", config.exists() ? read(config, 262144) : "");
-            if (selected.optBoolean("demo")) atomic(new File(dir, "android-demo.json"), bounded(c.getAssets().open("android-demo.json"), LIMIT));
-            String updated = nativeResult(spec.toString(), 1).getString("config");
-            atomic(config, updated);
-            prepareHome(c, selected);
+            spec.put("config", config.exists() || new File(config + ".bak").exists() ? bounded(new AtomicFile(config).openRead(), 262144) : "");
+            spec.put("config_present", config.exists());
+            JSONObject currentHome = home(c);
+            spec.put("home", currentHome).put("home_proposal", prepareHome(currentHome, selected, spec.getJSONObject("equipment")));
+            File baseline = new File(dir, "android-concordance.json");
+            if (baseline.exists()) spec.put("baseline", new JSONObject(read(baseline, ConfigurationTransaction.FILE_LIMIT)));
+            JSONObject updated = nativeResult(spec.toString(), 1);
+            java.util.Map<String,String> changes = new java.util.LinkedHashMap<>();
+            changes.put("moli.toml", updated.getString("config"));
+            changes.put("home.json", updated.getJSONObject("home").toString());
+            changes.put("android-concordance.json", updated.getJSONObject("baseline").toString());
+            File legacy = new File(dir, "android-concordance.legacy.json");
+            if (!legacy.exists()) changes.put(legacy.getName(), new JSONObject().put("version", 1)
+                    .put("config", config.exists() ? read(config, 262144) : JSONObject.NULL)
+                    .put("home", new File(dir, "home.json").exists() ? read(new File(dir, "home.json"), 262144) : JSONObject.NULL).toString());
+            if (selected.optBoolean("demo")) changes.put("android-demo.json", bounded(c.getAssets().open("android-demo.json"), LIMIT));
+            transaction(dir).commit(changes);
             return endpoint;
-        } catch (Exception failure) { if (endpoint != null) endpoint.close(); throw failure; }
+        } catch (Exception failure) { endpoint.close(); if (failure instanceof Rejected) throw failure; throw new Rejected("configuration_storage"); }
     }
 }

@@ -329,4 +329,5 @@
     <string name="maintenance_profiles">Custom profiles (TOML)</string>
     <string name="maintenance_profiles_help">Choose a TOML file, check its permissions and approve it explicitly. Changes apply at the next engine start.</string>
     <string name="maintenance_current_profile">Active imported profile: %1$s</string>
+    <string name="configuration_blocked">Configuration preserved: Moli and Android settings conflict or a write needs recovery. The engine remains stopped. Restore the previous Android selection or have the preserved files reviewed; do not reset data.</string>
 </resources>

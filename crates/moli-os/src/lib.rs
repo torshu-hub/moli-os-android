@@ -8,6 +8,16 @@ mod inventory;
 
 pub use embedded::EmbeddedEngine;
 
+/// Validate a proposed host configuration in memory before any persistence.
+/// This performs the same structural/policy checks as loading `moli.toml`.
+///
+/// # Errors
+/// Returns an error for invalid syntax, duplicate IDs or invalid engine settings.
+pub fn validate_configuration(text: &str) -> anyhow::Result<()> {
+    let config: config::Config = toml::from_str(text)?;
+    config.check()
+}
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;

@@ -12,7 +12,7 @@ final class EngineHost {
     private static volatile String origin, token;
     private static long lease;
     private static SyntheticEndpoint synthetic;
-    static volatile boolean profileFailure;
+    static volatile boolean profileFailure, configurationFailure;
     private EngineHost() {}
     static State state() { return state; }
     static String origin() { return origin; }
@@ -22,7 +22,7 @@ final class EngineHost {
         if (state == State.RUNNING || state == State.STARTING) return lease;
         if (state != State.STOPPED) return -1;
         long current = ++lease;
-        state = State.STARTING; profileFailure = false;
+        state = State.STARTING; profileFailure = false; configurationFailure = false;
         Context app = context.getApplicationContext();
         TrialLog.attach(app);
         WORK.execute(() -> {
@@ -44,6 +44,7 @@ final class EngineHost {
             } catch (Exception | LinkageError failure) {
                 if (synthetic != null) { synthetic.close(); synthetic = null; }
                 profileFailure = failure instanceof ProfileStore.Rejected;
+                configurationFailure = "configuration".equals(failure.getMessage()) || "configuration_conflict".equals(failure.getMessage()) || "configuration_storage".equals(failure.getMessage());
                 TrialLog.record(TrialJournal.Event.ENGINE_FAILED,0,0);
                 synchronized (EngineHost.class) { state = State.ERROR; }
             }

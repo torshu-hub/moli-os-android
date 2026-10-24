@@ -88,6 +88,7 @@ fn meross(entries: &Value) -> Result<Value, &'static str> {
         .filter(|a| a.len() <= 8)
         .ok_or("meross_settings")?;
     let mut ids = std::collections::HashSet::new();
+    let mut uuids = std::collections::HashSet::new();
     let mut addresses = std::collections::HashSet::new();
     let mut checked = vec![];
     for entry in entries {
@@ -113,6 +114,9 @@ fn meross(entries: &Value) -> Result<Value, &'static str> {
                 .as_str()
                 .filter(|s| valid_id(s))
                 .ok_or("meross_settings")?;
+            if !uuids.insert(uuid) {
+                return Err("meross_duplicate");
+            }
             checked.last_mut().ok_or("meross_settings")?["uuid"] = json!(uuid);
         }
     }

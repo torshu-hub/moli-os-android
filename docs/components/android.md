@@ -72,6 +72,9 @@ host overrides storage/listening paths at startup rather than trusting machine
 paths copied from another platform. No real driver is configured by default.
 Linux-only host/ARP presence integrations are not enabled by this preview.
 
+Configuration preparation now uses [non-destructive reconciliation and recovery](android-concordance.md).
+Conflicts keep the engine stopped and preserve existing files.
+
 ## Keys and future migration
 
 Fresh 0.13 previews open a single trial home: Search, My devices and Export report.

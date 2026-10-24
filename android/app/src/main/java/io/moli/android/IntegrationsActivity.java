@@ -202,7 +202,7 @@ public final class IntegrationsActivity extends Activity {
                         installed.has("weather") ? "Open-Meteo" : "—",
                         installed.has("import") ? installed.getJSONObject("import").optString("name") : "—")).append('\n');
                 if (EngineHost.state() != EngineHost.State.RUNNING) {
-                    text.append(getString(EngineHost.profileFailure ? R.string.integration_changed : R.string.integration_not_running));
+                    text.append(getString(EngineHost.configurationFailure ? R.string.configuration_blocked : EngineHost.profileFailure ? R.string.integration_changed : R.string.integration_not_running));
                 } else {
                     String origin = EngineHost.origin(), token = EngineHost.token(); long lease = EngineHost.currentLease();
                     HttpURLConnection c = (HttpURLConnection)new URL(origin + "/api/devices").openConnection();

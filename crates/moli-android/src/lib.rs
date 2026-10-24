@@ -1,6 +1,7 @@
 //! Narrow Java bridge for engine lifetime, profile onboarding, local equipment consent and explicit weather checks.
 //! Inputs are copied through the jni crate; panics never unwind into the JVM.
 
+mod concordance;
 mod discovery;
 mod equipment;
 mod meross_account;
@@ -96,12 +97,12 @@ pub extern "system" fn Java_io_moli_android_NativeServer_profile(
 ) -> jni::sys::jstring {
     let result = catch_unwind(AssertUnwindSafe(|| {
         let text: String = env.get_string(&text).map_err(|_| "input")?.into();
-        if text.len() > 524_288 {
+        if text.len() > if operation == 1 { 2_097_152 } else { 524_288 } {
             return Err("size");
         }
         match operation {
             0 => profiles::review(&text),
-            1 => profiles::configuration(&text).map(|v| serde_json::json!({"config":v})),
+            1 => concordance::prepare(&text),
             2 => profiles::weather_probe(&text),
             3 => equipment::validate(&serde_json::from_str(&text).map_err(|_| "input")?),
             4 => {
