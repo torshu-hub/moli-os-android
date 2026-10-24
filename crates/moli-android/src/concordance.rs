@@ -840,6 +840,11 @@ mod tests {
         ));
         s["data"] = json!("/restored/synthetic");
         assert_eq!(run(&s), Err("configuration_conflict"));
+        // Inactive rows also prove their previous root; omission from the active
+        // proposal must not bypass the ambiguity check during restore.
+        s["selected"]["inactive"] = json!(["android-import"]);
+        s.as_object_mut().unwrap().remove("import");
+        assert_eq!(run(&s), Err("configuration_conflict"));
     }
     #[test]
     fn malformed_previous_paths_never_authorize_relocation_or_replacement() {

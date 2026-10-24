@@ -66,9 +66,6 @@ pub fn relocate(current: &mut Rows, previous: &mut Rows, next: &mut Rows) -> Res
         let Some(source) = old["options"][key].as_str() else {
             continue;
         };
-        if source == target {
-            continue;
-        }
         let owned = |path: &str| -> Option<(String, String)> {
             if key == "profile" {
                 let (root, name) = path.rsplit_once("/android-profiles/")?;
@@ -90,6 +87,9 @@ pub fn relocate(current: &mut Rows, previous: &mut Rows, next: &mut Rows) -> Res
         let (source_root, source_name) = owned(source).ok_or("configuration_conflict")?;
         let (target_root, target_name) = owned(target).ok_or("configuration_conflict")?;
         roots.insert(source_root.clone());
+        if source == target {
+            continue;
+        }
         destinations.insert(source_root, target_root);
         if source_name != target_name {
             // A freshly approved digest is a proposal change, not a relocation.
