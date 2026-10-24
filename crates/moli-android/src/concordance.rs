@@ -86,6 +86,23 @@ fn endpoint(row: &mut Value, next: &Value) -> Result<()> {
     Ok(())
 }
 
+// Engine semantics: an absent TOML enabled flag means true. Normalize only
+// Meross comparisons so a legacy omitted flag and an explicit true agree.
+fn activation(row: &mut Value) -> Result<()> {
+    if row["id"]
+        .as_str()
+        .is_some_and(|id| id.starts_with("android-meross-"))
+    {
+        let enabled = match row.get("enabled") {
+            None => true,
+            Some(Value::Bool(v)) => *v,
+            _ => return Err("configuration_conflict"),
+        };
+        row["enabled"] = json!(enabled);
+    }
+    Ok(())
+}
+
 fn identities(rows: &BTreeMap<String, Value>) -> Result<BTreeMap<String, String>> {
     let mut uuids = BTreeMap::new();
     for (id, row) in rows
@@ -324,9 +341,11 @@ pub fn prepare(input: &str) -> Result<Value> {
         }
         if let Some(new) = n.get(&id) {
             if let Some(row) = c.get_mut(&id) {
+                activation(row)?;
                 endpoint(row, new)?;
             }
             if let Some(row) = o.get_mut(&id) {
+                activation(row)?;
                 endpoint(row, new)?;
             }
         }
@@ -476,6 +495,88 @@ mod tests {
         s["equipment"]["meross"][3]["id"] = json!(format!("{:032x}", 99));
         assert_eq!(run(&s), Err("configuration_conflict"));
     }
+    #[test]
+    fn meross_explicit_disable_and_reenable_retain_identity_and_moli_options_from_v1() {
+        let mut s = fixture();
+        let first = run(&s).unwrap();
+        again(&mut s, &first);
+        // Provenance/configuration written by 4c1dd6e used implicit enabled=true.
+        let mut legacy = parse(s["config"].as_str().unwrap()).unwrap();
+        for row in legacy["driver"].as_array_mut().unwrap() {
+            if row["id"].as_str().unwrap().starts_with("android-meross-") {
+                row.as_object_mut().unwrap().remove("enabled");
+            }
+        }
+        s["config"] = json!(toml::to_string(&legacy).unwrap());
+        for row in s["baseline"]["drivers"]
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+        {
+            row.as_object_mut().unwrap().remove("enabled");
+        }
+        let id = format!("android-meross-{:032x}", 1);
+        edit(&mut s, &id, "name", &json!("Retained Moli label"));
+        s["equipment"]["meross"][0]["enabled"] = json!(false);
+        let disabled = run(&s).unwrap();
+        let rows = drivers(&parse(disabled["config"].as_str().unwrap()).unwrap()).unwrap();
+        assert_eq!(rows.len(), 11);
+        assert_eq!(rows[&id]["enabled"], false);
+        assert_eq!(rows[&id]["options"]["name"], "Retained Moli label");
+        assert_eq!(
+            rows[&id]["options"]["vars"]["expected_uuid"],
+            s["equipment"]["meross"][0]["uuid"]
+        );
+        assert_eq!(disabled["home"]["android"]["meross"][0]["enabled"], false);
+        assert_eq!(disabled["home"]["rooms"], first["home"]["rooms"]);
+        again(&mut s, &disabled);
+        assert_eq!(run(&s).unwrap(), disabled);
+        s["equipment"]["meross"][0]["enabled"] = json!(true);
+        let enabled = run(&s).unwrap();
+        let enabled_rows = drivers(&parse(enabled["config"].as_str().unwrap()).unwrap()).unwrap();
+        assert_eq!(
+            rows.keys().collect::<Vec<_>>(),
+            enabled_rows.keys().collect::<Vec<_>>()
+        );
+        assert_eq!(enabled_rows[&id]["enabled"], true);
+        assert_eq!(enabled_rows[&id]["options"], rows[&id]["options"]);
+        assert_eq!(enabled["home"]["android"]["meross"][0]["enabled"], true);
+        again(&mut s, &enabled);
+        assert_eq!(run(&s).unwrap(), enabled);
+        s["equipment"]["meross"].as_array_mut().unwrap().remove(0);
+        assert_eq!(run(&s), Err("configuration_conflict"));
+    }
+
+    #[test]
+    fn disabling_does_not_resolve_ambiguous_legacy_state_or_overwrite_conflicting_moli_edits() {
+        let mut s = fixture();
+        s["config"] = json!(crate::profiles::configuration(&s.to_string()).unwrap());
+        s["equipment"]["meross"][0]["enabled"] = json!(false);
+        assert_eq!(run(&s), Err("configuration_conflict")); // No baseline: still refuse ambiguity.
+        let mut s = fixture();
+        let first = run(&s).unwrap();
+        again(&mut s, &first);
+        let id = format!("android-meross-{:032x}", 1);
+        let mut config = parse(s["config"].as_str().unwrap()).unwrap();
+        config["driver"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|r| r["id"] == id)
+            .unwrap()["enabled"] = json!(false);
+        s["config"] = json!(toml::to_string(&config).unwrap());
+        let retained = run(&s).unwrap();
+        assert_eq!(
+            drivers(&parse(retained["config"].as_str().unwrap()).unwrap()).unwrap()[&id]["enabled"],
+            false
+        );
+        assert_eq!(retained["home"]["android"]["meross"][0]["enabled"], false);
+        edit(&mut s, &id, "name", &json!("Moli edit"));
+        s["equipment"]["meross"][0]["enabled"] = json!(false);
+        s["equipment"]["meross"][0]["name"] = json!("Android edit");
+        assert_eq!(run(&s), Err("configuration_conflict"));
+    }
+
     #[test]
     fn unrelated_toml_types_and_manual_options_are_preserved() {
         let mut s = fixture();

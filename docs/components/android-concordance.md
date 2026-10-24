@@ -1,4 +1,4 @@
-# Android configuration concordance — first increment
+# Android configuration concordance — incremental preservation
 
 The Rust engine and original dashboard remain the functional authority. This
 increment replaces unconditional Android regeneration during `ProfileStore.prepare`
@@ -13,7 +13,8 @@ existing draft PR; it does not migrate a tablet or publish a beta.
 | Reserved Android driver instances | Three-way merge of last Android proposal, current Moli values, next Android proposal, recursively by field. Moli-only edits survive; Android-only edits apply; equal edits agree; incompatible edits block before writing. |
 | `android-tablet` and synthetic `android-import` loopback port | Android lease, renewed at each preparation only for the same approved profile and loopback host. A changed profile/host blocks. |
 | Meross identity | Hardware UUID and internal instance ID are bindings. Name, room, address and list order are not identity. Renames keep the same ID/UUID; duplicate UUIDs, rebinding or UUID loss are refused. Manual entries without UUID remain without UUID. |
-| Missing Android selection | Does not authorize deleting an existing reserved instance. Preparation blocks and preserves it. Explicit removal/disable resolution is a remaining increment. |
+| Meross read activation | An explicit Android boolean becomes TOML `enabled=true/false`. A disabled instance keeps its UUID, internal ID and options; the engine skips it, the inventory reports it disabled and the adapter home hides its read card. Missing/invalid Android activation is refused. Legacy omitted TOML activation means true, consistently with the engine and v1 baseline. |
+| Missing Android selection | Does not authorize deleting an existing reserved instance. Preparation blocks and preserves it, including a previously disabled Meross instance. Explicit removal resolution and non-Meross disable flows remain separate work. |
 | `home.json` | Remains JSON, separately owned by Moli. Rooms, metadata, favorites, custom Android keys and existing `outdoor.weather` remain. Only the adapter projection is reconciled; its device labels/enabled state derive from retained drivers. Arrays are atomic values, never matched by name or position. |
 | Profile copies/approvals/trust, equipment/selection records, encrypted vault, history, Keystore/PIN | Retained. The new preparation transaction never rewrites them. Existing approval/settings operations retain their behavior; preparing the shipped tablet profile may add its immutable copy/trust entry, without removing previous approvals. |
 
@@ -22,6 +23,30 @@ A versioned, private `android-concordance.json` stores only the Android proposal
 configuration. It contains no credentials. Subsequent preparations compare against
 that proposal, so a retained Moli edit is not silently adopted as an Android edit.
 There is no automatic reverse synchronization of Moli edits into Android forms yet.
+
+## Reversible Meross read deactivation
+
+With the engine stopped, uncheck the existing Meross read selection and save.
+The next preparation retains the same driver with `enabled=false`, rather than
+removing it. Rechecking and saving later changes that flag back to true after
+reconciliation. No UUID, device association, vault key, approval, history or room
+is deleted. This disables polling; it sends no on/off command to the socket.
+It uses the existing stopped-engine transaction and requires no new UI or archive
+format. Existing v1 provenance is supported without a baseline reset.
+
+Moli-only activation changes remain authoritative while the Android proposal is
+unchanged; unrelated Moli option edits survive an Android toggle. A toggle does
+not resolve a concurrent conflicting label/option change. Without provenance, a
+legacy configured/enabled instance opposite to the current Android selection
+still blocks instead of guessing that deactivation was intended. A previously
+unconfigured, explicitly disabled saved entry can be recorded as inert config.
+A removed selection still blocks; there is no garbage collection or key deletion.
+
+The reverse synchronization limitation still applies: Android forms display
+saved Android preferences. If Moli alone disabled an instance, saving unchanged
+Android preferences is not a new activation instruction. A deliberate reconciled
+off-then-on transition can be used; a proper effective-state form flow remains
+required before describing the configuration as fully unified.
 
 ## Existing installations and reversibility
 
@@ -69,7 +94,8 @@ Galaxy Tab S5e migration/endurance are not claimed.
 - Rust fixtures: four MSS310 + IPP + IGD, demo, approved weather/import/tablet,
   non-Android settings, protected-room metadata; legacy upgrade/restart/idempotence,
   Moli-only edits, conflict, rename/reorder, manual no-UUID, TOML type preservation,
-  invalid input and duplicate UUID.
+  invalid input and duplicate UUID. Meross disable/re-enable additionally covers
+  v1 implicit activation, Moli-only disable and retained options/identities.
 - JVM disk tests: interruption at every journal/replacement/commit boundary,
   repeated recovery, exhausted storage, corrupt journal, unrelated edits, bounds
   and invalid UTF-8; untouched synthetic approvals/vault/history bytes.
@@ -77,14 +103,18 @@ Galaxy Tab S5e migration/endurance are not claimed.
   same-signer install-r, wrong-signer/downgrade rejection and independent-UID
   recovery checks. After replacement it also exercises actual Java/JNI prepare,
   directory fsync, Moli edits, preserved approvals/selection/identity and conflict
-  on an isolated synthetic context, without starting equipment drivers.
+  on an isolated synthetic context. New disable/re-enable assertions retain
+  synthetic encrypted keys, a SQLite row and the original ID/options. A separate
+  engine with four disabled Meross instances proves the real inventory reports
+  all four disabled with no registered Meross runtime driver; only loopback HTTP
+  is used and no equipment driver is started.
 - The focused PR workflow builds only one emulator JNI ABI and test APKs, reuses
   strict caches and the existing update script, and retains reports only. It has
   read-only repository permissions, no signing secret, no ARM64 delivery candidate
   and no distribution/release step. The protected signer is unchanged.
 
 Before any later beta delivery: require the targeted preservation CI to pass,
-resolve removal/disable and restored absolute-path ambiguities if needed, and
+resolve removal, non-Meross disable, form synchronization and restored absolute-path ambiguities, and
 select one delivery candidate under the existing release policy. A future owner
 check is: stop engine → install the authorized same-certificate beta over 0.17
 without uninstall/clear → verify four stable bindings, names, rooms and existing

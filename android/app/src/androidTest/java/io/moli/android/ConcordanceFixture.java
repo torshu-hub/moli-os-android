@@ -61,6 +61,7 @@ final class ConcordanceFixture {
             JSONObject binding = new JSONObject(ProfileStore.read(new File(dir,"android-concordance.json"),524288));
             String id = "android-meross-" + String.format(java.util.Locale.ROOT,"%032x",1);
             assertEquals(plugs.getJSONObject(0).getString("uuid"), binding.getJSONObject("drivers").getJSONObject(id).getJSONObject("options").getJSONObject("vars").getString("expected_uuid"));
+            activation(fixture, equipment, dir, binding, id);
             byte[] before = Files.readAllBytes(new File(dir,"moli.toml").toPath());
             byte[] oldHome = Files.readAllBytes(new File(dir,"home.json").toPath());
             equipment.getJSONArray("meross").getJSONObject(0).put("name", "Android conflict"); EquipmentStore.save(fixture,equipment);
@@ -78,6 +79,63 @@ final class ConcordanceFixture {
                 for (Path path : (Iterable<Path>)stream.sorted(java.util.Comparator.reverseOrder())::iterator) Files.delete(path);
             }
         }
+    }
+    private static void activation(Context fixture, JSONObject equipment, File dir, JSONObject binding, String id) throws Exception {
+        JSONObject keys = ProtectedKey.open(fixture);
+        JSONArray updates = new JSONArray();
+        for (int i=0;i<4;i++) updates.put(new JSONObject().put("id",equipment.getJSONArray("meross").getJSONObject(i).getString("id"))
+                .put("key","b".repeat(32)).put("required",true)); // Synthetic fixture values only.
+        JSONObject vaultRequest = new JSONObject().put("data",dir.getAbsolutePath()).put("master",keys.getString("master")).put("keys",updates);
+        ProfileStore.nativeResult(vaultRequest.toString(),4);
+        byte[] vault = Files.readAllBytes(new File(dir,"secrets.enc").toPath());
+        File database = new File(dir,"disable-continuity.db");
+        try (android.database.sqlite.SQLiteDatabase db=android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(database,null)) {
+            db.execSQL("CREATE TABLE sample(value INTEGER)"); db.execSQL("INSERT INTO sample VALUES(42)");
+        }
+        byte[] history = Files.readAllBytes(database.toPath());
+        JSONObject plug = equipment.getJSONArray("meross").getJSONObject(0);
+        plug.put("enabled",false); EquipmentStore.save(fixture,equipment);
+        ProfileStore.prepare(fixture).close(); ProfileStore.prepare(fixture).close();
+        JSONObject disabled = new JSONObject(ProfileStore.read(new File(dir,"android-concordance.json"),524288)).getJSONObject("drivers").getJSONObject(id);
+        assertFalse(disabled.getBoolean("enabled"));
+        assertEquals(binding.getJSONObject("drivers").getJSONObject(id).getJSONObject("options").toString(), disabled.getJSONObject("options").toString());
+        assertEquals(4,EquipmentStore.read(fixture).getJSONArray("meross").length());
+        assertFalse(ProfileStore.home(fixture).getJSONObject("android").getJSONArray("meross").getJSONObject(0).getBoolean("enabled"));
+        assertTrue(ProfileStore.read(new File(dir,"moli.toml"),262144).contains("Moli label"));
+        disabledInventory(fixture,equipment,new File(dir.getParentFile(),"disabled-engine"));
+        plug.put("enabled",true); EquipmentStore.save(fixture,equipment);
+        ProfileStore.prepare(fixture).close();
+        JSONObject enabled = new JSONObject(ProfileStore.read(new File(dir,"android-concordance.json"),524288)).getJSONObject("drivers").getJSONObject(id);
+        assertTrue(enabled.getBoolean("enabled")); assertEquals(disabled.getJSONObject("options").toString(),enabled.getJSONObject("options").toString());
+        assertTrue(ProfileStore.home(fixture).getJSONObject("android").getJSONArray("meross").getJSONObject(0).getBoolean("enabled"));
+        for (int i=0;i<updates.length();i++) updates.getJSONObject(i).put("key","");
+        ProfileStore.nativeResult(vaultRequest.toString(),4); // Required keys still exist, no rewrite.
+        assertArrayEquals(vault,Files.readAllBytes(new File(dir,"secrets.enc").toPath()));
+        assertArrayEquals(history,Files.readAllBytes(database.toPath()));
+        try (android.database.sqlite.SQLiteDatabase db=android.database.sqlite.SQLiteDatabase.openDatabase(database.getPath(),null,android.database.sqlite.SQLiteDatabase.OPEN_READONLY);
+             android.database.Cursor row=db.rawQuery("SELECT value FROM sample",null)) { assertTrue(row.moveToFirst()); assertEquals(42,row.getInt(0)); }
+    }
+    private static void disabledInventory(Context fixture, JSONObject equipment, File engineDir) throws Exception {
+        assertTrue(engineDir.mkdir());
+        JSONArray plugs = new JSONArray(equipment.getJSONArray("meross").toString());
+        for(int i=0;i<plugs.length();i++) plugs.getJSONObject(i).put("enabled",false);
+        JSONObject input = new JSONObject().put("config","").put("data",engineDir.getAbsolutePath()).put("equipment",new JSONObject().put("meross",plugs));
+        ProfileStore.atomic(new File(engineDir,"moli.toml"), ProfileStore.nativeResult(input.toString(),1).getString("config"));
+        JSONObject keys=ProtectedKey.open(fixture); String token=ProtectedKey.randomHex();
+        int port=NativeServer.start(engineDir.getAbsolutePath(),keys.getString("master"),token,keys.getString("pin"));
+        try {
+            java.net.HttpURLConnection request=(java.net.HttpURLConnection)new java.net.URL("http://127.0.0.1:"+port+"/api/system").openConnection();
+            request.setConnectTimeout(5000); request.setReadTimeout(5000); request.setRequestProperty("Cookie","moli_android="+token);
+            JSONObject system;
+            try { assertEquals(200,request.getResponseCode()); system=new JSONObject(ProfileStore.bounded(request.getInputStream(),524288)); }
+            finally { request.disconnect(); }
+            JSONArray integrations=system.getJSONArray("integrations"); JSONObject meross=null;
+            for(int i=0;i<integrations.length();i++) if("meross-mss310".equals(integrations.getJSONObject(i).optString("id"))) meross=integrations.getJSONObject(i);
+            assertNotNull(meross); JSONArray instances=meross.getJSONArray("instances"); assertEquals(4,instances.length());
+            for(int i=0;i<instances.length();i++) { assertFalse(instances.getJSONObject(i).getBoolean("enabled")); assertTrue(instances.getJSONObject(i).isNull("status")); }
+            JSONArray runtime=system.getJSONArray("drivers");
+            for(int i=0;i<runtime.length();i++) assertFalse(runtime.getJSONObject(i).getString("instance").startsWith("android-meross-"));
+        } finally { NativeServer.stop(); }
     }
     private ConcordanceFixture() {}
 }

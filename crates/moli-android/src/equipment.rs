@@ -108,7 +108,9 @@ fn meross(entries: &Value) -> Result<Value, &'static str> {
         if !ids.insert(id) || !addresses.insert((ip.clone(), number)) {
             return Err("meross_duplicate");
         }
-        checked.push(json!({"id":id,"name":name.trim(),"host":ip,"port":number,"enabled":entry["enabled"].as_bool().unwrap_or(false)}));
+        // Missing/invalid consent must not turn an existing integration off.
+        let enabled = entry["enabled"].as_bool().ok_or("meross_settings")?;
+        checked.push(json!({"id":id,"name":name.trim(),"host":ip,"port":number,"enabled":enabled}));
         if let Some(uuid) = entry.get("uuid") {
             let uuid = uuid
                 .as_str()
@@ -136,8 +138,10 @@ pub fn drivers(input: &Value) -> Result<Vec<Value>, &'static str> {
             "location":checked["gateway"]["location"],"discovery":false}}));
     }
     if let Some(entries) = checked["meross"].as_array() {
-        for entry in entries.iter().filter(|e| e["enabled"] == true) {
-            let mut driver = json!({"id":format!("android-meross-{}",entry["id"].as_str().ok_or("meross_settings")?),"kind":"profile","options":{
+        // Disabled instances keep their stable identity and options. The engine
+        // already skips enabled=false; absence is not a deletion authorization.
+        for entry in entries {
+            let mut driver = json!({"id":format!("android-meross-{}",entry["id"].as_str().ok_or("meross_settings")?),"kind":"profile","enabled":entry["enabled"],"options":{
                 "profile":"meross-mss310","host":entry["host"],"port":entry["port"],"name":entry["name"],"discovery":false}});
             if entry["uuid"].is_string() {
                 driver["options"]["vars"] = json!({"expected_uuid":entry["uuid"]});
@@ -274,7 +278,20 @@ mod meross_tests {
         assert!(validate(&duplicate).is_err());
         let mut disabled = input;
         disabled["meross"][0]["enabled"] = json!(false);
-        assert_eq!(drivers(&disabled).unwrap().len(), 3);
+        let retained = drivers(&disabled).unwrap();
+        assert_eq!(retained.len(), 4);
+        assert_eq!(retained[0]["id"], format!("android-meross-{:032x}", 1));
+        assert_eq!(retained[0]["enabled"], false);
+        assert_eq!(retained.iter().filter(|d| d["enabled"] == true).count(), 3);
+        for missing in [Value::Null, json!("false"), json!(0)] {
+            disabled["meross"][0]["enabled"] = missing;
+            assert_eq!(validate(&disabled), Err("meross_settings"));
+        }
+        disabled["meross"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("enabled");
+        assert_eq!(validate(&disabled), Err("meross_settings"));
     }
     #[test]
     fn keys_are_portable_encrypted_and_blank_only_keeps_an_existing_key() {
