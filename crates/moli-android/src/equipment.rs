@@ -76,6 +76,16 @@ pub fn validate(input: &Value) -> Result<Value, &'static str> {
         }
         result["gateway"] = json!({"location":format!("http://{address}:{number}{tail}")});
     }
+    for key in ["printer", "gateway"] {
+        if input[key].is_object() {
+            let enabled = match input[key].get("enabled") {
+                None => true,
+                Some(Value::Bool(v)) => *v,
+                _ => return Err("configuration"),
+            };
+            result[key]["enabled"] = json!(enabled);
+        }
+    }
     if let Some(entries) = input.get("meross") {
         result["meross"] = meross(entries)?;
     }
@@ -130,11 +140,15 @@ pub fn drivers(input: &Value) -> Result<Vec<Value>, &'static str> {
     let mut result = vec![];
     if checked["printer"].is_object() {
         let mut options = checked["printer"].clone();
+        options
+            .as_object_mut()
+            .ok_or("configuration")?
+            .remove("enabled");
         options["read_only"] = json!(true);
-        result.push(json!({"id":"android-printer","kind":"ipp","options":options}));
+        result.push(json!({"id":"android-printer","kind":"ipp","enabled":checked["printer"]["enabled"],"options":options}));
     }
     if checked["gateway"].is_object() {
-        result.push(json!({"id":"android-gateway","kind":"igd","options":{
+        result.push(json!({"id":"android-gateway","kind":"igd","enabled":checked["gateway"]["enabled"],"options":{
             "location":checked["gateway"]["location"],"discovery":false}}));
     }
     if let Some(entries) = checked["meross"].as_array() {

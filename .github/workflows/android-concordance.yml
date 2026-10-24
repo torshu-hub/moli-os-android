@@ -7,6 +7,7 @@ on:
       - 'crates/moli-android/**'
       - 'crates/moli-os/**'
       - '.github/workflows/android-concordance.yml'
+      - 'scripts/test-android-concordance.sh'
 permissions:
   contents: read
 concurrency:
@@ -55,7 +56,7 @@ jobs:
           key: ${{ steps.jni.outputs.cache-primary-key }}
       - name: Test transaction failures and Android API compatibility
         working-directory: android
-        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests io.moli.android.ConfigurationTransactionTest :app:lintDebug
+        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests io.moli.android.ConfigurationTransactionTest --tests io.moli.android.EquipmentMetadataTest :app:lintDebug
       - run: sudo chmod a+rw /dev/kvm
       - name: Upgrade, recover encrypted fixtures and reconcile without device access
         uses: ReactiveCircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
@@ -65,7 +66,9 @@ jobs:
           target: google_apis
           disable-animations: true
           working-directory: android
-          script: sh ../scripts/test-android-beta-update.sh
+          script: |
+            sh ../scripts/test-android-beta-update.sh
+            sh ../scripts/test-android-concordance.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

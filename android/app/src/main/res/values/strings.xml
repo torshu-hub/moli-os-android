@@ -56,9 +56,9 @@
     <string name="integration_approve">Approuver explicitement</string>
     <string name="integration_demo">Ajouter Demo native</string>
     <string name="integration_weather">Ajouter Open-Meteo (coordonnées de test)</string>
-    <string name="integration_remove_import">Retirer le profil importé</string>
-    <string name="integration_remove_demo">Retirer Demo</string>
-    <string name="integration_remove_weather">Retirer Open-Meteo</string>
+    <string name="integration_remove_import">Désactiver le profil importé (données conservées)</string>
+    <string name="integration_remove_demo">Désactiver Demo (données conservées)</string>
+    <string name="integration_remove_weather">Désactiver Open-Meteo (données conservées)</string>
     <string name="integration_rollback">Revenir à la sélection précédente</string>
     <string name="integration_demo_permission">Appareils simulés par le pilote Demo natif. Aucune connexion réseau. Approuver cette activation ?</string>
     <string name="integration_weather_permission">Lecture HTTPS uniquement vers api.open-meteo.com, coordonnées publiques de test Paris 48.8566 / 2.3522, sans clé. Prévisions météo actualisées, pas une mesure chez vous. Les requêtes et votre IP sont visibles du fournisseur. Approuver ?</string>
@@ -138,7 +138,7 @@
     <string name="equipment_gateway">Autoriser la lecture de cette box IGD (toutes les 10 secondes)</string>
     <string name="equipment_location">URL HTTP locale du document de description UPnP</string>
     <string name="equipment_gateway_help">Option avancée : URL exacte déjà connue, avec son chemin XML. L’adresse de l’interface d’administration seule ne suffit pas. Aucune recherche réseau automatique et aucune ouverture de port. Compatibilité SFR/Freebox non encore vérifiée.</string>
-    <string name="equipment_consent">Cocher puis enregistrer autorise ces lectures lors des prochains démarrages du moteur. Décochez puis enregistrez pour retirer une autorisation. Les adresses restent dans vos données locales et leur sauvegarde chiffrée.</string>
+    <string name="equipment_consent">Cocher puis enregistrer autorise ces lectures aux prochains démarrages. Décocher ou retirer désactive sans effacer les identités, clés ou historiques ; les entrées restent récupérables dans la configuration et la sauvegarde chiffrée.</string>
     <string name="equipment_save">Enregistrer les autorisations</string>
     <string name="equipment_start">Démarrer et afficher les données</string>
     <string name="equipment_saved">Configuration et autorisations enregistrées. Aucune lecture prouvée à ce stade. Utilisez Tester les lectures ou Démarrer et afficher les données.</string>
@@ -152,7 +152,7 @@
     <string name="meross_name">Nom de la prise</string>
     <string name="meross_key">Clé locale Meross (32 caractères hexadécimaux)</string>
     <string name="meross_key_hint">Vide : conserver la clé déjà enregistrée</string>
-    <string name="meross_remove">Retirer cette prise de la configuration</string>
+    <string name="meross_remove">Retirer des lectures (identité et données conservées)</string>
     <string name="meross_save_failed">Enregistrement impossible. Vérifiez les adresses, les noms et la clé de chaque prise activée. Une nouvelle prise nécessite sa clé locale.</string>
     <string name="network_title">Réseau local</string>
     <string name="network_help">Recherche ponctuelle sur le Wi-Fi actuel, sans commande ni modification des appareils. Les résultats restent sur cet écran et ne sont pas exportés. Certains appareils ne répondent pas ou sont isolés par le Wi-Fi. Aucun modèle Meross ne peut être déduit d’un simple port ouvert.</string>
@@ -330,4 +330,5 @@
     <string name="maintenance_profiles_help">Choisissez un fichier TOML, vérifiez ses permissions et approuvez-le explicitement. Les changements prennent effet au prochain démarrage du moteur.</string>
     <string name="maintenance_current_profile">Profil importé actif : %1$s</string>
     <string name="configuration_blocked">Configuration préservée : les réglages Moli et Android sont incompatibles ou une écriture doit être récupérée. Le moteur reste arrêté. Revenez à la sélection Android précédente ou faites examiner les fichiers conservés ; ne réinitialisez pas les données.</string>
+    <string name="configuration_reopen">Arrêtez le moteur puis rouvrez cet écran pour modifier les réglages effectifs.</string>
 </resources>

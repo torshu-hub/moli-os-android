@@ -2,6 +2,7 @@
 //! Inputs are copied through the jni crate; panics never unwind into the JVM.
 
 mod concordance;
+mod concordance_state;
 mod discovery;
 mod equipment;
 mod meross_account;

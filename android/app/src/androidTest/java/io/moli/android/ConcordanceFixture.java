@@ -55,13 +55,17 @@ final class ConcordanceFixture {
             assertEquals("external:weather",home.getJSONObject("outdoor").getString("weather"));
             assertArrayEquals(wrapped, Files.readAllBytes(new File(noBackup,"moli-key.wrap").toPath()));
             assertArrayEquals(approval, Files.readAllBytes(new File(dir,"trusted-profiles.toml").toPath()));
-            assertArrayEquals(selection, Files.readAllBytes(new File(dir,"android-integrations.json").toPath()));
-            assertArrayEquals(preferences, Files.readAllBytes(new File(dir,"android-equipment.json").toPath()));
+            assertEquals(new JSONObject(new String(selection,java.nio.charset.StandardCharsets.UTF_8)).getJSONObject("weather").getString("sha256"),ProfileStore.state(fixture).getJSONObject("weather").getString("sha256"));
+            assertEquals(new JSONObject(new String(preferences,java.nio.charset.StandardCharsets.UTF_8)).getJSONArray("meross").getJSONObject(0).getString("uuid"),EquipmentStore.read(fixture).getJSONArray("meross").getJSONObject(0).getString("uuid"));
             assertArrayEquals(legacy, Files.readAllBytes(new File(dir,"android-concordance.legacy.json").toPath()));
             JSONObject binding = new JSONObject(ProfileStore.read(new File(dir,"android-concordance.json"),524288));
             String id = "android-meross-" + String.format(java.util.Locale.ROOT,"%032x",1);
             assertEquals(plugs.getJSONObject(0).getString("uuid"), binding.getJSONObject("drivers").getJSONObject(id).getJSONObject("options").getJSONObject("vars").getString("expected_uuid"));
+            equipment=EquipmentStore.read(fixture);
             activation(fixture, equipment, dir, binding, id);
+            convergence(fixture,dir,root,wrapped);
+            equipment=EquipmentStore.read(fixture);
+            ProfileStore.atomic(new File(dir,"moli.toml"),ProfileStore.read(new File(dir,"moli.toml"),262144).replace("Moli label","Concurrent Moli label"));
             byte[] before = Files.readAllBytes(new File(dir,"moli.toml").toPath());
             byte[] oldHome = Files.readAllBytes(new File(dir,"home.json").toPath());
             equipment.getJSONArray("meross").getJSONObject(0).put("name", "Android conflict"); EquipmentStore.save(fixture,equipment);
@@ -136,6 +140,52 @@ final class ConcordanceFixture {
             JSONArray runtime=system.getJSONArray("drivers");
             for(int i=0;i<runtime.length();i++) assertFalse(runtime.getJSONObject(i).getString("instance").startsWith("android-meross-"));
         } finally { NativeServer.stop(); }
+    }
+    private static void convergence(Context fixture, File dir, File root, byte[] wrapped) throws Exception {
+        // Removal means inactive, with every old association still recoverable.
+        JSONObject oldEquipment=EquipmentStore.read(fixture);
+        EquipmentStore.save(fixture,new JSONObject());
+        for(String key:new String[]{"demo","weather"})ProfileStore.remove(fixture,key);
+        ProfileStore.prepare(fixture).close();
+        JSONObject disabled=EquipmentStore.read(fixture), state=ProfileStore.state(fixture);
+        assertFalse(disabled.getJSONObject("printer").getBoolean("enabled"));
+        assertFalse(disabled.getJSONObject("gateway").getBoolean("enabled"));
+        assertEquals(4,disabled.getJSONArray("meross").length());
+        assertFalse(disabled.getJSONArray("meross").getJSONObject(0).getBoolean("enabled"));
+        assertFalse(state.has("weather")); assertTrue(state.getJSONObject("retained").has("weather"));
+        String stamp=ProfileStore.stamp(fixture);
+        ProfileStore.atomic(new File(dir,"home.json"),ProfileStore.home(fixture).put("opaque-marker","preserved").toString());
+        try {ProfileStore.checkStamp(fixture,stamp);fail("Stale form must be rejected before save");}catch(ProfileStore.Rejected expected){assertEquals("configuration_conflict",expected.getMessage());}
+        ProfileStore.configureWeather(fixture,"Fixture location",48,2); ProfileStore.demo(fixture);
+        EquipmentStore.save(fixture,oldEquipment); ProfileStore.prepare(fixture).close();
+        assertTrue(EquipmentStore.read(fixture).getJSONObject("printer").getBoolean("enabled"));
+        // Encrypted restore into a new generation changes all app-owned absolute paths.
+        char[] password="synthetic concordance recovery words".toCharArray(); java.io.ByteArrayOutputStream archive=new java.io.ByteArrayOutputStream();
+        ProfileStore.remove(fixture,"weather"); ProfileStore.prepare(fixture).close();
+        BackupStorage.exportTo(fixture,password,archive);
+        ProfileStore.configureWeather(fixture,"Fixture location",48,2); ProfileStore.prepare(fixture).close();
+        File restoredFiles=new File(root,"restored-files"), restoredWrap=new File(root,"restored-wrap");assertTrue(restoredFiles.mkdir());assertTrue(restoredWrap.mkdir());
+        Context restored=new ContextWrapper(fixture) {
+            @Override public File getFilesDir(){return restoredFiles;}
+            @Override public File getNoBackupFilesDir(){return restoredWrap;}
+        };
+        BackupStorage.restoreFresh(restored,new java.io.ByteArrayInputStream(archive.toByteArray()),password);
+        File destination=ProfileStore.data(restored);
+        byte[] vault=Files.readAllBytes(new File(destination,"secrets.enc").toPath());
+        byte[] approvals=Files.readAllBytes(new File(destination,"trusted-profiles.toml").toPath());
+        ProfileStore.prepare(restored).close(); ProfileStore.prepare(restored).close();
+        assertFalse(ProfileStore.state(restored).has("weather"));
+        ProfileStore.configureWeather(restored,"Fixture location",48,2); ProfileStore.prepare(restored).close();
+        String config=ProfileStore.read(new File(destination,"moli.toml"),262144);
+        assertTrue(config.contains(destination.getAbsolutePath()+"/android-profiles/"));
+        assertFalse(config.contains(dir.getAbsolutePath()+"/android-profiles/"));
+        assertEquals(ProfileStore.state(fixture).getJSONObject("weather").getString("sha256"),ProfileStore.state(restored).getJSONObject("weather").getString("sha256"));
+        assertEquals(EquipmentStore.read(fixture).getJSONArray("meross").getJSONObject(0).getString("uuid"),EquipmentStore.read(restored).getJSONArray("meross").getJSONObject(0).getString("uuid"));
+        assertArrayEquals(vault,Files.readAllBytes(new File(destination,"secrets.enc").toPath()));
+        assertArrayEquals(approvals,Files.readAllBytes(new File(destination,"trusted-profiles.toml").toPath()));
+        assertEquals("preserved",ProfileStore.home(restored).getString("opaque-marker"));
+        assertTrue("Portable key preserved",ProtectedKey.open(fixture).getString("master").equals(ProtectedKey.open(restored).getString("master")));
+        assertArrayEquals(wrapped,Files.readAllBytes(new File(fixture.getNoBackupFilesDir(),"moli-key.wrap").toPath()));
     }
     private ConcordanceFixture() {}
 }

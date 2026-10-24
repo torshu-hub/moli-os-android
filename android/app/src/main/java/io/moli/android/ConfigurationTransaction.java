@@ -14,7 +14,7 @@ import java.util.*;
 final class ConfigurationTransaction {
     static final int FILE_LIMIT = 524288, JOURNAL_LIMIT = 4194304;
     static final String JOURNAL = "android-configuration.undo.json";
-    static final Set<String> FILES = Set.of("moli.toml", "home.json", "android-concordance.json", "android-concordance.legacy.json", "android-demo.json");
+    static final Set<String> FILES = Set.of("moli.toml", "home.json", "android-concordance.json", "android-concordance.legacy.json", "android-demo.json", "android-integrations.json", "android-integrations.previous.json", "android-equipment.json");
     interface IO {
         String read(String name, int limit) throws Exception;
         void write(String name, String text) throws Exception;
@@ -40,6 +40,7 @@ final class ConfigurationTransaction {
             }
         }
         public void write(String name, String text) throws Exception {
+            Files.createDirectories(dir.toPath());
             Path target = new File(dir, name).toPath(), temporary = new File(dir, name + ".prepare-new").toPath();
             if (Files.isSymbolicLink(target) || Files.isSymbolicLink(temporary)) throw new IOException("configuration_storage");
             try (FileOutputStream out = new FileOutputStream(temporary.toFile())) { out.write(text.getBytes(StandardCharsets.UTF_8)); out.getFD().sync(); }

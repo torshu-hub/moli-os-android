@@ -15,6 +15,7 @@ public final class HomeSettingsActivity extends Activity {
     CheckBox weather;
     TextView message;
     Button save;
+    private String configurationStamp;
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         ScrollView scroll = new ScrollView(this); LinearLayout body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
@@ -37,16 +38,22 @@ public final class HomeSettingsActivity extends Activity {
         setContentView(scroll);
         io.execute(() -> {
             try {
-                JSONObject selected=ProfileStore.state(this), w=selected.optJSONObject("weather"), location=w==null?null:w.optJSONObject("location");
+                ProfileStore.synchronize(this);
+                String expected=ProfileStore.stamp(this);
+                JSONObject selected=ProfileStore.state(this), active=selected.optJSONObject("weather"), retained=selected.optJSONObject("retained");
+                JSONObject w=active!=null?active:retained==null?null:retained.optJSONObject("weather"), location=w==null?null:w.optJSONObject("location");
                 JSONArray rs=ProfileStore.home(this).optJSONArray("rooms"); StringBuilder names=new StringBuilder();
                 if(rs!=null) for(int i=0;i<rs.length();i++) names.append(rs.getJSONObject(i).getString("name")).append('\n');
-                String roomNames=names.toString();
-                runOnUiThread(() -> { if(isDestroyed()) return; weather.setChecked(w!=null);
+                String roomNames=names.toString(), loadedStamp=expected; ProfileStore.checkStamp(this,expected);
+                boolean editable=EngineHost.state()==EngineHost.State.STOPPED;
+                runOnUiThread(() -> { if(isDestroyed()) return; weather.setChecked(active!=null);
                     if(location!=null) { label.setText(location.optString("label")); latitude.setText(location.optString("latitude")); longitude.setText(location.optString("longitude")); }
                     else if(w!=null) { label.setText("Paris"); latitude.setText("48.8566"); longitude.setText("2.3522"); }
-                    rooms.setText(roomNames); save.setEnabled(true);
+                    rooms.setText(roomNames); configurationStamp=loadedStamp; save.setEnabled(editable);
+                    for(android.view.View v:new android.view.View[]{weather,label,latitude,longitude,rooms})v.setEnabled(editable);
+                    if(!editable)message.setText(R.string.configuration_reopen);
                 });
-            } catch(Exception failure) { runOnUiThread(() -> message.setText(R.string.integration_initialize)); }
+            } catch(Exception failure) { runOnUiThread(() -> { message.setText(R.string.configuration_blocked); save.setEnabled(false); }); }
         });
     }
     private void save() {
@@ -63,12 +70,13 @@ public final class HomeSettingsActivity extends Activity {
         } catch(Exception invalid) { message.setText(R.string.home_invalid); return; }
         try {
             Future<Void> job=EngineHost.maintain(() -> {
-                ProfileStore.rooms(this,names);
-                if(enabled) ProfileStore.configureWeather(this,name,lat,lon); else ProfileStore.remove(this,"weather");
+                ProfileStore.checkStamp(this,configurationStamp);
+                ProfileStore.homeSettings(this,names,enabled,name,lat,lon);
+                configurationStamp=ProfileStore.stamp(this);
                 return null;
             }); save.setEnabled(false);
-            io.execute(() -> { boolean ok; try {job.get();ok=true;} catch(Exception failure){ok=false;} final boolean result=ok;
-                runOnUiThread(() -> { if(!isDestroyed()) {message.setText(result?R.string.home_saved:R.string.home_failed);save.setEnabled(true);} });
+            io.execute(() -> { boolean ok; int error=R.string.home_failed; try {job.get();ok=true;} catch(Exception failure){ok=false;if(ProfileStore.conflict(failure))error=R.string.configuration_blocked;} final boolean result=ok; final int errorCode=error;
+                runOnUiThread(() -> { if(!isDestroyed()) {message.setText(result?R.string.home_saved:errorCode);save.setEnabled(true);} });
             });
         } catch(IllegalStateException busy) { message.setText(R.string.integration_stop_first); }
     }

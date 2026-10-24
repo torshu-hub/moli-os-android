@@ -5,7 +5,7 @@ use serde_json::{Map, Value, json};
 
 type Result<T> = std::result::Result<T, &'static str>;
 
-fn managed(id: &str) -> bool {
+pub(super) fn managed(id: &str) -> bool {
     id.starts_with("android-meross-")
         || matches!(
             id,
@@ -37,7 +37,7 @@ fn parse(text: &str) -> Result<Value> {
 }
 
 // Missing is distinct from null. Arrays are a unit: never merge by position/name.
-fn merge(
+pub(super) fn merge(
     old: Option<&Value>,
     current: Option<&Value>,
     next: Option<&Value>,
@@ -68,7 +68,7 @@ fn merge(
 }
 
 // Only these private synthetic endpoints have an Android-owned ephemeral port.
-fn endpoint(row: &mut Value, next: &Value) -> Result<()> {
+fn endpoint(row: &mut Value, next: &Value, old: Option<&Value>) -> Result<()> {
     if !matches!(
         row["id"].as_str(),
         Some("android-tablet" | "android-import")
@@ -78,7 +78,8 @@ fn endpoint(row: &mut Value, next: &Value) -> Result<()> {
     }
     if row["kind"] != "profile"
         || row["options"]["host"] != "127.0.0.1"
-        || row["options"]["profile"] != next["options"]["profile"]
+        || (row["options"]["profile"] != next["options"]["profile"]
+            && old.is_none_or(|o| row["options"]["profile"] != o["options"]["profile"]))
     {
         return Err("configuration_conflict");
     }
@@ -87,12 +88,9 @@ fn endpoint(row: &mut Value, next: &Value) -> Result<()> {
 }
 
 // Engine semantics: an absent TOML enabled flag means true. Normalize only
-// Meross comparisons so a legacy omitted flag and an explicit true agree.
+// managed comparisons so a legacy omitted flag and an explicit true agree.
 fn activation(row: &mut Value) -> Result<()> {
-    if row["id"]
-        .as_str()
-        .is_some_and(|id| id.starts_with("android-meross-"))
-    {
+    if row["id"].as_str().is_some_and(managed) {
         let enabled = match row.get("enabled") {
             None => true,
             Some(Value::Bool(v)) => *v,
@@ -282,6 +280,53 @@ fn serialize_config(original: &mut toml::Value, c: &BTreeMap<String, Value>) -> 
     toml::to_string(original).map_err(|_| "configuration")
 }
 
+fn finish(
+    request: &Value,
+    baseline: Option<&Value>,
+    c: &BTreeMap<String, Value>,
+    mut n: BTreeMap<String, Value>,
+    config: &str,
+) -> Result<Value> {
+    let mut adapted = request.clone();
+    let mut preferences = None;
+    if request.get("selected").is_some() {
+        match crate::concordance_state::preferences(request, c, &n) {
+            Ok((selected, equipment, spec)) => {
+                adapted = spec;
+                if adapted["home_proposal"]["android"].is_object() {
+                    adapted["home_proposal"]["android"]["meross"] = equipment["meross"].clone();
+                    if let Some(info) = selected
+                        .get("weather")
+                        .or_else(|| selected["retained"].get("weather"))
+                        && let Some(label) = info["location"]["label"].as_str()
+                    {
+                        adapted["home_proposal"]["android"]["location"] = json!(label);
+                    }
+                }
+                let mut refreshed = drivers(&parse(&crate::profiles::configuration(
+                    &adapted.to_string(),
+                )?)?)?;
+                crate::concordance_state::inactive(&adapted, c, &n, &mut refreshed)?;
+                for row in refreshed.values_mut() {
+                    activation(row)?;
+                }
+                n = refreshed;
+                preferences = Some((selected, equipment));
+            }
+            Err(_) if request["editing"] == true => return Err("configuration_conflict"),
+            Err(_) => (), // Keep manual effective config; Android forms must use strict edit mode.
+        }
+    }
+    let (home, selected_home) = reconcile_home(&adapted, baseline, c)?;
+    let generated: BTreeMap<_, _> = n.into_iter().filter(|(id, _)| managed(id)).collect();
+    let mut result = json!({"config":config,"home":home,"baseline":{"version":1,"drivers":generated,"home":selected_home}});
+    if let Some((selected, equipment)) = preferences {
+        result["selected"] = selected;
+        result["equipment"] = equipment;
+    }
+    Ok(result)
+}
+
 pub fn prepare(input: &str) -> Result<Value> {
     let request: Value = serde_json::from_str(input).map_err(|_| "configuration")?;
     let current_text = request["config"].as_str().ok_or("configuration")?;
@@ -298,7 +343,7 @@ pub fn prepare(input: &str) -> Result<Value> {
     let current = parse(current_text)?;
     let proposed = parse(&crate::profiles::configuration(input)?)?;
     let mut c = drivers(&current)?;
-    let n = drivers(&proposed)?;
+    let mut n = drivers(&proposed)?;
     let baseline = request.get("baseline").filter(|v| !v.is_null());
     if baseline
         .is_some_and(|b| b["version"] != 1 || !b["drivers"].is_object() || !b["home"].is_object())
@@ -311,6 +356,11 @@ pub fn prepare(input: &str) -> Result<Value> {
         }
         None => BTreeMap::new(),
     };
+    crate::concordance_state::inactive(&request, &c, &o, &mut n)?;
+    crate::concordance_state::relocate(&mut c, &mut o, &mut n)?;
+    for row in n.values_mut() {
+        activation(row)?;
+    }
     // UUID is hardware identity; an existing binding cannot silently move to another
     // internal instance, nor can an instance acquire/lose/swap its known UUID.
     let known = identities(&c)?;
@@ -340,13 +390,14 @@ pub fn prepare(input: &str) -> Result<Value> {
             return Err("configuration_conflict");
         }
         if let Some(new) = n.get(&id) {
+            let prior = o.get(&id).cloned();
             if let Some(row) = c.get_mut(&id) {
                 activation(row)?;
-                endpoint(row, new)?;
+                endpoint(row, new, prior.as_ref())?;
             }
             if let Some(row) = o.get_mut(&id) {
                 activation(row)?;
-                endpoint(row, new)?;
+                endpoint(row, new, prior.as_ref())?;
             }
         }
         // No provenance: adopt only exact generated entries (apart from lease port).
@@ -355,17 +406,15 @@ pub fn prepare(input: &str) -> Result<Value> {
         }
         if let Some(row) = merge(o.get(&id), c.get(&id), n.get(&id))? {
             c.insert(id, row);
-        } else {
-            c.remove(&id);
+        } else if let Some(old) = o.get(&id) {
+            let mut inactive = old.clone();
+            inactive["enabled"] = json!(false);
+            c.insert(id, inactive);
         }
     }
     let config = serialize_config(&mut original, &c)?;
     moli_os::validate_configuration(&config).map_err(|_| "configuration")?;
-    let (home, selected_home) = reconcile_home(&request, baseline, &c)?;
-    let generated: BTreeMap<_, _> = n.into_iter().filter(|(id, _)| managed(id)).collect();
-    Ok(
-        json!({"config":config,"home":home,"baseline":{"version":1,"drivers":generated,"home":selected_home}}),
-    )
+    finish(&request, baseline, &c, n, &config)
 }
 
 #[cfg(test)]
@@ -574,6 +623,277 @@ mod tests {
         edit(&mut s, &id, "name", &json!("Moli edit"));
         s["equipment"]["meross"][0]["enabled"] = json!(false);
         s["equipment"]["meross"][0]["name"] = json!("Android edit");
+        assert_eq!(run(&s), Err("configuration_conflict"));
+    }
+
+    fn forms() -> Value {
+        let mut s = fixture();
+        let weather = crate::profiles::review(s["weather"]["text"].as_str().unwrap()).unwrap();
+        let import = crate::profiles::review(s["import"]["text"].as_str().unwrap()).unwrap();
+        s["selected"] = json!({"demo":true,"weather":weather,"import":import});
+        s["selected"]["weather"]["location"] =
+            json!({"label":"Fixture","latitude":48.8566,"longitude":2.3522});
+        s["weather"]["location"] = s["selected"]["weather"]["location"].clone();
+        s["editing"] = json!(true);
+        s
+    }
+    fn form_again(s: &mut Value, result: &Value) {
+        again(s, result);
+        s["selected"] = result["selected"].clone();
+        s["equipment"] = result["equipment"].clone();
+        s["home_proposal"] = result["home"].clone();
+        s["home_proposal"]["android"]["meross"] = s["equipment"]["meross"].clone();
+        let active = s["selected"].get("weather").is_some();
+        s["home_proposal"]["android"]["weather"] = if active {
+            json!("android-weather:api.open-meteo.com:443")
+        } else {
+            Value::Null
+        };
+        s["home_proposal"]["android"]["location"] = if active {
+            s["selected"]["weather"]["location"]["label"].clone()
+        } else {
+            json!("")
+        };
+        s["demo"] =
+            json!(s["selected"]["demo"] == true || s["selected"]["retained"]["demo"] == true);
+        for (key, text) in [
+            (
+                "weather",
+                include_str!("../../../android/app/src/main/assets/open-meteo.toml"),
+            ),
+            (
+                "import",
+                include_str!("../../../android/app/src/main/assets/synthetic-temperature.toml"),
+            ),
+        ] {
+            if s["selected"].get(key).is_some() {
+                s[key] = json!({"text":text,"sha256":moli_profile::sha256(text)});
+                if let Some(location) = s["selected"][key].get("location").cloned() {
+                    s[key]["location"] = location;
+                }
+            } else {
+                s[key] = Value::Null;
+            }
+        }
+    }
+    #[test]
+    fn effective_moli_values_feed_forms_and_subsequent_edits_without_stale_conflicts() {
+        let mut s = forms();
+        let first = run(&s).unwrap();
+        form_again(&mut s, &first);
+        let id = format!("android-meross-{:032x}", 1);
+        edit(&mut s, &id, "name", &json!("Moli name"));
+        edit(
+            &mut s,
+            "android-weather",
+            "vars",
+            &json!({"lat":"42.5","lon":"3.25"}),
+        );
+        edit(&mut s, "android-demo", "tick_s", &json!(9));
+        s["home"]["android"]["location"] = json!("Moli place");
+        let synced = run(&s).unwrap();
+        assert_eq!(synced["equipment"]["meross"][0]["name"], "Moli name");
+        assert_eq!(
+            synced["selected"]["weather"]["location"],
+            json!({"label":"Moli place","latitude":42.5,"longitude":3.25})
+        );
+        assert_eq!(
+            synced["selected"]["import"]["sha256"],
+            first["selected"]["import"]["sha256"]
+        );
+        form_again(&mut s, &synced);
+        assert_eq!(run(&s).unwrap(), synced);
+        s["equipment"]["meross"][0]["name"] = json!("Android edit from Moli name");
+        s["weather"]["location"]["latitude"] = json!(44.0);
+        s["selected"]["weather"]["location"]["latitude"] = json!(44.0);
+        let saved = run(&s).unwrap();
+        let rows = drivers(&parse(saved["config"].as_str().unwrap()).unwrap()).unwrap();
+        assert_eq!(rows[&id]["options"]["name"], "Android edit from Moli name");
+        assert_eq!(rows["android-demo"]["options"]["tick_s"], 9);
+        form_again(&mut s, &saved);
+        let mut c = parse(s["config"].as_str().unwrap()).unwrap();
+        c["driver"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|r| r["id"] == id)
+            .unwrap()["enabled"] = json!(false);
+        s["config"] = json!(toml::to_string(&c).unwrap());
+        let off = run(&s).unwrap();
+        assert_eq!(off["equipment"]["meross"][0]["enabled"], false);
+        form_again(&mut s, &off);
+        s["equipment"]["meross"][0]["enabled"] = json!(true);
+        let on = run(&s).unwrap();
+        assert_eq!(on["equipment"]["meross"][0]["enabled"], true);
+    }
+    #[test]
+    fn explicit_profile_removals_and_equipment_disables_retain_recoverable_instances() {
+        let mut s = forms();
+        let first = run(&s).unwrap();
+        form_again(&mut s, &first);
+        let selected = s["selected"].as_object_mut().unwrap();
+        let mut retained = json!({});
+        for key in ["demo", "weather", "import"] {
+            retained[key] = selected.remove(key).unwrap();
+        }
+        selected.insert("retained".into(), retained);
+        selected.insert(
+            "inactive".into(),
+            json!(["android-demo", "android-weather", "android-import"]),
+        );
+        s["import"] = Value::Null;
+        s["weather"] = Value::Null;
+        s["equipment"]["printer"]["enabled"] = json!(false);
+        s["equipment"]["gateway"]["enabled"] = json!(false);
+        s["equipment"]["meross"][0]["enabled"] = json!(false);
+        let off = run(&s).unwrap();
+        let rows = drivers(&parse(off["config"].as_str().unwrap()).unwrap()).unwrap();
+        assert_eq!(rows.len(), 11);
+        for id in [
+            "android-demo",
+            "android-weather",
+            "android-import",
+            "android-printer",
+            "android-gateway",
+        ] {
+            assert_eq!(rows[id]["enabled"], false);
+        }
+        assert_eq!(
+            off["selected"]["retained"]["weather"]["sha256"],
+            first["selected"]["weather"]["sha256"]
+        );
+        assert_eq!(off["home"]["rooms"], first["home"]["rooms"]);
+        assert_eq!(off["home"]["android"]["printer"], false);
+        form_again(&mut s, &off);
+        assert_eq!(run(&s).unwrap(), off);
+        s["data"] = json!("/restored/inactive");
+        let relocated = run(&s).unwrap();
+        for id in ["android-import", "android-weather"] {
+            assert!(drivers(&parse(relocated["config"].as_str().unwrap()).unwrap()).unwrap()[id]["options"]["profile"].as_str().unwrap().starts_with("/restored/inactive/android-profiles/"));
+        }
+        form_again(&mut s, &relocated);
+        assert_eq!(run(&s).unwrap(), relocated);
+        s["selected"]["weather"] = s["selected"]["retained"]["weather"].clone();
+        s["selected"]["inactive"] = json!(["android-demo", "android-import"]);
+        let snapshot = json!({"config":s["config"],"home":s["home"],"baseline":s["baseline"],"selected":s["selected"],"equipment":s["equipment"]});
+        form_again(&mut s, &snapshot);
+        let on = run(&s).unwrap();
+        assert!(on["selected"].get("weather").is_some());
+        assert_eq!(
+            drivers(&parse(on["config"].as_str().unwrap()).unwrap()).unwrap()["android-weather"]["enabled"],
+            true
+        );
+    }
+    #[test]
+    fn restored_paths_relocate_with_v1_or_legacy_provenance_but_manual_paths_are_not_rewritten() {
+        for legacy in [false, true] {
+            let mut s = forms();
+            let first = run(&s).unwrap();
+            form_again(&mut s, &first);
+            if legacy {
+                s.as_object_mut().unwrap().remove("baseline");
+            }
+            s["data"] = json!("/restored/synthetic");
+            s["port"] = json!(4321);
+            let restored = run(&s).unwrap();
+            let rows = drivers(&parse(restored["config"].as_str().unwrap()).unwrap()).unwrap();
+            for id in ["android-tablet", "android-import", "android-weather"] {
+                assert!(
+                    rows[id]["options"]["profile"]
+                        .as_str()
+                        .unwrap()
+                        .starts_with("/restored/synthetic/android-profiles/")
+                );
+            }
+            assert_eq!(
+                rows["android-demo"]["options"]["fixture"],
+                "/restored/synthetic/android-demo.json"
+            );
+            form_again(&mut s, &restored);
+            assert_eq!(run(&s).unwrap(), restored);
+        }
+        let mut s = forms();
+        let first = run(&s).unwrap();
+        form_again(&mut s, &first);
+        edit(
+            &mut s,
+            "android-weather",
+            "profile",
+            &json!("/manual/weather.toml"),
+        );
+        s["data"] = json!("/restored/synthetic");
+        assert_eq!(run(&s), Err("configuration_conflict"));
+        s["editing"] = json!(false);
+        let kept = run(&s).unwrap();
+        assert!(kept.get("selected").is_none());
+        assert_eq!(
+            drivers(&parse(kept["config"].as_str().unwrap()).unwrap()).unwrap()["android-weather"]
+                ["options"]["profile"],
+            "/manual/weather.toml"
+        );
+        let mut s = forms();
+        let first = run(&s).unwrap();
+        form_again(&mut s, &first);
+        s["baseline"]["drivers"]["android-import"]["options"]["profile"] = json!(format!(
+            "/other/android-profiles/{}.toml",
+            s["selected"]["import"]["sha256"].as_str().unwrap()
+        ));
+        s["data"] = json!("/restored/synthetic");
+        assert_eq!(run(&s), Err("configuration_conflict"));
+    }
+    #[test]
+    fn malformed_previous_paths_never_authorize_relocation_or_replacement() {
+        for id in ["android-import", "android-weather", "android-demo"] {
+            for prefix in ["relative", "/old/../outside", "/old//ambiguous"] {
+                let mut s = forms();
+                let first = run(&s).unwrap();
+                form_again(&mut s, &first);
+                let key = if id == "android-demo" {
+                    "fixture"
+                } else {
+                    "profile"
+                };
+                let old = s["baseline"]["drivers"][id]["options"][key]
+                    .as_str()
+                    .unwrap();
+                let suffix = if key == "fixture" {
+                    "/android-demo.json".to_owned()
+                } else {
+                    format!("/android-profiles/{}", old.rsplit('/').next().unwrap())
+                };
+                let malformed = json!(format!("{prefix}{suffix}"));
+                s["baseline"]["drivers"][id]["options"][key] = malformed.clone();
+                edit(&mut s, id, key, &malformed);
+                s["data"] = json!("/restored/synthetic");
+                assert_eq!(run(&s), Err("configuration_conflict"));
+            }
+        }
+    }
+    #[test]
+    fn newly_approved_profile_can_replace_the_previous_generated_path_only() {
+        let mut s = forms();
+        let first = run(&s).unwrap();
+        form_again(&mut s, &first);
+        let text = format!(
+            "{}\n# approved fixture revision\n",
+            s["import"]["text"].as_str().unwrap()
+        );
+        s["import"] = json!({"sha256":moli_profile::sha256(&text),"text":text});
+        s["selected"]["import"] =
+            crate::profiles::review(s["import"]["text"].as_str().unwrap()).unwrap();
+        let changed = run(&s).unwrap();
+        assert!(
+            changed["config"]
+                .as_str()
+                .unwrap()
+                .contains(s["import"]["sha256"].as_str().unwrap())
+        );
+        edit(
+            &mut s,
+            "android-import",
+            "profile",
+            &json!("/manual/custom.toml"),
+        );
         assert_eq!(run(&s), Err("configuration_conflict"));
     }
 

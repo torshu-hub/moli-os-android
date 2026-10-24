@@ -17,7 +17,7 @@ final class ProfileStore {
         try { transaction(dir).recover(); } catch (Exception failure) { throw new Rejected("configuration_storage"); }
         return dir;
     }
-    private static ConfigurationTransaction transaction(File dir) {
+    static ConfigurationTransaction transaction(File dir) {
         return new ConfigurationTransaction(new ConfigurationTransaction.Disk(dir) {
             @Override void syncDirectory() throws Exception {
                 java.io.FileDescriptor fd = android.system.Os.open(dir.getAbsolutePath(), android.system.OsConstants.O_RDONLY, 0);
@@ -54,11 +54,60 @@ final class ProfileStore {
         File f = new File(data(c), "android-integrations.json");
         return f.exists() ? new JSONObject(bounded(new AtomicFile(f).openRead(), LIMIT)) : new JSONObject();
     }
+    private static String instance(String item) { return "android-" + item; }
+    private static void intent(JSONObject next, String id, boolean inactive) throws Exception {
+        org.json.JSONArray old = next.optJSONArray("inactive"), ids = new org.json.JSONArray();
+        if (old != null) for (int i=0;i<old.length();i++) if (!id.equals(old.getString(i))) ids.put(old.getString(i));
+        if (inactive) ids.put(id);
+        next.put("inactive",ids);
+    }
+    private static void normalizeSelection(JSONObject next) throws Exception {
+        JSONObject retained = next.optJSONObject("retained");
+        for (String item : new String[]{"import","weather","demo"}) if (next.has(item)) {
+            intent(next,instance(item),false); if (retained != null) retained.remove(item);
+        }
+    }
     private static synchronized void save(Context c, JSONObject next) throws Exception {
-        File dir = data(c);
-        atomic(new File(dir, "android-integrations.previous.json"), state(c).toString());
-        atomic(new File(dir, "android-integrations.json"), next.toString());
+        File dir = data(c); normalizeSelection(next);
+        java.util.Map<String,String> changes = new java.util.LinkedHashMap<>();
+        changes.put("android-integrations.previous.json",state(c).toString());
+        changes.put("android-integrations.json",next.toString()); transaction(dir).commit(changes);
         TrialLog.record(TrialJournal.Event.SELECTION_CHANGED,next.optBoolean("demo")?1:0,next.has("weather")?1:0);
+    }
+    static synchronized void saveEquipment(Context c, JSONObject next) throws Exception {
+        File dir=data(c); JSONObject old=EquipmentStore.read(c);
+        for(String key:new String[]{"printer","gateway"}) if(old.has(key) && !next.has(key))
+            next.put(key,new JSONObject(old.getJSONObject(key).toString()).put("enabled",false));
+        org.json.JSONArray before=old.optJSONArray("meross"), after=next.optJSONArray("meross");
+        if(after==null)after=new org.json.JSONArray();
+        if(before!=null)for(int i=0;i<before.length();i++) {
+            JSONObject row=before.getJSONObject(i); String id=row.getString("id"); boolean found=false;
+            for(int j=0;j<after.length();j++)if(id.equals(after.getJSONObject(j).getString("id")))found=true;
+            if(!found)after.put(new JSONObject(row.toString()).put("enabled",false));
+        }
+        next.put("meross",after); next=nativeResult(next.toString(),3);
+        java.util.Map<String,String> changes=new java.util.LinkedHashMap<>();
+        changes.put("android-equipment.json",EquipmentStore.preserve(EquipmentStore.raw(c),next).toString()); transaction(dir).commit(changes);
+    }
+    static String stamp(Context c) throws Exception {
+        File dir=data(c); java.security.MessageDigest hash=java.security.MessageDigest.getInstance("SHA-256");
+        for(String name:new String[]{"moli.toml","home.json","android-concordance.json","android-integrations.json","android-equipment.json"}) {
+            File f=new File(dir,name); hash.update(name.getBytes(StandardCharsets.UTF_8));
+            if(f.exists()) {byte[] bytes=read(f,ConfigurationTransaction.FILE_LIMIT).getBytes(StandardCharsets.UTF_8); hash.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.length).array()); hash.update(bytes);}
+            else hash.update(new byte[]{-1,-1,-1,-1});
+        }
+        StringBuilder text=new StringBuilder(); for(byte b:hash.digest())text.append(String.format(java.util.Locale.ROOT,"%02x",b&255)); return text.toString();
+    }
+    static void checkStamp(Context c,String expected) throws Exception {
+        if(expected==null || !expected.equals(stamp(c)))throw new Rejected("configuration_conflict");
+    }
+    static boolean conflict(Throwable failure) {
+        for(int i=0;i<8 && failure!=null;i++,failure=failure.getCause())if(failure instanceof Rejected && failure.getMessage().startsWith("configuration"))return true;
+        return false;
+    }
+    static void synchronize(Context c) throws Exception {
+        if (EngineHost.state()!=EngineHost.State.STOPPED) return;
+        EngineHost.maintain(() -> { prepare(c,true).close(); return null; }).get();
     }
     static void approve(Context c, String expected) throws Exception {
         String text = read(stage(c), LIMIT); JSONObject info = nativeResult(text, 0);
@@ -104,7 +153,7 @@ final class ProfileStore {
         File f = new File(data(c), "home.json");
         return f.exists() || new File(f + ".bak").exists() ? new JSONObject(bounded(new AtomicFile(f).openRead(), 262144)) : new JSONObject();
     }
-    static void rooms(Context c, String names) throws Exception {
+    private static JSONObject withRooms(Context c, String names) throws Exception {
         org.json.JSONArray rooms = new org.json.JSONArray(); java.util.Set<String> used = new java.util.HashSet<>();
         for (String line : names.split("\\n")) {
             String name = line.trim(); if (name.isEmpty() || !used.add(name)) continue;
@@ -114,7 +163,23 @@ final class ProfileStore {
             if (old != null) for (int i=0;i<old.length();i++) if (name.equals(old.getJSONObject(i).optString("name"))) existing = old.getJSONObject(i);
             rooms.put(existing == null ? new JSONObject().put("name",name) : existing);
         }
-        JSONObject h = home(c); h.put("rooms",rooms); atomic(new File(data(c),"home.json"),h.toString());
+        JSONObject h = home(c); h.put("rooms",rooms); return h;
+    }
+    static void rooms(Context c,String names) throws Exception { atomic(new File(data(c),"home.json"),withRooms(c,names).toString()); }
+    static void homeSettings(Context c,String names,boolean enabled,String label,double latitude,double longitude) throws Exception {
+        JSONObject h=withRooms(c,names), next=state(c), old=state(c);
+        if(enabled) {
+            if(label.trim().isEmpty() || label.length()>80 || !Double.isFinite(latitude) || Math.abs(latitude)>90 || !Double.isFinite(longitude) || Math.abs(longitude)>180)throw new Rejected("location");
+            String text=bounded(c.getAssets().open("open-meteo.toml"),LIMIT); JSONObject info=nativeResult(text,0); installFile(c,text,info);
+            info.put("location",new JSONObject().put("label",label.trim()).put("latitude",latitude).put("longitude",longitude)); next.put("weather",info);
+        } else {
+            JSONObject retained=next.optJSONObject("retained");if(retained==null)retained=new JSONObject();
+            if(next.has("weather"))retained.put("weather",next.get("weather"));
+            next.remove("weather");next.put("retained",retained);if(retained.has("weather"))intent(next,"android-weather",true);
+        }
+        normalizeSelection(next); java.util.Map<String,String> changes=new java.util.LinkedHashMap<>();
+        changes.put("home.json",h.toString());changes.put("android-integrations.previous.json",old.toString());changes.put("android-integrations.json",next.toString());
+        transaction(data(c)).commit(changes);
     }
     private static JSONObject prepareHome(JSONObject h, JSONObject selected, JSONObject equipment) throws Exception {
         h = new JSONObject(h.toString());
@@ -135,7 +200,12 @@ final class ProfileStore {
     }
     static void remove(Context c, String item) throws Exception {
         if (!item.equals("demo") && !item.equals("weather") && !item.equals("import")) throw new Rejected("input");
-        JSONObject next = state(c); next.remove(item); save(c, next);
+        JSONObject next = state(c), retained=next.optJSONObject("retained");
+        if(retained==null)retained=new JSONObject();
+        if(next.has(item))retained.put(item,next.get(item));
+        next.remove(item); next.put("retained",retained);
+        if(retained.has(item))intent(next,instance(item),true);
+        save(c, next);
     }
     static void rollback(Context c) throws Exception {
         File previous = new File(data(c), "android-integrations.previous.json");
@@ -170,10 +240,12 @@ final class ProfileStore {
             return result;
         } catch(Exception failure) { TrialLog.record(TrialJournal.Event.PROBE_FAILED,0,0); throw failure; }
     }
-    static SyntheticEndpoint prepare(Context c) throws Exception {
+    static SyntheticEndpoint prepare(Context c) throws Exception { return prepare(c,false); }
+    private static SyntheticEndpoint prepare(Context c, boolean editing) throws Exception {
         File dir = data(c);
         JSONObject selected = state(c), spec = new JSONObject();
-        spec.put("data", dir.getAbsolutePath()).put("demo", selected.optBoolean("demo"));
+        spec.put("data", dir.getAbsolutePath()).put("demo", selected.optBoolean("demo") || selected.optJSONObject("retained")!=null && selected.getJSONObject("retained").optBoolean("demo"));
+        spec.put("selected",selected).put("editing",editing);
         spec.put("equipment", EquipmentStore.read(c));
         for (String item : new String[]{"import", "weather"}) if (selected.has(item)) {
             JSONObject checked = checked(c, selected.getJSONObject(item)); spec.put(item, checked);
@@ -199,6 +271,8 @@ final class ProfileStore {
             changes.put("moli.toml", updated.getString("config"));
             changes.put("home.json", updated.getJSONObject("home").toString());
             changes.put("android-concordance.json", updated.getJSONObject("baseline").toString());
+            if(updated.has("selected"))changes.put("android-integrations.json",updated.getJSONObject("selected").toString());
+            if(updated.has("equipment"))changes.put("android-equipment.json",EquipmentStore.preserve(EquipmentStore.raw(c),updated.getJSONObject("equipment")).toString());
             File legacy = new File(dir, "android-concordance.legacy.json");
             if (!legacy.exists()) changes.put(legacy.getName(), new JSONObject().put("version", 1)
                     .put("config", config.exists() ? read(config, 262144) : JSONObject.NULL)

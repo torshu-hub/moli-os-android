@@ -1,123 +1,132 @@
-# Android configuration concordance — incremental preservation
+# Android configuration concordance
 
-The Rust engine and original dashboard remain the functional authority. This
-increment replaces unconditional Android regeneration during `ProfileStore.prepare`
-with a validated, stopped-engine reconciliation. It is development code on the
-existing draft PR; it does not migrate a tablet or publish a beta.
+The original Rust engine and dashboard remain the functional authority. Android
+reconciles its adapter records with effective `moli.toml` and `home.json` while
+the engine is stopped. This is development code on the existing draft PR; no
+APK, tablet migration, physical command or signing change is implied.
 
 ## Ownership and precedence
 
 | Data | Rule |
 | --- | --- |
-| `moli.toml` server/guard/energy/automation/fixtures/assistant and non-Android drivers | Moli-owned, retained, including original TOML types on unchanged leaves. The embedded host still owns listening/storage at runtime. |
-| Reserved Android driver instances | Three-way merge of last Android proposal, current Moli values, next Android proposal, recursively by field. Moli-only edits survive; Android-only edits apply; equal edits agree; incompatible edits block before writing. |
-| `android-tablet` and synthetic `android-import` loopback port | Android lease, renewed at each preparation only for the same approved profile and loopback host. A changed profile/host blocks. |
-| Meross identity | Hardware UUID and internal instance ID are bindings. Name, room, address and list order are not identity. Renames keep the same ID/UUID; duplicate UUIDs, rebinding or UUID loss are refused. Manual entries without UUID remain without UUID. |
-| Meross read activation | An explicit Android boolean becomes TOML `enabled=true/false`. A disabled instance keeps its UUID, internal ID and options; the engine skips it, the inventory reports it disabled and the adapter home hides its read card. Missing/invalid Android activation is refused. Legacy omitted TOML activation means true, consistently with the engine and v1 baseline. |
-| Missing Android selection | Does not authorize deleting an existing reserved instance. Preparation blocks and preserves it, including a previously disabled Meross instance. Explicit removal resolution and non-Meross disable flows remain separate work. |
-| `home.json` | Remains JSON, separately owned by Moli. Rooms, metadata, favorites, custom Android keys and existing `outdoor.weather` remain. Only the adapter projection is reconciled; its device labels/enabled state derive from retained drivers. Arrays are atomic values, never matched by name or position. |
-| Profile copies/approvals/trust, equipment/selection records, encrypted vault, history, Keystore/PIN | Retained. The new preparation transaction never rewrites them. Existing approval/settings operations retain their behavior; preparing the shipped tablet profile may add its immutable copy/trust entry, without removing previous approvals. |
+| Moli server/guard/energy/automation/fixtures/assistant and non-Android drivers | Retain settings, original TOML types and ordering. Embedded Android listening/storage overrides still apply at runtime. |
+| Reserved Android instances | Three-way comparison: previous Android proposal, current Moli configuration and next Android proposal. Moli-only edits survive; compatible Android edits apply; incompatible edits block. |
+| Meross | UUID and internal instance ID are bindings. Name, room, address and list order are not identity. Duplicate/rebound UUIDs are refused. Manual entries without UUID remain without UUID. |
+| `home.json` | Separate JSON authority for rooms, metadata, favorites, custom fields and existing `outdoor.weather`. Only the adapter projection is merged. Arrays are units, never matched by name/position for device identity. |
+| Approvals, trust, vault, history, Keystore/PIN | No deletion, implicit rekey or approval regeneration. Built-in tablet preparation may add its immutable file/hash approval, retaining existing approvals. Existing explicit key-setting operations remain separate vault operations. |
 
-A versioned, private `android-concordance.json` stores only the Android proposal
-(driver settings and adapter-home projection), not the effective whole Moli
-configuration. It contains no credentials. Subsequent preparations compare against
-that proposal, so a retained Moli edit is not silently adopted as an Android edit.
-There is no automatic reverse synchronization of Moli edits into Android forms yet.
+## Removal means retained inactive configuration
 
-## Reversible Meross read deactivation
+The existing remove/uncheck controls now revoke **reads**, not identities or data.
+Printer and gateway records, and removed Meross rows, are retained with
+`enabled=false`. Profiles/demo move from the active selection into `retained`
+metadata; `inactive` records the explicit user action. Their driver instances stay
+in `moli.toml`, disabled, with original options, IDs and approvals. Re-enabling
+uses the same instance and stored key. Moli removal of a previously managed entry
+likewise retains an inactive record. No irreversible purge is performed.
 
-With the engine stopped, uncheck the existing Meross read selection and save.
-The next preparation retains the same driver with `enabled=false`, rather than
-removing it. Rechecking and saving later changes that flag back to true after
-reconciliation. No UUID, device association, vault key, approval, history or room
-is deleted. This disables polling; it sends no on/off command to the socket.
-It uses the existing stopped-engine transaction and requires no new UI or archive
-format. Existing v1 provenance is supported without a baseline reset.
+An absent preference/file alone is still not permission to delete or reconstruct
+an instance. Missing/invalid activation consent is refused. Without provenance,
+an enabled legacy instance opposite to Android's selection still blocks. Legacy
+omitted TOML activation means true, consistently with the engine and v1 records.
+The inventory reports retained instances as configured/disabled; the engine does
+not register their equipment drivers. No socket on/off command is sent.
 
-Moli-only activation changes remain authoritative while the Android proposal is
-unchanged; unrelated Moli option edits survive an Android toggle. A toggle does
-not resolve a concurrent conflicting label/option change. Without provenance, a
-legacy configured/enabled instance opposite to the current Android selection
-still blocks instead of guessing that deactivation was intended. A previously
-unconfigured, explicitly disabled saved entry can be recorded as inert config.
-A removed selection still blocks; there is no garbage collection or key deletion.
+## Effective values in the existing forms
 
-The reverse synchronization limitation still applies: Android forms display
-saved Android preferences. If Moli alone disabled an instance, saving unchanged
-Android preferences is not a new activation instruction. A deliberate reconciled
-off-then-on transition can be used; a proper effective-state form flow remains
-required before describing the configuration as fully unified.
+A successful preparation projects supported Moli fields back into Android's
+selection and equipment stores in the **same transaction** as configuration,
+home and provenance. This includes equipment names/destinations/activation and
+weather coordinates/location. Unknown equipment metadata is retained by internal
+ID, including after a reorder. Approved profile metadata is preserved.
 
-## Existing installations and reversibility
+Before editing with the engine stopped, Home and Equipment synchronize through
+the process maintenance queue. A Moli-only disabled instance therefore appears
+unchecked, and checking it again expresses a new activation request. The new
+proposal baseline reflects these projected form values, allowing the next form
+edit without treating the Moli edit as an unresolved concurrent change.
 
-Without a baseline, only exact legacy generated instances can be adopted, except
-for the private loopback lease port. An absent generated instance may be added;
-an existing unmatched/customized instance, inconsistent home projection, malformed
-baseline or invalid configuration blocks startup. A missing/empty configuration or missing `home.json`
-beside an established baseline also blocks. The files are preserved, not replaced
-with a new empty installation.
+The forms compare a bounded digest of configuration/home/provenance/preferences
+before saving. A change since loading rejects the save before altering those
+files. Home rooms and weather selection are committed together. Equipment saved
+while another surface changes configuration must be reloaded. Equipment opened
+while running reloads after stop; Home asks to stop and reopen for an editable
+snapshot. Neither opens a second configuration UI.
 
-On first successful adoption, `android-concordance.legacy.json` retains the exact
-pre-adoption `moli.toml` and `home.json` text (null means originally absent). It is
-never refreshed on later restarts. It is private configuration data, included in
-the existing encrypted recovery archive, not an export/report or debug log.
-This provides a developer-assisted route back to the original files with the
-engine stopped; no automatic downgrade or destructive rollback UI is introduced.
-Keep the original encrypted archive before a future physical upgrade. Removing a
-baseline alone is not a conflict resolution and does not make an older APK safe.
+Manual settings that the form cannot faithfully represent (for example a custom
+profile path or unsupported transport options) remain in Moli. Ordinary engine
+preparation preserves them; strict form preparation blocks editing and displays
+the localized preservation message. It does not guess a replacement. Opaque
+options outside the form stay in the effective configuration and are not
+silently reset by editing an unrelated field.
 
-## Multi-file writes and interruption
+## Restored paths and portable records
 
-The transaction covers `moli.toml`, `home.json`, the baseline, first-adoption
-snapshot and the demo fixture when needed. Every changed target is validated and
-bounded before an undo journal is durably written. Each file is synced and
-atomically renamed in the same directory, then the directory is synced. Removing
-the journal, followed by directory sync, is the commit point. Unchanged files
-are not rewritten. This is stopped-engine consistency, not live hot reloading.
+On restore into a different app/UID/data generation, only recognized Android
+paths are relocated: exact hashed copies under `android-profiles/<sha256>.toml`
+and `android-demo.json` for their reserved instances. A single consistent previous
+root and matching generated provenance/profile digest are required. Pre-baseline
+legacy adoption additionally requires the otherwise exact generated entries.
+Active selected bytes are checked at the new location before preparing them.
+Inactive profiles can follow the proven root without loading or approving their
+bytes; reactivation checks the selected bytes again.
 
-On exception, rollback is attempted. If storage is exhausted, the durable journal
-stays. The next data access or encrypted export must recover the complete old
-state before continuing. A process crash before journal removal likewise rolls
-back; after removal all replacements are complete. Recovery validates every
-journal entry and all old/new preconditions before touching files. Unexpected
-external edits or a malformed journal stop recovery. Partial `.prepare-new` files
-are never active configurations. A crash during rollback can be retried.
+Mixed old roots, traversal/noncanonical paths, unapproved digests or a customized
+import/tablet path block instead of being overwritten. A newly approved profile
+may replace the previous generated path when the baseline proves that path. Manual/external paths and
+machine settings are never rewritten globally. Trust is by approved content hash;
+historical approval paths remain documentary and the trust file is retained.
+The exact initial configuration texts in `android-concordance.legacy.json` are
+never rebased/refreshed. Android-to-Linux recovery still requires the future host
+to choose its own storage/listening paths; no Pi execution is claimed.
 
-The native home displays a localized preservation/blocking message; it does not
-start drivers from a conflicted proposal. Raw configuration and errors are not
-logged. Keys/secrets never enter the journal, baseline, or instrumentation output.
-Process-interruption and disk-full injection are covered; hardware power-loss and
-Galaxy Tab S5e migration/endurance are not claimed.
+## Transactions, migration and interruption
 
-## Validation and future beta scenario
+`android-concordance.json` remains version 1. It records the generated proposal
+and adapter-home projection; the baseline from earlier increments is accepted.
+First safe adoption saves exact original TOML/home text in
+`android-concordance.legacy.json`. Ambiguous legacy entries, invalid configuration,
+or missing configuration/home beside established provenance block startup.
+A developer-assisted stopped-engine return to those original texts is possible;
+removing a baseline alone is not conflict resolution or a safe APK downgrade.
 
-- Rust fixtures: four MSS310 + IPP + IGD, demo, approved weather/import/tablet,
-  non-Android settings, protected-room metadata; legacy upgrade/restart/idempotence,
-  Moli-only edits, conflict, rename/reorder, manual no-UUID, TOML type preservation,
-  invalid input and duplicate UUID. Meross disable/re-enable additionally covers
-  v1 implicit activation, Moli-only disable and retained options/identities.
-- JVM disk tests: interruption at every journal/replacement/commit boundary,
-  repeated recovery, exhausted storage, corrupt journal, unrelated edits, bounds
-  and invalid UTF-8; untouched synthetic approvals/vault/history bytes.
-- Android `BetaUpdateTest` retains encrypted transfer, Keystore/UID/PIN, SQLite,
-  same-signer install-r, wrong-signer/downgrade rejection and independent-UID
-  recovery checks. After replacement it also exercises actual Java/JNI prepare,
-  directory fsync, Moli edits, preserved approvals/selection/identity and conflict
-  on an isolated synthetic context. New disable/re-enable assertions retain
-  synthetic encrypted keys, a SQLite row and the original ID/options. A separate
-  engine with four disabled Meross instances proves the real inventory reports
-  all four disabled with no registered Meross runtime driver; only loopback HTTP
-  is used and no equipment driver is started.
-- The focused PR workflow builds only one emulator JNI ABI and test APKs, reuses
-  strict caches and the existing update script, and retains reports only. It has
-  read-only repository permissions, no signing secret, no ARM64 delivery candidate
-  and no distribution/release step. The protected signer is unchanged.
+The stopped-engine undo journal now also covers selection, previous selection
+and equipment preferences, alongside TOML, home, provenance and the demo fixture.
+Inputs/old bytes are bounded and checked before journaling. A synced undo journal
+precedes synced file replacements/atomic renames and directory sync. Removing the
+journal and syncing the directory is the commit point. Unchanged bytes are not
+rewritten. This provides stopped-engine consistency, not hot reloading.
 
-Before any later beta delivery: require the targeted preservation CI to pass,
-resolve removal, non-Meross disable, form synchronization and restored absolute-path ambiguities, and
-select one delivery candidate under the existing release policy. A future owner
-check is: stop engine → install the authorized same-certificate beta over 0.17
-without uninstall/clear → verify four stable bindings, names, rooms and existing
-settings → restart twice → inspect inventory. On a blocking message, preserve the
-files and use the previous selection or reviewed resolution; do not reset data.
-No tablet update or user action is requested for this development increment.
+Exceptions attempt rollback. If storage remains exhausted, the journal stays;
+the next data access/export must recover the complete old state or stop.
+Recovery validates all entries and old/new preconditions before writing. External
+edits or a corrupt journal block recovery. Partial `.prepare-new` files are never
+active. Recovery itself can be interrupted and retried. This is process-loss and
+fault-injection coverage, not hardware power-loss or S5e endurance qualification.
+No key, raw configuration or arbitrary error payload is written to debug reports.
+
+## Focused evidence and future beta
+
+- Rust fixtures cover legacy/v1 adoption, IDs/UUIDs, disable/re-enable, concurrent
+  edits, reverse projection and subsequent form edits, logical removals, approved
+  profile replacement, active/inactive path relocation and manual-path refusal.
+- JVM failures cover every journal/commit boundary including the newly included
+  preferences, disk exhaustion, corruption and UTF-8/bounds. Metadata tests retain
+  unknown fields by internal ID rather than row position.
+- The existing encrypted install-r continuity proof also runs real Java/JNI
+  preparation, logical removal/re-enable, stale-snapshot rejection and encrypted
+  recovery into another generation, preserving vault/keys/SQLite/approvals.
+- A fresh isolated preview exercises actual Home/Equipment activities: Moli
+  values appear, edits from those values apply, an intervening change blocks save,
+  and an unsupported manual profile leaves the form read-only. No equipment
+  driver is started; only loopback HTTP is used for the disabled inventory proof.
+- The existing focused workflow builds one emulator JNI ABI, reuses strict caches,
+  and retains reports only. No ARM64 delivery candidate, release or distribution
+  signing is part of these checks. Prior S5e/inventory proofs are reused.
+
+Before a future tablet beta: require these checks on the delivery revision, select
+one ARM64 candidate under the existing policy and verify the authorized update
+identity/certificate/version. Only then: stop the engine, install over 0.17 without
+uninstall/clear, check stable device bindings/rooms/settings, and restart twice.
+A preservation/read-only message calls for reviewed resolution, not a reset.
+No tablet action or intermediate APK publication is requested by this increment.

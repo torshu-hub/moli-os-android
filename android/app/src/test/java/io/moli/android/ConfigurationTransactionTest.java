@@ -81,6 +81,25 @@ public final class ConfigurationTransactionTest {
             } finally { cleanup(dir); }
         }
     }
+    @Test public void preferencesAndHomeRecoverTogetherAtEveryNewCommitBoundary() throws Exception {
+        Map<String,String> values=next();
+        values.put("android-integrations.json","{\"demo\":false,\"retained\":{\"demo\":true}}");
+        values.put("android-integrations.previous.json","{\"demo\":true}");
+        values.put("android-equipment.json","{\"meross\":[],\"future\":42}");
+        for(int step=1;step<=values.size()+2;step++) {
+            Path dir=fixture();
+            try {
+                Faults disk=new Faults(dir.toFile()); disk.failAt=step; disk.crash=true;
+                Map<String,String> before=new LinkedHashMap<>();for(String name:values.keySet())before.put(name,disk.read(name,524288));
+                try {new ConfigurationTransaction(disk).commit(values);fail();}catch(Crash expected){}
+                ConfigurationTransaction.Disk restarted=new ConfigurationTransaction.Disk(dir.toFile());
+                new ConfigurationTransaction(restarted).recover();
+                Map<String,String> expected=step==values.size()+2?values:before;
+                for(String name:values.keySet())assertEquals(name,expected.get(name),restarted.read(name,524288));
+                assertArrayEquals(new byte[]{0,1,2,3,4},Files.readAllBytes(dir.resolve("secrets.enc")));
+            }finally{cleanup(dir);}
+        }
+    }
     @Test public void exhaustedStorageKeepsJournalUntilRecoveryCanRestoreOldFiles() throws Exception {
         Path dir = fixture();
         try {

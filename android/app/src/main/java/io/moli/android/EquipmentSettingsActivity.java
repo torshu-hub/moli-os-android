@@ -12,7 +12,7 @@ import java.util.concurrent.*;
 public final class EquipmentSettingsActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private boolean ready, busy;
+    private boolean ready, busy, reopenAfterStop;
     private int revision, savedRevision;
     CheckBox printer, gateway;
     EditText host, port, path, location;
@@ -21,13 +21,14 @@ public final class EquipmentSettingsActivity extends Activity {
     private TextView reading;
     private LinearLayout manual,printerGroup,gatewayGroup,merossGroup,chooser;
     private String mode="";
-    private String storedConfig="";
+    private String storedConfig="", configurationStamp;
     private TextView stateText;
     MerossForm meross;
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
             EngineHost.State state = EngineHost.state();
             boolean stopped = state == EngineHost.State.STOPPED;
+            if(stopped && reopenAfterStop && !busy){reopenAfterStop=false;recreate();return;}
             save.setEnabled(ready && !busy && stopped);
             start.setEnabled(ready && !busy && stopped && revision == savedRevision);
             for (android.view.View field : new android.view.View[]{printer,gateway,host,port,path,location}) field.setEnabled(ready && !busy && stopped);
@@ -90,18 +91,21 @@ public final class EquipmentSettingsActivity extends Activity {
         if(saved!=null && saved.getString("mode")!=null && !saved.getString("mode").isEmpty())focus(saved.getString("mode"));
         io.execute(() -> {
             try {
+                ProfileStore.synchronize(this);
+                String expected=ProfileStore.stamp(this);
                 JSONObject selected = EquipmentStore.read(this);
-                storedConfig=selected.toString();
+                storedConfig=selected.toString(); ProfileStore.checkStamp(this,expected); configurationStamp=expected;
+                reopenAfterStop=EngineHost.state()!=EngineHost.State.STOPPED;
                 runOnUiThread(() -> {
                     if (isDestroyed()) return;
                     JSONObject p = selected.optJSONObject("printer"), g = selected.optJSONObject("gateway");
-                    printer.setChecked(p != null); gateway.setChecked(g != null);
+                    printer.setChecked(p != null && p.optBoolean("enabled",true)); gateway.setChecked(g != null && g.optBoolean("enabled",true));
                     if (p != null) { host.setText(p.optString("host")); port.setText(p.optString("port")); path.setText(p.optString("path")); }
                     if (g != null) location.setText(g.optString("location"));
                     try { meross.load(selected.optJSONArray("meross")); ready = true; applySuggestion(); }
-                    catch (Exception invalid) { message.setText(R.string.equipment_initialize); }
+                    catch (Exception invalid) { message.setText(R.string.configuration_blocked); }
                 });
-            } catch (Exception failure) { runOnUiThread(() -> { if (!isDestroyed()) message.setText(R.string.equipment_initialize); }); }
+            } catch (Exception failure) { runOnUiThread(() -> { if (!isDestroyed()) message.setText(R.string.configuration_blocked); }); }
         });
     }
     private void applySuggestion() {
@@ -139,17 +143,17 @@ public final class EquipmentSettingsActivity extends Activity {
         } catch (Exception invalid) { message.setText(R.string.equipment_invalid);TrialLog.action(this,TrialJournal.Event.EQUIPMENT_SAVED,TrialJournal.Source.EQUIPEMENTS,TrialJournal.Outcome.REFUSE,TrialJournal.Error.SAISIE,0,0,null); return; }
         try {
             final org.json.JSONArray keys = meross.keys();
-            Future<Void> job = EngineHost.maintain(() -> { EquipmentStore.save(this,selected,keys); return null; });
+            Future<Void> job = EngineHost.maintain(() -> { ProfileStore.checkStamp(this,configurationStamp); EquipmentStore.save(this,selected,keys); configurationStamp=ProfileStore.stamp(this); return null; });
             busy = true; save.setEnabled(false); start.setEnabled(false);
             meross.setEnabled(false);
             for (android.view.View field : new android.view.View[]{printer,gateway,host,port,path,location}) field.setEnabled(false);
             io.execute(() -> {
-                boolean ok;
-                try { job.get(); ok = true; } catch (Exception failure) { ok = false; }
-                boolean result = ok;
+                boolean ok; int error=R.string.meross_save_failed;
+                try { job.get(); ok = true; } catch (Exception failure) { ok = false; if(ProfileStore.conflict(failure))error=R.string.configuration_blocked; }
+                boolean result = ok; final int errorCode=error;
                 int kind=mode.equals("ipp")?1:mode.equals("igd")?2:mode.equals("meross")?3:0;
                 TrialLog.action(this,TrialJournal.Event.EQUIPMENT_SAVED,TrialJournal.Source.EQUIPEMENTS,result?TrialJournal.Outcome.ENREGISTRE:TrialJournal.Outcome.REFUSE,result?TrialJournal.Error.AUCUNE:TrialJournal.Error.COFFRE,kind,kind==1?(selected.has("printer")?1:0):kind==2?(selected.has("gateway")?1:0):0,kind==1?"android-printer":kind==2?"android-gateway":null);
-                runOnUiThread(() -> { if (!isDestroyed()) { busy = false; if (result) { savedRevision = savingRevision;storedConfig=selected.toString(); meross.clearKeys(); } message.setText(result ? R.string.equipment_saved : R.string.meross_save_failed); } });
+                runOnUiThread(() -> { if (!isDestroyed()) { busy = false; if (result) { savedRevision = savingRevision;storedConfig=selected.toString(); meross.clearKeys(); } message.setText(result ? R.string.equipment_saved : errorCode); } });
             });
         } catch (Exception changed) { message.setText(R.string.equipment_stop_first); }
     }
@@ -166,14 +170,16 @@ public final class EquipmentSettingsActivity extends Activity {
     private Button button(LinearLayout body,int id,Runnable action) { return TrialUi.button(this,body,id,id==R.string.equipment_save,action); }
     @Override public void onStart() { super.onStart(); handler.post(refresh);
         if(ready && !busy){ready=false;io.execute(()->{try{
-            JSONObject selected=EquipmentStore.read(this);
+            ProfileStore.synchronize(this);
+            String expected=ProfileStore.stamp(this);
+            JSONObject selected=EquipmentStore.read(this); ProfileStore.checkStamp(this,expected); configurationStamp=expected; reopenAfterStop=EngineHost.state()!=EngineHost.State.STOPPED;
             runOnUiThread(()->{if(isDestroyed() || busy)return;try{
                 if(selected.toString().equals(storedConfig)){ready=true;return;}
                 JSONObject p=selected.optJSONObject("printer"),g=selected.optJSONObject("gateway");
-                printer.setChecked(p!=null);gateway.setChecked(g!=null);if(p!=null){host.setText(p.optString("host"));port.setText(p.optString("port"));path.setText(p.optString("path"));}if(g!=null)location.setText(g.optString("location"));
+                printer.setChecked(p!=null && p.optBoolean("enabled",true));gateway.setChecked(g!=null && g.optBoolean("enabled",true));if(p!=null){host.setText(p.optString("host"));port.setText(p.optString("port"));path.setText(p.optString("path"));}if(g!=null)location.setText(g.optString("location"));
                 meross.load(selected.optJSONArray("meross"));storedConfig=selected.toString();revision=savedRevision=0;ready=true;message.setText(R.string.equipment_reloaded);
-            }catch(Exception invalid){message.setText(R.string.equipment_initialize);}});
-        }catch(Exception invalid){runOnUiThread(()->{if(!isDestroyed())message.setText(R.string.equipment_initialize);});}});}
+            }catch(Exception invalid){message.setText(R.string.configuration_blocked);}});
+        }catch(Exception invalid){runOnUiThread(()->{if(!isDestroyed())message.setText(R.string.configuration_blocked);});}});}
 
     }
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("mode",mode);}
