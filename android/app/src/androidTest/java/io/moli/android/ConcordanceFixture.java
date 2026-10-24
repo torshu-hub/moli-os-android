@@ -156,14 +156,15 @@ final class ConcordanceFixture {
         String stamp=ProfileStore.stamp(fixture);
         ProfileStore.atomic(new File(dir,"home.json"),ProfileStore.home(fixture).put("opaque-marker","preserved").toString());
         try {ProfileStore.checkStamp(fixture,stamp);fail("Stale form must be rejected before save");}catch(ProfileStore.Rejected expected){assertEquals("configuration_conflict",expected.getMessage());}
-        ProfileStore.configureWeather(fixture,"Fixture location",48,2); ProfileStore.demo(fixture);
+        ProfileStore.weather(fixture); ProfileStore.demo(fixture);
+        assertEquals(48,ProfileStore.state(fixture).getJSONObject("weather").getJSONObject("location").getDouble("latitude"),0.00001);
         EquipmentStore.save(fixture,oldEquipment); ProfileStore.prepare(fixture).close();
         assertTrue(EquipmentStore.read(fixture).getJSONObject("printer").getBoolean("enabled"));
         // Encrypted restore into a new generation changes all app-owned absolute paths.
         char[] password="synthetic concordance recovery words".toCharArray(); java.io.ByteArrayOutputStream archive=new java.io.ByteArrayOutputStream();
         ProfileStore.remove(fixture,"weather"); ProfileStore.prepare(fixture).close();
         BackupStorage.exportTo(fixture,password,archive);
-        ProfileStore.configureWeather(fixture,"Fixture location",48,2); ProfileStore.prepare(fixture).close();
+        ProfileStore.weather(fixture); ProfileStore.prepare(fixture).close();
         File restoredFiles=new File(root,"restored-files"), restoredWrap=new File(root,"restored-wrap");assertTrue(restoredFiles.mkdir());assertTrue(restoredWrap.mkdir());
         Context restored=new ContextWrapper(fixture) {
             @Override public File getFilesDir(){return restoredFiles;}
@@ -175,7 +176,9 @@ final class ConcordanceFixture {
         byte[] approvals=Files.readAllBytes(new File(destination,"trusted-profiles.toml").toPath());
         ProfileStore.prepare(restored).close(); ProfileStore.prepare(restored).close();
         assertFalse(ProfileStore.state(restored).has("weather"));
-        ProfileStore.configureWeather(restored,"Fixture location",48,2); ProfileStore.prepare(restored).close();
+        ProfileStore.weather(restored); ProfileStore.prepare(restored).close();
+        assertEquals("Fixture location",ProfileStore.state(restored).getJSONObject("weather").getJSONObject("location").getString("label"));
+        assertEquals(48,ProfileStore.state(restored).getJSONObject("weather").getJSONObject("location").getDouble("latitude"),0.00001);
         String config=ProfileStore.read(new File(destination,"moli.toml"),262144);
         assertTrue(config.contains(destination.getAbsolutePath()+"/android-profiles/"));
         assertFalse(config.contains(dir.getAbsolutePath()+"/android-profiles/"));

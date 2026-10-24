@@ -139,6 +139,7 @@ final class ProfileStore {
         String text = bounded(c.getAssets().open("open-meteo.toml"), LIMIT);
         JSONObject info = nativeResult(text, 0); installFile(c, text, info);
         JSONObject next = state(c), previous = next.optJSONObject("weather");
+        if (previous == null && next.optJSONObject("retained") != null) previous = next.getJSONObject("retained").optJSONObject("weather");
         if (previous != null && previous.has("location")) info.put("location", previous.getJSONObject("location"));
         next.put("weather", info); save(c, next);
     }
