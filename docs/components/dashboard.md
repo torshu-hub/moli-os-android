@@ -136,9 +136,11 @@ rendu FR/EN : `cd web && node scripts/integration-inventory.check.mjs`.
 
 ## Android : réception discrète dans les cartes
 
-Les cartes IPP, IGD, MSS310, météo et tablette placent l'heure reçue et l'âge en
-haut à droite (`Receipt.svelte`). L'âge suit l'horloge réactive existante, sans
-modifier le timestamp du relevé ni les seuils de fraîcheur. Les états anciens,
+Les cartes IPP, IGD, MSS310, météo et tablette placent uniquement l'âge en
+haut à droite (`Receipt.svelte`), sans heure absolue. Une horloge d'affichage
+partagée actualise ces cartes chaque seconde, s'arrête en arrière-plan et quand
+elles sont démontées, et recalcule l'âge au retour. Elle ne déclenche aucune
+lecture réseau et ne modifie ni le timestamp du relevé ni les seuils de fraîcheur. Les états anciens,
 indisponibles, à confirmer, non reçus et heure inconnue restent textuels ; une date
 future n'affiche pas un âge nul. Les dates et âges individuels restent sous Détails.
 Ce composant ne s'applique pas aux dates cloud/physiques Netatmo et ne touche pas

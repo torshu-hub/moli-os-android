@@ -14,8 +14,11 @@ try {
     await setLanguage(lang);
     const draw = props => render(Receipt,{props:{ts,now:ts+12000,state:'fresh',present:true,...props}}).body;
     assert.match(draw({}),/>12 s</);
+    assert.ok(!draw({}).includes('<time'));
+    assert.ok(!draw({}).includes('datetime='));
+    assert.match(draw({now:ts+13000}),/>13 s</);
     assert.ok(!draw({}).includes('class="notice"'));
-    assert.match(draw({now:ts+120000}),/>2 min</);
+    assert.match(draw({now:ts+120000}),/>2 min 0 s</);
     assert.match(draw({now:ts+7200000}),/>2 h</);
     for(const state of ['stale','unavailable','checking']) assert.match(draw({state}),new RegExp(`data-receipt-state="${state}"`));
     assert.match(draw({ts:null}),/data-receipt-state="unknown"/);

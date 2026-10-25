@@ -2,6 +2,7 @@
 from pathlib import Path
 import subprocess
 import time
+from datetime import datetime, timezone
 from playwright.sync_api import sync_playwright
 
 root = Path(__file__).resolve().parents[1]
@@ -9,7 +10,7 @@ harness = root / '.receipt-test.html'
 entry = root / '.receipt-test.js'
 harness.write_text('<div class="maison" id="test"></div><script type="module" src="/.receipt-test.js"></script>')
 entry.write_text('''
-import {mount} from 'svelte';
+import {mount, unmount} from 'svelte';
 import Equipment from './src/maison/ui/AndroidEquipment.svelte';
 import Sources from './src/maison/ui/AndroidSources.svelte';
 import {home,hub} from './src/maison/lib/home.svelte.js';
@@ -17,7 +18,7 @@ import {setLanguage} from './src/lib/i18n.svelte.js';
 import './src/maison/maison.css';
 window.fixture = async (language, state) => {
  await setLanguage(language);
- const ts=1800000000000;
+ const ts=Date.now()-12000;
  home.now=ts+12000; home.snapshotHealthy=true;hub.connected=state!=='offline';hub.observedAt=ts;
  home.config={android:{printer:true,printer_id:'printer:synthetic',gateway:false,meross:[{id:'synthetic',enabled:true,name:'Long equipment title / Nom très long sans raccourcir les associations existantes'}],tablet:'tablet:synthetic',weather:'weather:synthetic'}};
  hub.drivers=['android-printer','android-meross-synthetic','tablet','weather'].map(instance=>({instance,status:{state:'running'}}));
@@ -31,10 +32,18 @@ window.fixture = async (language, state) => {
  ].map(d=>[d.id,d]));
  if(state==='missing')hub.devices={};
 };
-window.advance=()=>home.now+=120000;
+window.receiptTimers=new Set();
+const interval=window.setInterval, clear=window.clearInterval;
+window.setInterval=(fn,delay,...args)=>{const id=interval(fn,delay,...args);if(delay===1000)window.receiptTimers.add(id);return id;};
+window.clearInterval=id=>{window.receiptTimers.delete(id);clear(id);};
+let hidden=false;
+Object.defineProperty(document,'hidden',{get:()=>hidden,configurable:true});
+window.hideReceipt=()=>{hidden=true;document.dispatchEvent(new Event('visibilitychange'));};
+window.showReceipt=()=>{hidden=false;document.dispatchEvent(new Event('visibilitychange'));};
 await window.fixture('fr','fresh');
-mount(Equipment,{target:document.querySelector('#test')});
-mount(Sources,{target:document.querySelector('#test')});
+const equipment=mount(Equipment,{target:document.querySelector('#test')});
+const sources=mount(Sources,{target:document.querySelector('#test')});
+window.removeReceipt=async()=>{await unmount(equipment);await unmount(sources);};
 window.ready=true;
 ''')
 server = subprocess.Popen(['node','node_modules/vite/bin/vite.js','--host','127.0.0.1','--port','4178'],cwd=root,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -42,6 +51,10 @@ try:
  with sync_playwright() as p:
   browser=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
   page=browser.new_page()
+  page.clock.install(time=datetime.fromtimestamp(1800000012,tz=timezone.utc))
+  page.clock.pause_at(datetime.fromtimestamp(1800000012,tz=timezone.utc))
+  requests=[]
+  page.on("request",lambda request: requests.append(request.url) if "/api/" in request.url else None)
   for attempt in range(40):
    try: page.goto('http://127.0.0.1:4178/.receipt-test.html'); break
    except Exception: time.sleep(.25)
@@ -60,17 +73,44 @@ try:
      })'''),(width,language,state,'receipt overflow')
      if state=='fresh':
       assert page.locator('.receipt .notice').count()==0
-      before=page.locator('[data-equipment-received] time').first.get_attribute('datetime')
-      page.evaluate('window.advance()');page.wait_for_timeout(40)
-      assert page.locator('[data-equipment-received] time').first.get_attribute('datetime')==before
+      assert page.locator('.receipt time').count()==0
+      receipt=page.locator('[data-equipment=printer] .receipt span').first
+      assert receipt.inner_text()=='12 s'
+      before=page.locator('[data-equipment-received]').first.get_attribute('data-equipment-received')
+      assert page.evaluate('window.receiptTimers.size')==1
+      page.clock.run_for(1000)
+      assert receipt.inner_text()=='13 s'
+      page.clock.run_for(1000)
+      assert receipt.inner_text()=='14 s'
+      page.clock.run_for(46000)
+      assert receipt.inner_text()=='1 min 0 s'
+      page.clock.run_for(1000)
+      assert receipt.inner_text()=='1 min 1 s'
+      page.clock.run_for(120000)
+      assert page.locator('[data-equipment-received]').first.get_attribute('data-equipment-received')==before
       assert page.locator('[data-equipment=printer] [data-receipt-state=stale]').count()==1
      elif state=='missing': assert page.locator('.receipt time').count()==0
      else: assert page.locator('.receipt .notice').count()>0
      if width==800 and language=='fr' and state=='fresh':
       page.evaluate("window.fixture('fr','fresh')");page.wait_for_timeout(40)
       page.screenshot(path=str(root.parent/'work/freshness/cards-fr.png'),full_page=True)
+  page.evaluate("window.fixture('fr','fresh')")
+  page.wait_for_timeout(40)
+  receipt=page.locator('[data-equipment=printer] .receipt span').first
+  assert receipt.inner_text()=='12 s'
+  page.evaluate('window.hideReceipt()')
+  assert page.evaluate('window.receiptTimers.size')==0
+  page.clock.run_for(5000)
+  assert receipt.inner_text()=='12 s'
+  page.evaluate('window.showReceipt()')
+  page.wait_for_timeout(40)
+  assert receipt.inner_text()=='17 s'
+  assert page.evaluate('window.receiptTimers.size')==1
+  page.evaluate('window.removeReceipt()')
+  assert page.evaluate('window.receiptTimers.size')==0
+  assert not requests, requests
   browser.close()
-  print('Browser verified: FR/EN × 360/800 portrait × fresh/stale/unknown/offline/missing; no overflow; reactive age preserves receipt timestamp.')
+  print('Browser verified: FR/EN × 360/800 portrait × fresh/stale/unknown/offline/missing; no overflow; one shared 1-second display timer, unchanged receipt timestamp, no API requests, pause/resume and unmount cleanup.')
 finally:
  server.terminate();server.wait(timeout=10)
  harness.unlink(missing_ok=True);entry.unlink(missing_ok=True)

@@ -4,6 +4,9 @@
   import { t } from '../../lib/i18n.svelte.js';
   const firstSeen = Date.now();
   import Receipt from './Receipt.svelte';
+  import { useReceiptClock } from '../lib/receipt-clock.svelte.js';
+  const receiptClock = useReceiptClock();
+  const receiptNow = $derived(receiptClock.now ?? home.now);
   const cfg = $derived(home.config.android);
   const printer = $derived(device(cfg.printer_id));
   const gateway = $derived(Object.values(hub.devices).find(d => d.instance === 'android-gateway'));
@@ -15,7 +18,7 @@
   ]);
   const status = (card) => equipmentStatus(card.kind,card.data,
     hub.drivers.find(d => d.instance === (card.instance || (card.kind === 'printer' ? 'android-printer' : 'android-gateway'))),
-    hub.connected && home.snapshotHealthy,home.now,hub.observedAt,firstSeen);
+    hub.connected && home.snapshotHealthy,receiptNow,hub.observedAt,firstSeen);
   function shown(sample, point) {
     if (!sample || sample.value == null) return t('maison.equipment.not_reported');
     const v = sample.value;
