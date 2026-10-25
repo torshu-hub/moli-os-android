@@ -101,7 +101,7 @@ impl Transport for Https {
 }
 
 /// Percent-encode every byte other than unreserved URI characters.
-fn encode(s: &str) -> String {
+pub(crate) fn encode(s: &str) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
     for b in s.bytes() {
@@ -137,6 +137,7 @@ pub(crate) async fn read(
     decode(&transport.send(request).await?, false)
 }
 
+#[cfg(any(not(target_os = "android"), test))]
 pub(crate) async fn refresh(
     transport: &dyn Transport,
     tokens: &Tokens,
@@ -193,7 +194,7 @@ pub(crate) async fn refresh(
     Tokens::parse(&serde_json::to_string(&next).map_err(|_| Failure::InvalidResponse)?)
 }
 
-fn decode(response: &Response, oauth: bool) -> Result<Json, Failure> {
+pub(crate) fn decode(response: &Response, oauth: bool) -> Result<Json, Failure> {
     if response.status == StatusCode::TOO_MANY_REQUESTS {
         // Honor both HTTP forms. Missing/invalid headers use a one-hour pause.
         let retry = response

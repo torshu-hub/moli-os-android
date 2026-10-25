@@ -2,6 +2,7 @@
 //! OAuth is a vault operation, never an actuator operation. All points read-only.
 mod client;
 mod model;
+pub mod oauth;
 #[cfg(test)]
 mod tests;
 
@@ -64,6 +65,35 @@ impl Netatmo {
             transport: Arc::new(Https),
         })
     }
+    // Netatmo explicitly forbids the client secret on mobile. Keep the
+    // original confidential refresh path on servers; Android awaits its broker.
+    #[cfg(not(target_os = "android"))]
+    async fn refresh_tokens(
+        &self,
+        ctx: &DriverCtx,
+        tokens: &Tokens,
+        now: u64,
+    ) -> Result<Tokens, Failure> {
+        let client_id = self
+            .config
+            .client_id
+            .as_deref()
+            .ok_or(Failure::Credentials)?;
+        let secret = ctx.secret("client_secret").ok_or(Failure::Credentials)?;
+        if !ctx.can_store_secrets() {
+            return Err(Failure::Storage);
+        }
+        client::refresh(self.transport.as_ref(), tokens, client_id, &secret, now).await
+    }
+    #[cfg(target_os = "android")]
+    async fn refresh_tokens(
+        &self,
+        _ctx: &DriverCtx,
+        _tokens: &Tokens,
+        _now: u64,
+    ) -> Result<Tokens, Failure> {
+        Err(Failure::Credentials)
+    }
     async fn collect(
         &self,
         ctx: &DriverCtx,
@@ -75,17 +105,7 @@ impl Netatmo {
         let mut tokens = Tokens::parse(&raw)?;
         let now = now_ms() / 1000;
         if force_refresh || tokens.expires_at <= now.saturating_add(60) {
-            let client_id = self
-                .config
-                .client_id
-                .as_deref()
-                .ok_or(Failure::Credentials)?;
-            let secret = ctx.secret("client_secret").ok_or(Failure::Credentials)?;
-            if !ctx.can_store_secrets() {
-                return Err(Failure::Storage);
-            }
-            let rotated =
-                client::refresh(self.transport.as_ref(), &tokens, client_id, &secret, now).await?;
+            let rotated = self.refresh_tokens(ctx, &tokens, now).await?;
             // Retain an unsaved rotation only to retry persistence. Never read
             // with it before the whole pair has reached the encrypted vault.
             *pending = Some(rotated);

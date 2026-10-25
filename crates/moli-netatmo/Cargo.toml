@@ -6,12 +6,17 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+# Code exchange with a confidential client is never compiled into Android.
+confidential-oauth = []
+
 [dependencies]
 moli-core.workspace = true
 moli-runtime.workspace = true
 moli-net.workspace = true
 moli-i18n.workspace = true
 anyhow.workspace = true
+ring.workspace = true
 http.workspace = true
 httpdate.workspace = true
 http-body-util.workspace = true

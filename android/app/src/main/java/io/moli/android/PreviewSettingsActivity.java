@@ -9,6 +9,7 @@ public final class PreviewSettingsActivity extends Activity {
         LinearLayout box=TrialUi.card(this,body);TrialUi.text(this,box,R.string.preview_transfer_help);
         TrialUi.button(this,box,R.string.backup_title,false,()->stopThen(()->startActivity(new Intent(this,BackupActivity.class))));
         TrialUi.button(this,body,R.string.home_settings,false,()->startActivity(new Intent(this,HomeSettingsActivity.class)));
+        TrialUi.button(this,body,R.string.netatmo_title,false,()->startActivity(new Intent(this,NetatmoOAuthActivity.class)));
         TrialUi.button(this,body,R.string.app_info,false,()->startActivity(new Intent(this,AppInfoActivity.class)));
         LinearLayout expert=TrialUi.card(this,body);expert.setVisibility(android.view.View.GONE);
         TrialUi.text(this,expert,R.string.maintenance_expert_help);

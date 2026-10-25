@@ -6,6 +6,7 @@ mod concordance_state;
 mod discovery;
 mod equipment;
 mod meross_account;
+mod netatmo_oauth;
 mod profiles;
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -125,6 +126,16 @@ pub extern "system" fn Java_io_moli_android_NativeServer_profile(
                     return Err("running");
                 }
                 meross_account::run(&input)
+            }
+            7 => {
+                let input: serde_json::Value = serde_json::from_str(&text).map_err(|_| "input")?;
+                let slot = engine()
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if slot.is_some() && input["action"] != "status" {
+                    return Err("running");
+                }
+                netatmo_oauth::run(&input)
             }
             _ => Err("input"),
         }

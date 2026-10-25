@@ -27,6 +27,7 @@
         <activity android:name=".HomeSettingsActivity" android:exported="false" />
         <activity android:name=".EquipmentSettingsActivity" android:exported="false" />
         <activity android:name=".MerossAccountActivity" android:exported="false" />
+        <activity android:name=".NetatmoOAuthActivity" android:exported="false" />
         <activity android:name=".LocalNetworkActivity" android:exported="false" />
         <activity android:name=".TrialJournalActivity" android:exported="false" />
         <activity android:name=".BackupActivity" android:exported="false" />

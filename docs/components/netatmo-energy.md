@@ -26,7 +26,7 @@ aucune tâche sans instance activée. Aucun compte réel n'a été connecté pou
   timestamp de mesure physique pour ces valeurs. `measurement_at` reste donc
   **null**. `reachable=true` + réponse récente n'est pas une preuve de fraîcheur
   de la mesure physique. L'interface affiche cette limite en permanence.
-- [OAuth](https://dev.netatmo.com/apidocumentation/oauth) : code d'autorisation
+- [OAuth](https://dev.netatmo.com/apidocumentation/oauth) : secret client exclusivement côté serveur (interdit dans une application mobile), code d'autorisation
   officiel, puis refresh token. La documentation demande de remplacer **les deux**
   jetons après renouvellement ; les anciens sont invalidés. Moli les conserve
   ensemble dans un unique secret chiffré avant toute lecture avec le nouveau jeton.
@@ -73,7 +73,7 @@ Le nom d'instance est aussi l'espace de coffre. Secrets **hors config** :
   `expires_at` est en secondes Unix, contrairement aux points d'horodatage (ms).
 - `energy/client_secret` : secret de l'application OAuth, uniquement dans le coffre.
 
-Sur le serveur avec CLI, le propriétaire fournit ces valeurs par un tube à
+Sur un serveur confidentiel Linux avec CLI (jamais dans l'APK), le propriétaire fournit ces valeurs par un tube à
 `moli-os secrets set energy oauth_tokens` et `moli-os secrets set energy client_secret`,
 sans arguments secrets, historique shell, sortie console ni fichier en clair.
 Réutiliser la clé maître existante. Le pilote ne crée ni compte ni application.
@@ -84,11 +84,12 @@ Un token de renouvellement dont la réponse fournit un scope autre que le seul
 contrat officiel : le consentement initial doit donc bien être limité à la lecture.
 
 Android embarque le même pilote et le même coffre, avec sa clé protégée existante.
-**Cet incrément n'ajoute pas encore d'écran de connexion OAuth ni de route pour
-injecter les jetons depuis le navigateur sur tablette.** Ne pas copier la clé
-Android vers un CLI externe. L'adaptateur d'autorisation/provisioning Android sera
-nécessaire avant une connexion réelle pratique sur S5e ; aucune saisie de mot de
-passe Netatmo dans Moli n'est prévue.
+Le [parcours OAuth Android préparatoire](netatmo-oauth-android.md) ajoute un écran
+natif et les contrôles de session/coffre simulables. **La connexion reste bloquée
+sans service confidentiel autorisé et raccordé** : aucun secret client sur tablette,
+aucune copie de clé vers un CLI externe, aucune application Netatmo créée par Codex.
+Le renouvellement direct avec `client_secret` est réservé au serveur Linux ;
+Android suspend les lectures à expiration tant que le service n'est pas raccordé.
 
 Les appareils utilisent `<instance>:<home-id>.room.<room-id>` et
 `<instance>:<home-id>.module.<module-id>` ; aucun nom ni ordre de tableau ne sert
@@ -148,7 +149,7 @@ lié à la session, scope **read_thermostat seul**, échange de code côté coff
 (sans exposer le client secret dans une WebView), puis provisioning protégé.
 Ne pas inventer de redirect ni prétendre qu'un client secret intégré dans une APK
 est confidentiel : le choix de l'application et de son échange sécurisé reste à
-valider avant de développer le parcours Android. Aucun flux password grant.
+valider avant de raccorder le parcours Android préparé. Aucun flux password grant.
 
 Après cet accord et le parcours Android : une lecture volontaire permet de
 vérifier modèles/champs/liaison/temps effectivement fournis par le compte et de
