@@ -3,16 +3,11 @@ name: Sign owner beta
 'on':
   workflow_run:
     workflows:
-    - Android home and integrations
+    - Android profile import
     types:
     - completed
     branches:
     - android/beta-ready
-  push:
-    branches:
-    - main
-    paths:
-    - .github/workflows/android-beta-sign.yml
   workflow_dispatch: null
 permissions:
   contents: read
@@ -191,7 +186,7 @@ jobs:
                 raise ValueError('Explicit trusted ready-branch promotion required')
 
         REQUIRED_WORKFLOWS = {'check':'.github/workflows/check.yml','audit':'.github/workflows/audit.yml',
-            'Source hygiene':'.github/workflows/source-hygiene.yml','Android home and integrations':'.github/workflows/android-integrations.yml'}
+            'Source hygiene':'.github/workflows/source-hygiene.yml','Android profile import':'.github/workflows/android-integrations.yml'}
         def latest_checks(rows):
             latest={}
             for row in sorted(rows,key=lambda x:x['id'],reverse=True):
@@ -223,7 +218,7 @@ jobs:
         from pathlib import Path
 
         # Filled by the renderer. These are approved CI orchestration bytes, not app source.
-        PIPELINE_PINS = {'.github/workflows/android-integrations.yml': '01a0b9e15a71eb1e6339f6458b510bbe72eac206c8169127429fecec4322a20c', '.github/workflows/audit.yml': 'fa842197d7380b9433798260847824799105df30b00184ca4ef413802ce39102', '.github/workflows/check.yml': 'a6f83eef4632e00bfbf5472f892eb53b10eca3b802bbe788780460ab9c4149b0', '.github/workflows/source-hygiene.yml': '6b6fe592c807aea736e3fe44024c78d44e703137d8701b05f6db4f44baa627e7', 'scripts/check-android-beta.py': '1e7192429d5b9fbf478b6fd63407258a9cd045819064386af5d14c25594e2c97', 'scripts/test-android-beta-metadata.py': 'fcb3e2873866fa86d220ff60d2ef834b62a30d7d074cda7e7b12b290b1f736d8', 'scripts/test-android-beta-update.sh': '04f65c8dc4494f7f4d83bff9e8a0bfc7702861c7b954232f2ad093022bab3b43', 'scripts/test-android-integrations.sh': 'f5d133d9d95f4f83cc737590d64462b668c14ce01290a7303f150459bbb0e823', 'scripts/verify-android-apk.py': '897d16221aaf2945324071035af6a37a41163777ea04ca8978efb1429c5218c5', 'tools/android-ci/build_candidate.sh': '1c6cfee9d2e2c5b2239469e3b9a78ee36364ee91bd06ebd65421e13885861792', 'tools/android-ci/bundle.py': '2233d3cd22d10979bac01b4d314bafcb5cc96284b5f13986de7a97a8307c06d6', 'tools/android-ci/delivery_gate.py': '024fb86e5eab2cc757b98b12c99652c0ee073a7fa3bc78efd162735b5215057d', 'tools/android-ci/plan.py': '1067752c750b81dfd8a50856b031b4753ed25bd8634126c45b06ff420ee275d4', 'tools/android-ci/policy.py': 'eb6000c721bc1f2f75a4b7fdb067ce7319988410e7fb0b23d7f4608b7c8f03d2', 'tools/android-ci/protocol.py': '3c95d1d33b26bcc523f07dedcf9c91dff62f9614f22e2ed76b7bf12ebb332217', 'tools/android-ci/publish.py': 'caf84ee7f1309a1e6943dcd0f607f14c12ee22db8eeb5671bf3bde2d17574000', 'tools/android-signing/check_static.py': 'e66949597ea71fc89642e2b26a92cf8d7a0801dbb14a96b461a1d8b65135fd22', 'tools/android-signing/owner_key.py': '684a9f2fc6b6fecfe09db2aaf40869c91deea612b56017a696729deab38056ca', 'tools/android-signing/sign_step.py': '24b462337f65d605bac5874ec34c9d0f25af9076b695d625f68b6c20bbf17f15'}
+        PIPELINE_PINS = {'.github/workflows/android-integrations.yml': '9963ac8131bfdec1cd9b2493226388695b2d0fd55b8943eb9edfd96a37751a79', '.github/workflows/audit.yml': 'fa842197d7380b9433798260847824799105df30b00184ca4ef413802ce39102', '.github/workflows/check.yml': 'a6f83eef4632e00bfbf5472f892eb53b10eca3b802bbe788780460ab9c4149b0', '.github/workflows/source-hygiene.yml': '6b6fe592c807aea736e3fe44024c78d44e703137d8701b05f6db4f44baa627e7', 'scripts/check-android-beta.py': '1e7192429d5b9fbf478b6fd63407258a9cd045819064386af5d14c25594e2c97', 'scripts/test-android-beta-metadata.py': 'fcb3e2873866fa86d220ff60d2ef834b62a30d7d074cda7e7b12b290b1f736d8', 'scripts/test-android-beta-update.sh': '04f65c8dc4494f7f4d83bff9e8a0bfc7702861c7b954232f2ad093022bab3b43', 'scripts/test-android-integrations.sh': 'f5d133d9d95f4f83cc737590d64462b668c14ce01290a7303f150459bbb0e823', 'scripts/verify-android-apk.py': '897d16221aaf2945324071035af6a37a41163777ea04ca8978efb1429c5218c5', 'tools/android-ci/build_candidate.sh': '1c6cfee9d2e2c5b2239469e3b9a78ee36364ee91bd06ebd65421e13885861792', 'tools/android-ci/bundle.py': '2233d3cd22d10979bac01b4d314bafcb5cc96284b5f13986de7a97a8307c06d6', 'tools/android-ci/delivery_gate.py': 'b7ce414bd12ec49d1f3e6db08dc9b11a282ee2983f61507df1bfd35f0672ed63', 'tools/android-ci/plan.py': '1067752c750b81dfd8a50856b031b4753ed25bd8634126c45b06ff420ee275d4', 'tools/android-ci/policy.py': 'eb6000c721bc1f2f75a4b7fdb067ce7319988410e7fb0b23d7f4608b7c8f03d2', 'tools/android-ci/protocol.py': '4d0e5bc21d9a1c2e3949cca079178d97465b2f6ce5d4cd97bc6dc9ec09d2f6f0', 'tools/android-ci/publish.py': 'caf84ee7f1309a1e6943dcd0f607f14c12ee22db8eeb5671bf3bde2d17574000', 'tools/android-signing/check_static.py': 'e66949597ea71fc89642e2b26a92cf8d7a0801dbb14a96b461a1d8b65135fd22', 'tools/android-signing/owner_key.py': '684a9f2fc6b6fecfe09db2aaf40869c91deea612b56017a696729deab38056ca', 'tools/android-signing/sign_step.py': '24b462337f65d605bac5874ec34c9d0f25af9076b695d625f68b6c20bbf17f15'}
         UPDATE_FILES=['beta-preview-export.txt','beta-legacy-export.txt','beta-migration-a.txt','beta-update-b.txt','beta-after-refusals.txt','beta-legacy-restore.txt']
 
         def verify_bundle(data, artifact, run, previous, entries, expected_plan):
@@ -286,7 +281,7 @@ jobs:
                 if attempt==120: raise ValueError('Source checks did not complete')
                 time.sleep(5)
             for name in required: check_run(api('/actions/runs/'+str(latest[name]['id'])),head,owner)
-            if latest['Android home and integrations']['id']!=run['id']: raise ValueError('Superseded candidate validation')
+            if latest['Android profile import']['id']!=run['id']: raise ValueError('Superseded candidate validation')
             previous=previous_release()
             # Tags reserve versionCodes even if an interrupted draft publication remains.
             metadata=candidate_metadata(properties(file_bytes(head,'android/beta.properties').decode()),previous)
@@ -516,7 +511,7 @@ jobs:
         \ required')\n    if candidate and (run['event'] != 'push' or run['head_branch'] != READY_BRANCH or run['path'] !=\
         \ '.github/workflows/android-integrations.yml'):\n        raise ValueError('Explicit trusted ready-branch promotion\
         \ required')\n\nREQUIRED_WORKFLOWS = {'check':'.github/workflows/check.yml','audit':'.github/workflows/audit.yml',\n\
-        \    'Source hygiene':'.github/workflows/source-hygiene.yml','Android home and integrations':'.github/workflows/android-integrations.yml'}\n\
+        \    'Source hygiene':'.github/workflows/source-hygiene.yml','Android profile import':'.github/workflows/android-integrations.yml'}\n\
         def latest_checks(rows):\n    latest={}\n    for row in sorted(rows,key=lambda x:x['id'],reverse=True):\n        if\
         \ row['event']=='push' and row['head_branch']==READY_BRANCH and row['name'] in REQUIRED_WORKFLOWS and row['path']==REQUIRED_WORKFLOWS[row['name']]:\n\
         \            latest.setdefault(row['name'],row)\n    return latest\n\ndef reusable_proof(source, owner_id):\n    if\
