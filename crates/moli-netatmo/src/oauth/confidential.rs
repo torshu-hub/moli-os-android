@@ -2,101 +2,21 @@
 //! feature is selected. Hosting, device authentication and durable handoffs are
 //! deliberately pending the owner's deployment decision.
 pub mod service;
-use http::Request;
-use http_body_util::Full;
-use serde_json::{Value as Json, json};
-
-use super::{Code, Error, Grant, Policy, Result, SCOPE};
-use crate::client::{self, Https, Transport, encode};
-
-pub async fn exchange(
-    policy: &Policy,
-    code: Code,
-    client_secret: &str,
-    now_ms: u64,
-) -> Result<Grant> {
-    exchange_with(&Https, policy, code, client_secret, now_ms).await
-}
-async fn exchange_with(
-    transport: &dyn Transport,
-    policy: &Policy,
-    code: Code,
-    secret: &str,
-    now: u64,
-) -> Result<Grant> {
-    if secret.is_empty() || secret.len() > 4096 || secret.chars().any(char::is_control) {
-        return Err(Error::Input);
-    }
-    let form = format!(
-        "grant_type=authorization_code&client_id={}&client_secret={}&code={}&redirect_uri={}&scope={SCOPE}",
-        encode(&policy.client_id),
-        encode(secret),
-        encode(code.expose()),
-        encode(&policy.redirect)
-    );
-    let request = Request::builder()
-        .method("POST")
-        .uri("/oauth2/token")
-        .header("content-type", "application/x-www-form-urlencoded")
-        .body(Full::new(moli_net::Body::from(form)))
-        .map_err(|_| Error::Input)?;
-    let response = transport
-        .send(request)
-        .await
-        .map_err(|_| Error::Ambiguous)?;
-    let answer = client::decode(&response, true).map_err(provider_error)?;
-    provider_grant(&answer, now)
-}
-fn provider_error(error: client::Failure) -> Error {
-    match error {
-        client::Failure::RateLimited(seconds) => Error::RateLimited(seconds),
-        client::Failure::Storage => Error::Storage,
-        _ => Error::Denied,
-    }
-}
-fn provider_grant(answer: &Json, now: u64) -> Result<Grant> {
-    if let Some(scope) = answer.get("scope")
-        && scope != SCOPE
-        && scope != &json!([SCOPE])
-    {
-        return Err(Error::Tokens);
-    }
-    let life = answer["expires_in"]
-        .as_u64()
-        .filter(|n| (60..=86400).contains(n))
-        .ok_or(Error::Tokens)?;
-    Grant::from_broker(
-        &json!({"scope":SCOPE,"access_token":answer["access_token"],
-        "refresh_token":answer["refresh_token"],"expires_at":now/1000+life}),
-        now,
-    )
-}
-/// Rotation is returned as one complete pair. A service must persist it before
-/// releasing a handoff, just as the existing Moli driver does in its vault.
-pub async fn refresh(
-    policy: &Policy,
-    previous: &Grant,
-    secret: &str,
-    now_ms: u64,
-) -> Result<Grant> {
-    let tokens = client::refresh(
-        &Https,
-        &previous.tokens,
-        &policy.client_id,
-        secret,
-        now_ms / 1000,
-    )
-    .await
-    .map_err(|_| Error::Denied)?;
-    Ok(Grant { tokens })
-}
-
+use super::exchange::exchange_with;
+#[cfg(test)]
+use super::exchange::provider_grant;
+pub use super::exchange::{exchange, refresh};
+use super::{Error, Grant, Result};
+#[cfg(test)]
+use super::{Policy, SCOPE};
+#[cfg(test)]
+use serde_json::json;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::{Failure, Response};
-    use http::{HeaderMap, StatusCode};
-    use http_body_util::BodyExt as _;
+    use crate::client::{Failure, Response, Transport};
+    use http::{HeaderMap, Request, StatusCode};
+    use http_body_util::{BodyExt as _, Full};
     use moli_runtime::BoxFuture;
     use std::sync::Mutex;
     struct Mock {

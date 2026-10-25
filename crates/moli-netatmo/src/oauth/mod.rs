@@ -1,12 +1,20 @@
-//! Preparatory native-client protocol. Netatmo requires a confidential server;
-//! no server URL, client secret, registration or live broker is supplied here.
+//! Native-client protocol. The default broker requires a confidential server;
+//! `personal-oauth` is an explicitly provisioned personal mobile experiment.
+//! No registration, default server or client secret is embedded in the binary.
 //! The proof below binds a Moli handoff, NOT undocumented Netatmo PKCE.
-#[cfg(not(target_os = "android"))]
+#[cfg(any(not(target_os = "android"), feature = "personal-oauth"))]
 mod callback;
 #[cfg(all(feature = "confidential-oauth", not(target_os = "android")))]
 pub mod confidential;
+#[cfg(any(
+    feature = "personal-oauth",
+    all(feature = "confidential-oauth", not(target_os = "android"))
+))]
+mod exchange;
+#[cfg(feature = "personal-oauth")]
+pub mod personal;
 pub mod remote;
-#[cfg(not(target_os = "android"))]
+#[cfg(any(not(target_os = "android"), feature = "personal-oauth"))]
 pub use callback::{CallbackSession, Code};
 #[cfg(all(test, not(target_os = "android")))]
 mod tests;
@@ -37,6 +45,9 @@ pub enum Error {
     Storage,
     Ambiguous,
     RateLimited(u64),
+    ClientRejected,
+    CodeRejected,
+    RedirectRejected,
 }
 impl Error {
     pub fn code(self) -> &'static str {
@@ -52,6 +63,9 @@ impl Error {
             Self::Storage => "storage",
             Self::Ambiguous => "oauth_ambiguous",
             Self::RateLimited(_) => "rate_limit",
+            Self::ClientRejected => "oauth_client_rejected",
+            Self::CodeRejected => "oauth_code_rejected",
+            Self::RedirectRejected => "oauth_redirect_rejected",
         }
     }
 }
@@ -69,6 +83,16 @@ impl fmt::Debug for Policy {
     }
 }
 impl Policy {
+    #[cfg(feature = "personal-oauth")]
+    fn personal(client_id: &str) -> Result<Self> {
+        if !crate::model::valid_id(client_id) {
+            return Err(Error::Input);
+        }
+        Ok(Self {
+            client_id: client_id.to_owned(),
+            redirect: personal::REDIRECT.into(),
+        })
+    }
     pub fn new(client_id: &str, redirect: &str) -> Result<Self> {
         if !crate::model::valid_id(client_id) || redirect.len() > 1024 {
             return Err(Error::Input);
@@ -140,6 +164,45 @@ impl fmt::Debug for Grant {
     }
 }
 impl Grant {
+    #[cfg(feature = "personal-oauth")]
+    pub fn from_personal_vault(bundle: &str) -> Result<Self> {
+        if bundle.len() > 16 * 1024 {
+            return Err(Error::Tokens);
+        }
+        Ok(Self {
+            tokens: Tokens::parse(bundle).map_err(|_| Error::Tokens)?,
+        })
+    }
+    #[cfg(feature = "personal-oauth")]
+    pub fn expires_at(&self) -> u64 {
+        self.tokens.expires_at
+    }
+    /// Verify a selected home using the same read-only decoder as the driver.
+    #[cfg(feature = "personal-oauth")]
+    pub async fn verify_home(&self, home: &str) -> Result<()> {
+        if !crate::model::valid_id(home) {
+            return Err(Error::Input);
+        }
+        let topology =
+            crate::client::read(&crate::client::Https, &self.tokens.access_token, home, true)
+                .await
+                .map_err(read_error)?;
+        let status = crate::client::read(
+            &crate::client::Https,
+            &self.tokens.access_token,
+            home,
+            false,
+        )
+        .await
+        .map_err(read_error)?;
+        let observations =
+            crate::model::parse(&topology, &status, home, moli_core::now_ms(), 300_000)
+                .map_err(|_| Error::Tokens)?;
+        if !observations.iter().any(crate::model::Observation::current) {
+            return Err(Error::Tokens);
+        }
+        Ok(())
+    }
     /// List the homes returned by this fresh consent, without selecting one,
     /// enabling a driver or rewriting any existing associations.
     pub async fn homes(&self) -> Result<Vec<Home>> {
@@ -203,6 +266,15 @@ impl Grant {
     /// Sole persistence boundary: the unchanged portable token-pair vault format.
     pub fn vault_bundle(&self) -> Result<String> {
         serde_json::to_string(&self.tokens).map_err(|_| Error::Tokens)
+    }
+}
+#[cfg(feature = "personal-oauth")]
+fn read_error(error: crate::client::Failure) -> Error {
+    match error {
+        crate::client::Failure::RateLimited(seconds) => Error::RateLimited(seconds),
+        crate::client::Failure::Unauthorized => Error::Denied,
+        crate::client::Failure::Network => Error::Network,
+        _ => Error::Tokens,
     }
 }
 /// Account-scoped choice for an authorized private UI, never public diagnostics.

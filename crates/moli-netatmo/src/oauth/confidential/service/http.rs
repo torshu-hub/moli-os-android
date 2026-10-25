@@ -74,7 +74,11 @@ fn private(response: impl IntoResponse) -> Response {
 fn error(error: Error) -> Response {
     let status = match error {
         Error::Input => StatusCode::BAD_REQUEST,
-        Error::State | Error::Denied => StatusCode::FORBIDDEN,
+        Error::State
+        | Error::Denied
+        | Error::ClientRejected
+        | Error::CodeRejected
+        | Error::RedirectRejected => StatusCode::FORBIDDEN,
         Error::Expired => StatusCode::GONE,
         Error::Replay | Error::Ambiguous => StatusCode::CONFLICT,
         Error::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,

@@ -11,6 +11,7 @@ use std::{
 
 type Result<T> = std::result::Result<T, &'static str>;
 const DEFAULT: &str = "android-netatmo";
+mod personal;
 
 fn instances(data: &Path) -> Result<Value> {
     use std::io::Read as _;
@@ -74,6 +75,11 @@ fn validate(input: &Value) -> Result<(PathBuf, String, MasterKey)> {
         !matches!(
             k.as_str(),
             "data" | "master" | "action" | "instance" | "consent"
+        ) && !matches!(
+            (input["action"].as_str(), k.as_str()),
+            (Some("provision"), "application")
+                | (Some("complete"), "callback")
+                | (Some("prepare_home"), "home_id" | "enable")
         )
     }) {
         return Err("input");
@@ -185,6 +191,19 @@ async fn operate(
 pub(crate) fn run(input: &Value) -> Result<Value> {
     static SESSIONS: OnceLock<Mutex<BTreeMap<(PathBuf, String), Client>>> = OnceLock::new();
     let (data, instance, master) = validate(input)?;
+    if input["action"] == "provision"
+        || moli_runtime::has_secret(
+            &data.join("secrets.enc"),
+            &master,
+            &format!(
+                "{instance}/{}",
+                moli_netatmo::oauth::personal::APPLICATION_SECRET
+            ),
+        )
+        .map_err(|_| "storage")?
+    {
+        return personal::run(input, &data, &instance, &master);
+    }
     let mut sessions = SESSIONS
         .get_or_init(|| Mutex::new(BTreeMap::new()))
         .lock()

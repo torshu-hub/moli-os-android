@@ -1,5 +1,5 @@
-//! Confidential service-side callback validation. Android receives no redirect
-//! Intent: its system browser returns to the service's registered HTTPS URL.
+//! Exact callback validation, shared with the opt-in personal flow. Android
+//! receives no redirect Intent; the personal flow requires the full pasted URL.
 use super::{Error, Policy, Result, SESSION_MS, nonce};
 use std::{collections::BTreeMap, fmt};
 
@@ -10,7 +10,7 @@ impl fmt::Debug for Code {
     }
 }
 impl Code {
-    /// Intended solely for a confidential server exchange, absent from Android.
+    /// Intended solely for the Rust token exchange, never UI/status or logs.
     pub fn expose(&self) -> &str {
         &self.0
     }

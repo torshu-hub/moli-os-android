@@ -1,5 +1,11 @@
 # Netatmo OAuth Android : préparation, service confidentiel requis
 
+**Arbitrage expérimental personnel du 25/10 :** la nouvelle
+[bêta personnelle locale](netatmo-personal-android.md) ajoute un mode opt-in avec
+identifiants après installation, sans attendre une réponse fournisseur. Le mode
+serveur décrit ci-dessous reste disponible séparément ; il n'est plus un prérequis
+du prototype personnel. Celui-ci ne revendique aucune conformité Netatmo.
+
 Voir aussi la [proposition OAuth commune Rust Android/Linux](oauth-common.md) :
 comparaison des quatre références et contrats à extraire, sans changement du
 parcours Netatmo existant ni activation d'un service.

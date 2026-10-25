@@ -523,6 +523,132 @@ async fn advance_poll() {
         tokio::task::yield_now().await;
     }
 }
+#[cfg(feature = "personal-oauth")]
+#[tokio::test(start_paused = true)]
+async fn personal_rotation_survives_driver_restart_without_repeating_the_provider_refresh() {
+    let mut h = Harness::start(false).await;
+    let instance = InstanceId::from("energy-test");
+    let app =
+        oauth::personal::Application::new("app-test", "synthetic-personal-secret", true).unwrap();
+    h.hub
+        .store_secret(
+            &instance,
+            oauth::personal::APPLICATION_SECRET,
+            &app.bundle().unwrap(),
+        )
+        .await
+        .unwrap();
+    let mut tokens = Tokens::parse(&h.hub.secret(&instance, TOKEN_SECRET).unwrap()).unwrap();
+    tokens.expires_at = 0;
+    h.hub
+        .store_secret(
+            &instance,
+            TOKEN_SECRET,
+            &serde_json::to_string(&tokens).unwrap(),
+        )
+        .await
+        .unwrap();
+    h.mock.add(200,&json!({"access_token":"personal-access","refresh_token":"personal-refresh","expires_in":10800,"scope":["read_thermostat"]}));
+    h.mock.add(200, &live_topology());
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    h.mock.add(200, &s);
+    advance_poll().await;
+    assert_eq!(
+        Tokens::parse(&h.hub.secret(&instance, TOKEN_SECRET).unwrap())
+            .unwrap()
+            .refresh_token,
+        "personal-refresh"
+    );
+    h.cancel.cancel();
+    let old = std::mem::replace(&mut h.task, tokio::spawn(async {}));
+    old.await.unwrap();
+    h.mock.add(200, &live_topology());
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    h.mock.add(200, &s);
+    let mut driver = Netatmo::new(config()).unwrap();
+    driver.transport = h.mock.clone();
+    h.cancel = CancellationToken::new();
+    h.task = spawn_driver(&h.hub, instance, Arc::new(driver), h.cancel.clone());
+    for _ in 0..10000 {
+        if h.hub.stats().drivers_running == 1 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(h.point("boiler_status"), Some(Value::Bool(true)));
+    assert_eq!(
+        h.mock
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.0 == "POST")
+            .count(),
+        1
+    );
+    h.stop().await;
+}
+#[cfg(feature = "personal-oauth")]
+#[tokio::test(start_paused = true)]
+async fn personal_ambiguous_refresh_keeps_its_durable_marker_and_never_replays() {
+    let h = Harness::start(false).await;
+    let instance = InstanceId::from("energy-test");
+    let app =
+        oauth::personal::Application::new("app-test", "synthetic-personal-secret", true).unwrap();
+    h.hub
+        .store_secret(
+            &instance,
+            oauth::personal::APPLICATION_SECRET,
+            &app.bundle().unwrap(),
+        )
+        .await
+        .unwrap();
+    let mut tokens = Tokens::parse(&h.hub.secret(&instance, TOKEN_SECRET).unwrap()).unwrap();
+    tokens.expires_at = 0;
+    h.hub
+        .store_secret(
+            &instance,
+            TOKEN_SECRET,
+            &serde_json::to_string(&tokens).unwrap(),
+        )
+        .await
+        .unwrap();
+    h.mock
+        .replies
+        .lock()
+        .unwrap()
+        .push_back(Err(Failure::Network));
+    advance_poll().await;
+    assert!(
+        h.hub
+            .secret(&instance, oauth::personal::ROTATION_SECRET)
+            .is_some()
+    );
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    tokio::time::advance(Duration::from_secs(3605)).await;
+    for _ in 0..30 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        h.mock
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.0 == "POST")
+            .count(),
+        1
+    );
+    assert_eq!(
+        Tokens::parse(&h.hub.secret(&instance, TOKEN_SECRET).unwrap())
+            .unwrap()
+            .refresh_token,
+        "test-refresh"
+    );
+    h.stop().await;
+}
 #[tokio::test(start_paused = true)]
 async fn omitted_fields_clear_previous_values_without_erasing_devices() {
     let h = Harness::start(false).await;

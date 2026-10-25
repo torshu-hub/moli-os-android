@@ -19,6 +19,7 @@ public final class GuidedEquipmentTest {
     @Test public void restoredInventoryGuidedIdentificationLocalReadAndRedactedCorrelation()throws Exception {
         assertTrue(android.os.Build.FINGERPRINT.contains("generic")||android.os.Build.MODEL.contains("sdk"));
         Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(EngineHost.State.STOPPED,EngineHost.state());if(!ProtectedKey.exists(app))ProtectedKey.create(app,"4826");
+        NetatmoPersonalFixture.verify(app);
         app.getSharedPreferences("meross-draft",Context.MODE_PRIVATE).edit().clear().commit();
         for(String kind:new String[]{"weather","demo","import"})ProfileStore.remove(app,kind);
         EngineHost.maintain(()->{EquipmentStore.save(app,new JSONObject());return null;}).get();

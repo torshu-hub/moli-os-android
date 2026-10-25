@@ -10,11 +10,14 @@ import org.json.*;
  * The native Rust boundary owns all ephemeral proofs and token persistence. */
 final class NetatmoOAuthUi {
     interface Backend { JSONObject call(JSONObject input) throws Exception; }
-    private static final Set<String> FIELDS=Set.of("setup_required","state","scope","credential_present","instances","selected","authorization_url","remote_revocation_required","client_id","redirect_uri");
-    private static final Set<String> STATES=Set.of("idle","pending","saving","stored","denied","expired");
-    boolean setupRequired=true, credentials, revokeRequired;
+    private static final Set<String> FIELDS=Set.of("setup_required","state","scope","credential_present","instances","selected","authorization_url","remote_revocation_required","client_id","redirect_uri","experimental","homes","selected_home","read_verified");
+    private static final Set<String> STATES=Set.of("idle","pending","saving","stored","denied","expired","error");
+    boolean setupRequired=true, credentials, revokeRequired, experimental, verified, enabled;
     String state="idle", selected="", clientId="", redirect="";
     List<String> instances=List.of();
+    List<String> homeIds=List.of(), homeNames=List.of();
+    String selectedHome="";
+    static final String PERSONAL_REDIRECT="http://localhost/moli-netatmo";
 
     void apply(JSONObject result) throws Exception {
         if(result.length()>FIELDS.size())throw new IllegalArgumentException("oauth_input");
@@ -28,16 +31,26 @@ final class NetatmoOAuthUi {
             if(id.isEmpty()||id.length()>128||id.indexOf(':')>=0||id.indexOf('/')>=0||id.indexOf('\\')>=0||id.chars().anyMatch(Character::isISOControl)||ids.contains(id))throw new IllegalArgumentException("oauth_input");ids.add(id);
         }
         String chosen=result.getString("selected");if(!ids.contains(chosen))throw new IllegalArgumentException("oauth_input");
+        boolean selectedEnabled=false;
+        for(int i=0;i<rows.length();i++)if(rows.getJSONObject(i).getString("id").equals(chosen))selectedEnabled=rows.getJSONObject(i).optBoolean("enabled");
+        JSONArray homes=result.optJSONArray("homes");List<String> homeIdsNext=new ArrayList<>(),homeNamesNext=new ArrayList<>();
+        if(homes!=null){if(homes.length()>32)throw new IllegalArgumentException("oauth_input");for(int i=0;i<homes.length();i++){
+            JSONObject home=homes.getJSONObject(i);String id=home.getString("id"),name=home.getString("name");
+            if(!id.matches("[A-Za-z0-9_-]{1,128}")||homeIdsNext.contains(id)||name.length()>256||name.chars().anyMatch(Character::isISOControl))throw new IllegalArgumentException("oauth_input");
+            homeIdsNext.add(id);homeNamesNext.add(name+" — "+id);
+        }}
         boolean setup=result.getBoolean("setup_required");
         String app=result.optString("client_id"),callback=result.optString("redirect_uri");
         if(!setup&&(!app.matches("[A-Za-z0-9_-]{1,128}")||!validRedirect(callback)))throw new IllegalArgumentException("oauth_setup");
         setupRequired=setup;state=next;selected=chosen;instances=List.copyOf(ids);
         credentials=result.getBoolean("credential_present");revokeRequired=result.optBoolean("remote_revocation_required");
         clientId=app;redirect=callback;
+        homeIds=List.copyOf(homeIdsNext);homeNames=List.copyOf(homeNamesNext);selectedHome=result.isNull("selected_home")?"":result.optString("selected_home");
+        experimental=result.optBoolean("experimental");verified=result.optBoolean("read_verified");enabled=selectedEnabled;
     }
     JSONObject request(String action,boolean consent) throws Exception {
-        if(!Set.of("status","begin","check","cancel","disconnect").contains(action))throw new IllegalArgumentException("oauth_input");
-        if((action.equals("begin")||action.equals("disconnect"))&&!consent)throw new IllegalArgumentException("oauth_consent");
+        if(!Set.of("status","begin","check","cancel","disconnect","provision","complete","homes","prepare_home").contains(action))throw new IllegalArgumentException("oauth_input");
+        if(Set.of("begin","disconnect","provision","prepare_home").contains(action)&&!consent)throw new IllegalArgumentException("oauth_consent");
         if(action.equals("begin")&&setupRequired)throw new IllegalArgumentException("oauth_setup");
         JSONObject request=new JSONObject().put("action",action);
         if(!selected.isEmpty())request.put("instance",selected);
@@ -56,6 +69,7 @@ final class NetatmoOAuthUi {
     }
     boolean interrupted(boolean awaiting){return awaiting&&state.equals("idle");}
     static boolean validRedirect(String value) {
+        if(PERSONAL_REDIRECT.equals(value))return true;
         try {URI uri=new URI(value);return value.length()<=1024&&"https".equals(uri.getScheme())&&uri.getHost()!=null&&uri.getRawUserInfo()==null&&(uri.getPort()==-1||uri.getPort()==443)&&uri.getRawQuery()==null&&uri.getFragment()==null&&!uri.getPath().isEmpty();}
         catch(Exception invalid){return false;}
     }

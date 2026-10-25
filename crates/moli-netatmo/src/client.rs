@@ -154,7 +154,7 @@ async fn read_path(transport: &dyn Transport, token: &str, path: String) -> Resu
     decode(&transport.send(request).await?, false)
 }
 
-#[cfg(any(not(target_os = "android"), test))]
+#[cfg(any(not(target_os = "android"), test, feature = "personal-oauth"))]
 pub(crate) async fn refresh(
     transport: &dyn Transport,
     tokens: &Tokens,

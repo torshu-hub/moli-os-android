@@ -1,12 +1,12 @@
 use super::*;
 use moli_netatmo::oauth::{Grant, Policy, Reply};
 use moli_runtime::{BoxFuture, read_secret};
-struct Fixture {
-    root: PathBuf,
+pub(super) struct Fixture {
+    pub(super) root: PathBuf,
     key: MasterKey,
 }
 impl Fixture {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
             "moli-oauth-{}-{}",
@@ -36,7 +36,7 @@ impl Fixture {
             key: MasterKey::new("33".repeat(32)),
         }
     }
-    fn request(&self, action: &str) -> Value {
+    pub(super) fn request(&self, action: &str) -> Value {
         json!({"data":self.root,"master":"33".repeat(32),"instance":"energy-test","action":action,"consent":true})
     }
 }

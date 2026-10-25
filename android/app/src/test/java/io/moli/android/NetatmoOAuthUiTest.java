@@ -8,6 +8,20 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public final class NetatmoOAuthUiTest {
+    @Test public void personalRedirectAndPrivateHomesAreStrictlyBoundWithoutExposingCredentials()throws Exception {
+        assertTrue(NetatmoOAuthUi.validRedirect(NetatmoOAuthUi.PERSONAL_REDIRECT));
+        assertFalse(NetatmoOAuthUi.validRedirect("http://localhost.evil/moli-netatmo"));
+        NetatmoOAuthUi model=new NetatmoOAuthUi();
+        JSONObject state=snapshot("stored",true,false).put("experimental",true).put("redirect_uri",NetatmoOAuthUi.PERSONAL_REDIRECT)
+            .put("read_verified",true).put("selected_home","home-test").put("homes",new JSONArray().put(new JSONObject().put("id","home-test").put("name","Synthetic house")));
+        model.apply(state);assertTrue(model.experimental);assertTrue(model.verified);assertEquals("home-test",model.homeIds.get(0));
+        assertThrows(IllegalArgumentException.class,()->model.request("prepare_home",false));
+        assertThrows(IllegalArgumentException.class,()->model.request("provision",false));
+        assertEquals("provision",model.request("provision",true).getString("action"));
+        assertFalse(model.toString().contains("Synthetic house"));
+        state.getJSONArray("homes").put(new JSONObject().put("id","home-test").put("name","Duplicate"));
+        assertThrows(IllegalArgumentException.class,()->model.apply(state));
+    }
     private static final String REDIRECT="https://oauth.example.com/netatmo/return";
     private static String url() throws Exception {return "https://api.netatmo.com/oauth2/authorize?response_type=code&client_id=test-client&redirect_uri="+URLEncoder.encode(REDIRECT,StandardCharsets.UTF_8.name())+"&scope=read_thermostat&state="+"a".repeat(64);}
     private static JSONObject snapshot(String state,boolean credentials,boolean setup)throws Exception {

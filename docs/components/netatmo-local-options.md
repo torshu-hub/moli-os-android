@@ -1,5 +1,10 @@
 # Netatmo : priorité au moteur Android local, choix d'hôte encore ouvert
 
+**Suite à un arbitrage personnel explicite du 25/10 :** le
+[parcours Android expérimental local](netatmo-personal-android.md) est développé
+sans attendre la réponse du fournisseur. L'analyse de conformité ci-dessous reste
+valable ; elle n'est plus une condition d'arrêt de ce prototype réversible.
+
 Évaluation du 25 octobre 2026. **Aucun déploiement, compte, application, secret
 réel ou consentement n'a été créé ou utilisé.** Cette note complète l'étude
 [OAuth commune](oauth-common.md) ; le backend séparé n'est pas le choix par défaut.

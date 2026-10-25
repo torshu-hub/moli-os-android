@@ -9,6 +9,8 @@ rust-version.workspace = true
 [features]
 # Code exchange with a confidential client is never compiled into Android.
 confidential-oauth = ["dep:axum"]
+# Explicit personal prototype; never embeds a registration or client secret.
+personal-oauth = []
 
 [dependencies]
 moli-core.workspace = true

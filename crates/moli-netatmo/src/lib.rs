@@ -113,7 +113,51 @@ impl Netatmo {
         Ok(Some(next.tokens))
     }
     // Netatmo explicitly forbids the client secret on mobile. Keep the
-    // original confidential refresh path on servers; Android awaits its broker.
+    // server path by default; the separate personal feature is experimental.
+    #[cfg(feature = "personal-oauth")]
+    async fn personal_refresh(
+        &self,
+        ctx: &DriverCtx,
+        tokens: &Tokens,
+        now: u64,
+    ) -> Result<Option<Tokens>, Failure> {
+        let Some(raw) = ctx.secret(oauth::personal::APPLICATION_SECRET) else {
+            return Ok(None);
+        };
+        if !ctx.can_store_secrets() {
+            return Err(Failure::Storage);
+        }
+        let app = oauth::personal::Application::parse(&raw).map_err(|_| Failure::Credentials)?;
+        if self
+            .config
+            .client_id
+            .as_deref()
+            .is_some_and(|id| id != app.client_id())
+        {
+            return Err(Failure::Credentials);
+        }
+        let previous = oauth::Grant {
+            tokens: tokens.clone(),
+        };
+        let marker =
+            oauth::personal::rotation_fingerprint(&previous).map_err(|_| Failure::Credentials)?;
+        ctx.store_secret(oauth::personal::ROTATION_SECRET, &marker)
+            .await
+            .map_err(|_| Failure::Storage)?;
+        match app
+            .renew_with(self.transport.as_ref(), &previous, now.saturating_mul(1000))
+            .await
+        {
+            Ok(grant) => Ok(Some(grant.tokens)),
+            Err(oauth::Error::RateLimited(seconds)) => {
+                ctx.forget_secret(oauth::personal::ROTATION_SECRET)
+                    .await
+                    .map_err(|_| Failure::Storage)?;
+                Err(Failure::RateLimited(seconds))
+            }
+            Err(_) => Err(Failure::Credentials),
+        }
+    }
     #[cfg(not(target_os = "android"))]
     async fn refresh_tokens(
         &self,
@@ -122,6 +166,10 @@ impl Netatmo {
         now: u64,
     ) -> Result<Tokens, Failure> {
         if let Some(tokens) = self.broker_refresh(ctx, tokens, now).await? {
+            return Ok(tokens);
+        }
+        #[cfg(feature = "personal-oauth")]
+        if let Some(tokens) = self.personal_refresh(ctx, tokens, now).await? {
             return Ok(tokens);
         }
         let client_id = self
@@ -142,6 +190,10 @@ impl Netatmo {
         tokens: &Tokens,
         now: u64,
     ) -> Result<Tokens, Failure> {
+        #[cfg(feature = "personal-oauth")]
+        if let Some(tokens) = self.personal_refresh(ctx, tokens, now).await? {
+            return Ok(tokens);
+        }
         self.broker_refresh(ctx, tokens, now)
             .await?
             .ok_or(Failure::Credentials)
@@ -155,6 +207,21 @@ impl Netatmo {
         persist_pending(ctx, pending).await?;
         let raw = ctx.secret(TOKEN_SECRET).ok_or(Failure::Credentials)?;
         let mut tokens = Tokens::parse(&raw)?;
+        #[cfg(feature = "personal-oauth")]
+        if ctx.secret(oauth::personal::APPLICATION_SECRET).is_some() {
+            let fingerprint = oauth::personal::rotation_fingerprint(&oauth::Grant {
+                tokens: tokens.clone(),
+            })
+            .map_err(|_| Failure::Credentials)?;
+            if let Some(previous) = ctx.secret(oauth::personal::ROTATION_SECRET) {
+                if previous == fingerprint {
+                    return Err(Failure::Credentials);
+                }
+                ctx.forget_secret(oauth::personal::ROTATION_SECRET)
+                    .await
+                    .map_err(|_| Failure::Storage)?;
+            }
+        }
         let now = now_ms() / 1000;
         if force_refresh || tokens.expires_at <= now.saturating_add(60) {
             let rotated = self.refresh_tokens(ctx, &tokens, now).await?;
