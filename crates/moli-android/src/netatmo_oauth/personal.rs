@@ -175,7 +175,7 @@ fn prepare_configuration(
     if row.get("options").is_none() {
         row["options"] = Item::Table(Table::new());
     }
-    let options = row["options"].as_table_mut().ok_or("configuration")?;
+    let options = row["options"].as_table_like_mut().ok_or("configuration")?;
     if options
         .get("home_id")
         .and_then(Item::as_str)
@@ -183,8 +183,8 @@ fn prepare_configuration(
     {
         return Err("oauth_home_conflict");
     }
-    options["home_id"] = value(home);
-    options["client_id"] = value(app_id);
+    options.insert("home_id", value(home));
+    options.insert("client_id", value(app_id));
     let next = doc.to_string();
     moli_os::validate_configuration(&next).map_err(|_| "configuration")?;
     Ok(next)
@@ -388,6 +388,26 @@ mod tests {
         assert!(next.starts_with(raw));
         let value: toml::Value = toml::from_str(&next).unwrap();
         assert_eq!(value["driver"][0]["enabled"].as_bool(), Some(false));
+    }
+    #[test]
+    fn selecting_home_preserves_inline_options_and_the_following_driver() {
+        let raw = "# inline configuration\n[[driver]]\nid='energy-test'\nkind='netatmo'\nenabled=false\noptions = { home_id='home-test', poll_seconds=240, max_age_seconds=600 } # keep comment\n\n[[driver]]\nid='other'\nkind='demo'\nenabled=false\n";
+        let next =
+            prepare_configuration(raw, "energy-test", "app-test", "home-test", false).unwrap();
+        let before: toml::Value = toml::from_str(raw).unwrap();
+        let after: toml::Value = toml::from_str(&next).unwrap();
+        assert!(next.ends_with(raw.split("\n\n[[driver]]").nth(1).unwrap()));
+        assert!(next.contains("# keep comment"));
+        assert_eq!(before["driver"][1], after["driver"][1]);
+        assert_eq!(
+            after["driver"][0]["options"]["poll_seconds"].as_integer(),
+            Some(240)
+        );
+        assert_eq!(after["driver"][0]["enabled"].as_bool(), Some(false));
+        assert_eq!(
+            after["driver"][0]["options"]["client_id"].as_str(),
+            Some("app-test")
+        );
     }
     #[test]
     fn personal_provision_is_encrypted_and_preserves_all_existing_configuration() {

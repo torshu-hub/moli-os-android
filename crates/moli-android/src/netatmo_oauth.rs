@@ -1,5 +1,6 @@
-//! Native preparation boundary. No broker deployment, client secret, callback
-//! Intent, arbitrary URL or token import is accepted through JNI.
+//! Private native OAuth boundary. Personal credentials are accepted only by
+//! explicit post-install provisioning; callbacks require the complete bound URL.
+//! No broker deployment, callback Intent, arbitrary URL or token import.
 use moli_netatmo::oauth::{Broker, Client, Error, SCOPE, State, Unconfigured};
 use moli_runtime::{MasterKey, forget_secret, has_secret, set_secret};
 use serde_json::{Value, json};
