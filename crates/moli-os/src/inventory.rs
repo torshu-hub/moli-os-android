@@ -74,6 +74,12 @@ kind = "profile"
 [driver.options]
 profile = "/nonexistent/private-profile.toml"
 key = "private-key"
+[[driver]]
+id = "energy-test"
+kind = "netatmo"
+enabled = false
+[driver.options]
+home_id = "private-home-test"
 "#,
         )
         .unwrap();
@@ -97,8 +103,16 @@ key = "private-key"
         );
         assert!(moonraker.iter().any(|r| r["kind"] == "moonraker"));
         assert!(moonraker.iter().any(|r| r["kind"] == "profile"));
+        let netatmo = rows.iter().find(|r| r["id"] == "netatmo").unwrap();
+        assert_eq!(netatmo["compiled"], true);
+        assert_eq!(netatmo["instances"][0]["enabled"], false);
         let serialized = serde_json::to_string(&rows).unwrap();
-        for forbidden in ["private-host", "private-profile", "private-key"] {
+        for forbidden in [
+            "private-host",
+            "private-profile",
+            "private-key",
+            "private-home-test",
+        ] {
             assert!(!serialized.contains(forbidden));
         }
         for row in rows

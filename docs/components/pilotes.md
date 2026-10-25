@@ -593,3 +593,9 @@ ni pièce native). Il ne déplace jamais rien. Sans argument : plan à blanc ; `
 | `profile` | `moli-profile` | HTTP/HTTPS GET, Meross signé | oui si le profil déclare `[[write]]` (Daikin) | Daikin BRP069 (lecture), Meross EM06, Open-Meteo, Tempo, iopool EcO (voir [profils.md](profils.md#les-profils-du-catalogue)) |
 | `helpers` | `moli-helpers` | aucun (valeurs gardées par Moli) | oui | sans objet |
 | `lumieres` (interne) | `moli-lights` | aucun (lit et commande d'autres appareils via le hub) | oui | ampoules Hue derrière un relais |
+
+## `netatmo` : Netatmo Energy observé en lecture seule
+
+Pilote Rust portable, coffre et hub originaux ; températures, consignes, modes,
+programme sélectionné et demande déclarée si le modèle fournit le champ documenté.
+Aucun point inscriptible. [Contrat, configuration, fraîcheur et consentement OAuth](netatmo-energy.md).

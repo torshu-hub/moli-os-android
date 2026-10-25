@@ -52,6 +52,7 @@ téléphones passent sans Access, avec leur propre jeton.
 | Doc | Contenu |
 |---|---|
 | [coeur.md](components/coeur.md) | vocabulaire, hub, bus, garde et approbations, sessions PIN, journal, étiquettes, coffre des secrets, superviseur |
+| [netatmo-energy.md](components/netatmo-energy.md) | Netatmo Energy portable en lecture seule, fraîcheur et prérequis OAuth |
 | [pilotes.md](components/pilotes.md) | trait `Driver`, chaque pilote natif, `moli-net` |
 | [profils.md](components/profils.md) | moteur de profils déclaratifs, format TOML, ajouter un appareil sans code |
 | [historique-energie.md](components/historique-energie.md) | historique SQLite, SQL pour agents, énergie (kWh, €, Tempo), import HA |

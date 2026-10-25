@@ -903,6 +903,7 @@ const KINDS: &[&str] = &[
     "hue",
     "dirigera",
     "igd",
+    "netatmo",
     "tapo",
     "philips",
     "frigate",
@@ -1045,6 +1046,9 @@ fn build_driver(
         "dirigera" => Arc::new(moli_dirigera::Dirigera::new(
             config.options.clone().try_into().with_context(context)?,
         )),
+        "netatmo" => Arc::new(moli_netatmo::Netatmo::new(
+            config.options.clone().try_into().with_context(context)?,
+        )?),
         "igd" => Arc::new(moli_igd::Igd::new(
             config.options.clone().try_into().with_context(context)?,
         )),

@@ -1,7 +1,8 @@
 <script>
-  import { device, nameOf, reachable, since, relative, home, num } from '../lib/home.svelte.js';
+  import { device, nameOf, reachable, since, relative, home, hub, num } from '../lib/home.svelte.js';
   import { t } from '../../lib/i18n.svelte.js';
   import Icon from './Icon.svelte';
+  import NetatmoCard from './NetatmoCard.svelte';
 
   /** Any device shown by its readings, in words. */
   let { id, name = null } = $props();
@@ -42,6 +43,9 @@
   const last = $derived(Math.max(0, ...(d?.points ?? []).map((p) => since(id, p.key) ?? 0)));
 </script>
 
+{#if hub.drivers.some(r => r.instance === d?.instance && r.kind === 'netatmo')}
+  <NetatmoCard {id} {name} />
+{:else}
 <section class="card sensor" class:off={!reachable(id)}>
   <div class="card-head">
     <h2><Icon name="info" size={18} />{nameOf(id, name)}</h2>
@@ -57,6 +61,7 @@
     <p class="muted">{t('commun.capteur.pas_de_mesure')}</p>
   {/if}
 </section>
+{/if}
 
 <style>
   .off {

@@ -1,0 +1,11 @@
+{
+  "status": "ok", "time_server": 1800000000,
+  "body": {"homes": [{"id": "home-test", "name": "Synthetic home", "therm_mode": "schedule",
+    "rooms": [{"id": "101", "name": "Synthetic room"}],
+    "modules": [
+      {"id": "aa:bb:cc:dd:ee:01", "name": "Synthetic thermostat", "type": "NATherm1"},
+      {"id": "aa:bb:cc:dd:ee:02", "name": "Synthetic valve", "type": "NRV"}
+    ],
+    "schedules": [{"id": "program-test", "name": "Synthetic program", "selected": true}]
+  }]}
+}

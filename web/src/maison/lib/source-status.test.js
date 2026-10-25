@@ -36,3 +36,18 @@ test('Meross distinguishes startup and brief lost confirmation from a significan
  assert.equal(sampleMaxAge('meross','energy_recent'),660000);
  assert.equal(sampleMaxAge('meross','signal'),135000);
 });
+
+import { netatmoStatus } from './netatmo-status.js';
+test('Netatmo dates the cloud reply separately and hides cached readings on loss or expiry', () => {
+  const driver = {status:{state:'running'}};
+  const device = {online:true,state:{freshness:{value:'cloud_recent'},collected_at:{value:2000},server_at:{value:1000},max_age_seconds:{value:300}}};
+  assert.equal(netatmoStatus(device,driver,true,3000),'cloud_recent');
+  assert.equal(netatmoStatus(device,driver,false,3000),'unconfirmed');
+  assert.equal(netatmoStatus(device,{status:{state:'stopped'}},true,3000),'unconfirmed');
+  assert.equal(netatmoStatus(device,driver,true,301001),'stale');
+  assert.equal(netatmoStatus(device,driver,true,999),'stale');
+  device.state.server_at.value=null;
+  assert.equal(netatmoStatus(device,driver,true,3000),'stale');
+  device.state.freshness.value='offline';
+  assert.equal(netatmoStatus(device,driver,true,3000),'offline');
+});

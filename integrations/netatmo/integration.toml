@@ -1,0 +1,21 @@
+[integration]
+id = "netatmo"
+name = "Netatmo Energy (read-only)"
+brands = ["Netatmo"]
+models = ["NATherm1", "OTM", "NRV"]
+transport = "https"
+driver = "netatmo"
+crate = "moli-netatmo"
+
+[needs]
+secrets = ["oauth_tokens"]
+options = ["home_id"]
+
+[origin]
+reused = "Netatmo official Energy/OAuth documentation; original Rust implementation, synthetic fixtures; see README.md"
+author = "agent"
+
+[[fixture]]
+file = "fixtures/homesdata.json"
+[[fixture]]
+file = "fixtures/homestatus.json"

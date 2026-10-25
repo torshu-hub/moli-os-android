@@ -31,6 +31,7 @@ moli-frigate = { path = "crates/moli-frigate" }
 moli-philips = { path = "crates/moli-philips" }
 moli-tapo = { path = "crates/moli-tapo" }
 moli-igd = { path = "crates/moli-igd" }
+moli-netatmo = { path = "crates/moli-netatmo" }
 moli-ipp = { path = "crates/moli-ipp" }
 moli-assistant = { path = "crates/moli-assistant" }
 moli-automation = { path = "crates/moli-automation" }
@@ -59,6 +60,7 @@ symphonia-core = "0.6"
 clap = { version = "4", features = ["derive", "env"] }
 futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 http = "1"
+httpdate = "1"
 http-body-util = "0.1"
 hyper = { version = "1", default-features = false, features = ["client", "http1"] }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }

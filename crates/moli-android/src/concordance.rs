@@ -934,6 +934,46 @@ mod tests {
     }
 
     #[test]
+    fn netatmo_manual_instance_survives_android_preparation_unchanged() {
+        let mut s = fixture();
+        let first = run(&s).unwrap();
+        again(&mut s, &first);
+        let mut config: toml::Value = toml::from_str(s["config"].as_str().unwrap()).unwrap();
+        let added: toml::Value = toml::from_str(
+            r#"
+[[driver]]
+id = "energy-test"
+kind = "netatmo"
+enabled = false
+[driver.options]
+home_id = "home-test"
+client_id = "app-test"
+poll_seconds = 120
+max_age_seconds = 300
+"#,
+        )
+        .unwrap();
+        let expected = added["driver"][0].clone();
+        config["driver"]
+            .as_array_mut()
+            .unwrap()
+            .push(expected.clone());
+        s["config"] = json!(toml::to_string(&config).unwrap());
+        let next = run(&s).unwrap();
+        let parsed: toml::Value = toml::from_str(next["config"].as_str().unwrap()).unwrap();
+        let actual = parsed["driver"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["id"].as_str() == Some("energy-test"))
+            .unwrap();
+        assert_eq!(actual, &expected);
+        assert_eq!(next["home"], first["home"]);
+        again(&mut s, &next);
+        assert_eq!(run(&s).unwrap(), next);
+    }
+
+    #[test]
     fn ambiguity_missing_selection_invalid_input_and_duplicate_uuid_never_generate_replacements() {
         let mut s = fixture();
         s["config"] = json!(crate::profiles::configuration(&s.to_string()).unwrap());
