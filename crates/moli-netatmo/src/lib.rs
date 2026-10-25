@@ -10,7 +10,7 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use moli_core::{Access, Device, DeviceId, Kind, PointSpec, Semantic, Unit, Value, now_ms};
 use moli_i18n::tr;
-use moli_runtime::{BoxFuture, Driver, DriverCtx};
+use moli_runtime::{BoxFuture, Driver, DriverCtx, ReadEvent, ReadOutcome, ReadStage, ReadSummary};
 use serde::Deserialize;
 use tokio::time::Instant;
 
@@ -155,6 +155,7 @@ impl Netatmo {
                     .map_err(|_| Failure::Storage)?;
                 Err(Failure::RateLimited(seconds))
             }
+            Err(oauth::Error::Ambiguous) => Err(Failure::Ambiguous),
             Err(_) => Err(Failure::Credentials),
         }
     }
@@ -204,54 +205,89 @@ impl Netatmo {
         force_refresh: bool,
         pending: &mut Option<Tokens>,
     ) -> Result<Vec<Observation>, Failure> {
-        persist_pending(ctx, pending).await?;
-        let raw = ctx.secret(TOKEN_SECRET).ok_or(Failure::Credentials)?;
-        let mut tokens = Tokens::parse(&raw)?;
-        #[cfg(feature = "personal-oauth")]
-        if ctx.secret(oauth::personal::APPLICATION_SECRET).is_some() {
-            let fingerprint = oauth::personal::rotation_fingerprint(&oauth::Grant {
-                tokens: tokens.clone(),
-            })
-            .map_err(|_| Failure::Credentials)?;
-            if let Some(previous) = ctx.secret(oauth::personal::ROTATION_SECRET) {
-                if previous == fingerprint {
-                    return Err(Failure::Credentials);
-                }
-                ctx.forget_secret(oauth::personal::ROTATION_SECRET)
-                    .await
-                    .map_err(|_| Failure::Storage)?;
-            }
-        }
-        let now = now_ms() / 1000;
-        if force_refresh || tokens.expires_at <= now.saturating_add(60) {
-            let rotated = self.refresh_tokens(ctx, &tokens, now).await?;
-            // Retain an unsaved rotation only to retry persistence. Never read
-            // with it before the whole pair has reached the encrypted vault.
-            *pending = Some(rotated);
+        ctx.observe_read(
+            "netatmo",
+            ReadEvent::Attempt {
+                credential_present: ctx.secret(TOKEN_SECRET).is_some(),
+                token_expired: false,
+            },
+        );
+        let mut tokens = observed(ctx, ReadStage::Authorization, async {
             persist_pending(ctx, pending).await?;
-            tokens = Tokens::parse(&ctx.secret(TOKEN_SECRET).ok_or(Failure::Storage)?)?;
+            let raw = ctx.secret(TOKEN_SECRET).ok_or(Failure::Credentials)?;
+            let tokens = Tokens::parse(&raw)?;
+            #[cfg(feature = "personal-oauth")]
+            if ctx.secret(oauth::personal::APPLICATION_SECRET).is_some() {
+                let fingerprint = oauth::personal::rotation_fingerprint(&oauth::Grant {
+                    tokens: tokens.clone(),
+                })
+                .map_err(|_| Failure::Credentials)?;
+                if let Some(previous) = ctx.secret(oauth::personal::ROTATION_SECRET) {
+                    if previous == fingerprint {
+                        return Err(Failure::Ambiguous);
+                    }
+                    ctx.forget_secret(oauth::personal::ROTATION_SECRET)
+                        .await
+                        .map_err(|_| Failure::Storage)?;
+                }
+            }
+            Ok(tokens)
+        })
+        .await?;
+        let now = now_ms() / 1000;
+        ctx.observe_read(
+            "netatmo",
+            ReadEvent::Attempt {
+                credential_present: true,
+                token_expired: tokens.expires_at <= now,
+            },
+        );
+        if force_refresh || tokens.expires_at <= now.saturating_add(60) {
+            tokens = observed(ctx, ReadStage::Renewal, async {
+                let rotated = self.refresh_tokens(ctx, &tokens, now).await?;
+                // Retain an unsaved rotation only to retry persistence. Never read
+                // with it before the whole pair has reached the encrypted vault.
+                *pending = Some(rotated);
+                persist_pending(ctx, pending).await?;
+                Tokens::parse(&ctx.secret(TOKEN_SECRET).ok_or(Failure::Storage)?)
+            })
+            .await?;
+            ctx.observe_read("netatmo", ReadEvent::TokenFresh);
         }
-        let topology = client::read(
-            self.transport.as_ref(),
-            &tokens.access_token,
-            &self.config.home_id,
-            true,
+        let topology = observed(
+            ctx,
+            ReadStage::Homesdata,
+            client::read(
+                self.transport.as_ref(),
+                &tokens.access_token,
+                &self.config.home_id,
+                true,
+            ),
         )
         .await?;
-        let status = client::read(
-            self.transport.as_ref(),
-            &tokens.access_token,
-            &self.config.home_id,
-            false,
+        let status = observed(
+            ctx,
+            ReadStage::Homestatus,
+            client::read(
+                self.transport.as_ref(),
+                &tokens.access_token,
+                &self.config.home_id,
+                false,
+            ),
         )
         .await?;
-        model::parse(
-            &topology,
-            &status,
-            &self.config.home_id,
-            now_ms(),
-            self.config.max_age_seconds * 1000,
+        observed(
+            ctx,
+            ReadStage::Parsing,
+            std::future::ready(model::parse(
+                &topology,
+                &status,
+                &self.config.home_id,
+                now_ms(),
+                self.config.max_age_seconds * 1000,
+            )),
         )
+        .await
     }
 }
 impl Driver for Netatmo {
@@ -260,6 +296,15 @@ impl Driver for Netatmo {
     }
     fn run<'a>(&'a self, ctx: &'a mut DriverCtx) -> BoxFuture<'a, anyhow::Result<()>> {
         Box::pin(async move {
+            ctx.observe_read(
+                "netatmo",
+                ReadEvent::Configuration {
+                    enabled: true,
+                    credential_present: ctx.secret(TOKEN_SECRET).is_some(),
+                    target_selected: !self.config.home_id.is_empty(),
+                },
+            );
+            ctx.observe_read("netatmo", ReadEvent::Started);
             let mut records = BTreeMap::new();
             // Cache restoration must never briefly announce an old demand as current.
             for id in ctx.devices() {
@@ -288,6 +333,27 @@ impl Driver for Netatmo {
                 };
                 let delay = match result {
                     Ok(observations) => {
+                        ctx.observe_read(
+                            "netatmo",
+                            ReadEvent::Stage(ReadStage::Publication, ReadOutcome::Pending),
+                        );
+                        let summary = ReadSummary {
+                            devices: observations.len() as u64,
+                            fresh: observations.iter().filter(|o| o.current()).count() as u64,
+                            temperatures: reading_count(&observations, "temperature"),
+                            setpoints: reading_count(&observations, "setpoint_temperature"),
+                            modes: reading_count(&observations, "mode"),
+                            demand_present: reading_count(&observations, "boiler_status"),
+                            demand_unknown: observations
+                                .iter()
+                                .filter(|o| {
+                                    matches!(o.model.as_str(), "NATherm1" | "OTM")
+                                        && o.readings
+                                            .get("boiler_status")
+                                            .is_none_or(|v| *v == Value::Null)
+                                })
+                                .count() as u64,
+                        };
                         let seen: std::collections::BTreeSet<_> = observations
                             .iter()
                             .map(|o| ctx.device_id(&o.native))
@@ -304,6 +370,7 @@ impl Driver for Netatmo {
                             );
                         }
                         force_refresh = false;
+                        ctx.observe_read("netatmo", ReadEvent::Published(summary));
                         ctx.ready();
                         self.config.poll_seconds
                     }
@@ -328,6 +395,34 @@ impl Driver for Netatmo {
             }
         })
     }
+}
+
+fn reading_count(observations: &[Observation], key: &str) -> u64 {
+    observations
+        .iter()
+        .filter(|o| o.readings.get(key).is_some_and(|v| *v != Value::Null))
+        .count() as u64
+}
+async fn observed<T>(
+    ctx: &DriverCtx,
+    stage: ReadStage,
+    future: impl std::future::Future<Output = Result<T, Failure>>,
+) -> Result<T, Failure> {
+    ctx.observe_read("netatmo", ReadEvent::Stage(stage, ReadOutcome::Pending));
+    let result = future.await;
+    let outcome = match &result {
+        Ok(_) => ReadOutcome::Ok,
+        Err(Failure::Network) => ReadOutcome::Transport,
+        Err(Failure::Unauthorized) => ReadOutcome::Authorization,
+        Err(Failure::Credentials) => ReadOutcome::Credentials,
+        Err(Failure::Ambiguous) => ReadOutcome::Ambiguous,
+        Err(Failure::RateLimited(_)) => ReadOutcome::RateLimit,
+        Err(Failure::Storage) => ReadOutcome::Storage,
+        Err(Failure::InvalidResponse) => ReadOutcome::InvalidResponse,
+        Err(Failure::Api) => ReadOutcome::Provider,
+    };
+    ctx.observe_read("netatmo", ReadEvent::Stage(stage, outcome));
+    result
 }
 
 async fn persist_pending(ctx: &DriverCtx, pending: &mut Option<Tokens>) -> Result<(), Failure> {
@@ -372,6 +467,7 @@ fn invalidate(ctx: &DriverCtx, id: &DeviceId, quality: &str, error: &str) {
         "boiler_status",
         "battery_state",
         "home_mode",
+        "home_name",
         "schedule",
     ] {
         ctx.set_state(id, key, Value::Null);
@@ -433,6 +529,7 @@ fn error_text(code: &str) -> String {
     match code {
         "network" => tr!("pilotes.netatmo.network"),
         "oauth" => tr!("pilotes.netatmo.oauth"),
+        "oauth_ambiguous" => tr!("pilotes.netatmo.error_ambiguous"),
         "rate_limit" => tr!("pilotes.netatmo.rate_limit"),
         "invalid_response" => tr!("pilotes.netatmo.invalid_response"),
         "api" => tr!("pilotes.netatmo.api"),
@@ -478,6 +575,7 @@ fn label(key: &str) -> String {
         "declared_demand" => tr!("pilotes.netatmo.declared_demand"),
         "battery_state" => tr!("pilotes.netatmo.battery_state"),
         "home_mode" => tr!("pilotes.netatmo.home_mode"),
+        "home_name" => tr!("pilotes.netatmo.home_name"),
         "schedule" => tr!("pilotes.netatmo.schedule"),
         "freshness" => tr!("pilotes.netatmo.freshness"),
         "collected_at" => tr!("pilotes.netatmo.collected_at"),

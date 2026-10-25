@@ -15,6 +15,7 @@ mod hub;
 mod journal_log;
 mod labels;
 pub mod media;
+mod read_diagnostics;
 mod secrets;
 mod state_cache;
 mod stats;
@@ -25,7 +26,10 @@ pub use addresses::KnownAddress;
 pub use driver::{BoxFuture, CommandRequest, Driver, DriverCtx, MediaPublisher};
 pub use hub::{
     ApprovalError, CORE_NAMESPACE, CommandError, DeviceView, DriverView, Hub, HubOptions,
-    LabelError, LabelPatch, MAX_LABEL, Snapshot,
+    IntegrationReadView, LabelError, LabelPatch, MAX_LABEL, Snapshot,
+};
+pub use read_diagnostics::{
+    ReadDiagnostics, ReadEvent, ReadOutcome, ReadStage, ReadStep, ReadSummary,
 };
 pub use secrets::{MasterKey, forget_secret, has_secret, read_secret, set_secret};
 pub use stats::Stats;

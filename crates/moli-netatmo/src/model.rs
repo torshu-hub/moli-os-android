@@ -122,6 +122,7 @@ pub(crate) fn parse(
     let module_status = index(items(&live["modules"])?)?;
     let modules = items(&home["modules"])?;
     let mut readings = BTreeMap::new();
+    readings.insert("home_name", optional_text(&home["name"])?);
     readings.insert("home_mode", optional_text(&home["therm_mode"])?);
     readings.insert("schedule", selected_schedule(home)?);
     let mut out = Vec::new();

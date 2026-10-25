@@ -8,6 +8,8 @@ import java.io.File;
 final class TrialLog {
     private static Context app;
     private static TrialJournal journal;
+    private static int diagnosticDepth;
+    private static long diagnosticSaved;
     static synchronized void attach(Context context) {
         app=context.getApplicationContext();
         if(journal!=null) return;
@@ -56,6 +58,28 @@ final class TrialLog {
         byte[] digest=mac.doFinal(identity.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         StringBuilder hex=new StringBuilder();for(int i=0;i<8;i++)hex.append(String.format(java.util.Locale.ROOT,"%02x",digest[i]&255));return hex.toString();
     }
+    static synchronized void diagnostic(Context c,TrialDiagnostics.Topic topic,TrialDiagnostics.State state,TrialDiagnostics.Reason reason,long a,long b,long generation,long attempts,long successes,long failures,long attemptAt,long successAt,long errorAt){
+        attach(c);if(!journal.active)return;
+        try{
+            long now=System.currentTimeMillis();
+            boolean changed=journal.diagnostics.observe(now,topic,state,reason,a,b,generation,attempts,successes,failures,attemptAt,successAt,errorAt);
+            if(changed)
+                journal.add(now,TrialJournal.Event.DIAGNOSTIC_CHANGED,topic.ordinal(),state.ordinal());
+            if(diagnosticDepth==0&&(changed||now-diagnosticSaved>=15000)){save();diagnosticSaved=now;}
+        }catch(Exception ignored){}
+    }
+    interface DiagnosticWork{void run()throws org.json.JSONException;}
+    static synchronized void diagnosticBatch(Context c,DiagnosticWork work)throws org.json.JSONException{
+        attach(c);if(!journal.active)return;diagnosticDepth++;
+        try{work.run();}finally{diagnosticDepth--;if(diagnosticDepth==0){save();diagnosticSaved=System.currentTimeMillis();}}
+    }
+    static void ui(Context c,int topic,int state,int a,int b){
+        if(topic<1||topic>5||state<1||state>9||a<0||a>4096||b<0||b>4096)return;
+        TrialDiagnostics.Topic key=switch(topic){case 1->TrialDiagnostics.Topic.UI_DEVICES;case 2->TrialDiagnostics.Topic.UI_SYSTEM;case 3->TrialDiagnostics.Topic.NETATMO_TILE;case 4->TrialDiagnostics.Topic.UI_SCRIPT;default->TrialDiagnostics.Topic.UI_ASSISTANT;};
+        TrialDiagnostics.State value=switch(state){case 1->TrialDiagnostics.State.PENDING;case 2->TrialDiagnostics.State.OK;case 8->TrialDiagnostics.State.ABSENT;case 9->TrialDiagnostics.State.STALE;default->TrialDiagnostics.State.FAILED;};
+        TrialDiagnostics.Reason reason=switch(state){case 3->TrialDiagnostics.Reason.HTTP;case 4->TrialDiagnostics.Reason.TIMEOUT;case 5->TrialDiagnostics.Reason.INVALID_RESPONSE;case 6->TrialDiagnostics.Reason.RENDER;case 7->TrialDiagnostics.Reason.TRANSPORT;default->TrialDiagnostics.Reason.NONE;};
+        diagnostic(c,key,value,reason,a,b,-1,0,0,0,0,0,0);
+    }
     static TrialJournal.Error error(String code) {
         if(code==null)return TrialJournal.Error.AUCUNE;
         return switch(code) {
@@ -81,7 +105,9 @@ final class TrialLog {
         synchronized(TrialLog.class) { attach(c); text=journal.text(); }
         android.content.pm.PackageInfo info=c.getPackageManager().getPackageInfo(c.getPackageName(),0);
         long[] health=EngineHealth.snapshot();
-        return "version="+info.versionName+" package="+c.getPackageName()+"\n"
+        int webview=0;try{android.content.pm.PackageInfo provider=android.webkit.WebView.getCurrentWebViewPackage();if(provider!=null)webview=Integer.parseInt(provider.versionName.split("\\.")[0]);}catch(Exception ignored){}
+        return "version="+info.versionName+" code="+info.getLongVersionCode()+" package="+c.getPackageName()+" webview_major="+Math.max(0,webview)+"\n"
+                +"current_engine="+EngineHost.state().name()+"\n"
                 +"engine_starts="+c.getSharedPreferences("diagnostics",Context.MODE_PRIVATE).getLong("starts",0)+"\n"
                 +"health_success="+health[2]+" health_failure="+health[3]+" max_check_gap_ms="+health[4]+"\n"
                 +"Un intervalle sans contrôle ne prouve pas une panne. Lire le moteur ne force pas une requête fournisseur.\n"

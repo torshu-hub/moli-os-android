@@ -1,5 +1,10 @@
 # Netatmo personnel local — essai Android 0.19.0-beta.1 / code26
 
+> Le propriétaire a confirmé l’authentification officielle et le choix de maison
+> sur S5e avec code26. La mise à jour [lecture et diagnostics code27](read-diagnostics.md)
+> conserve cette association : ouvrir l’accueil pour voir les cartes et leur état,
+> sans refaire le parcours OAuth ci-dessous par défaut.
+
 Le moteur Rust Moli reste sur Android, sans hébergement extérieur, application
 compagnon ou second moteur. Les identifiants personnels sont saisis **après
 installation** dans l'écran natif privé puis chiffrés dans le coffre Moli existant,

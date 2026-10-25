@@ -212,6 +212,15 @@ pub struct Snapshot {
     pub drivers: Vec<DriverView>,
     pub approvals: Vec<Arc<ApprovalRequest>>,
     pub guard: GuardStatus,
+    /// Read progress remains visible with zero devices or a disabled instance.
+    pub diagnostics: Vec<IntegrationReadView>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct IntegrationReadView {
+    pub instance: InstanceId,
+    #[serde(flatten)]
+    pub read: crate::ReadDiagnostics,
 }
 
 /// Cheap, clonable handle to the hub.
@@ -259,6 +268,7 @@ type LastImage = Arc<tokio::sync::Mutex<Option<(Instant, crate::media::Image)>>>
 
 #[derive(Debug, Default)]
 struct Model {
+    read_diagnostics: BTreeMap<InstanceId, crate::ReadDiagnostics>,
     devices: BTreeMap<DeviceId, Arc<Device>>,
     states: States,
     /// Cached values not yet claimed by a device (its driver has not
@@ -395,6 +405,14 @@ impl Hub {
         let approvals = self.approvals();
         let model = self.read();
         Snapshot {
+            diagnostics: model
+                .read_diagnostics
+                .iter()
+                .map(|(instance, read)| IntegrationReadView {
+                    instance: instance.clone(),
+                    read: read.clone(),
+                })
+                .collect(),
             devices: model.devices.values().map(|d| model.view(d)).collect(),
             drivers: model
                 .drivers
@@ -415,6 +433,15 @@ impl Hub {
     pub fn device(&self, id: &DeviceId) -> Option<DeviceView> {
         let model = self.read();
         model.devices.get(id).map(|d| model.view(d))
+    }
+
+    /// Observations use a closed vocabulary; no provider text can reach this API.
+    pub fn observe_read(&self, instance: &InstanceId, kind: &'static str, event: crate::ReadEvent) {
+        self.write()
+            .read_diagnostics
+            .entry(instance.clone())
+            .or_insert_with(|| crate::ReadDiagnostics::new(kind))
+            .observe(event, moli_core::now_ms());
     }
 
     /// A device's description and label, without copying its state: for

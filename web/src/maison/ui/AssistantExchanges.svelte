@@ -3,12 +3,14 @@
   import { home, hub } from '../lib/home.svelte.js';
   import { t, i18n } from '../../lib/i18n.svelte.js';
   import Icon from './Icon.svelte';
+  import {readJson,reportUi,UI_TOPIC,UI_STATE} from '../lib/ui-diagnostics.js';
 
   /** What the house asked Moli lately: the day's counts, then each exchange
    *  (newest first), from the satellite or the app. The same as the evening
    *  recap on Telegram, which can be sent from here to try it. */
   let hours = $state(24);
   let all = $state(null);
+  let loadError=$state(false);
   let shown = $state(20);
   let sending = $state(false);
   let sent = $state('');
@@ -18,15 +20,14 @@
   let player = null;
 
   async function load() {
+    reportUi(UI_TOPIC.assistant,UI_STATE.loading);
     try {
-      const res = await fetch(`/api/assistant/exchanges?hours=${hours}`);
-      if (res.ok) {
-        const body = await res.json();
+        const body = await readJson(`/api/assistant/exchanges?hours=${hours}`,{valid:b=>Array.isArray(b?.exchanges)});
         all = body.exchanges;
         recordingUntil = body.recording_until ?? null;
-      }
-    } catch {
-      /* the card stays as it was */
+        loadError=false;reportUi(UI_TOPIC.assistant,UI_STATE.ready);
+    } catch(error) {
+      loadError=true;reportUi(UI_TOPIC.assistant,error.code);
     }
   }
   onMount(() => {
@@ -190,6 +191,12 @@
       {/if}
     </div>
     <small class="muted">{t('moli.echanges.estimation')}</small>
+  </section>
+{:else}
+  <section class="card" data-assistant-load>
+    <b>{t('moli.echanges.titre')}</b>
+    <p role="status">{t(loadError?'systeme.diagnostic.assistant_unavailable':'systeme.chargement')}</p>
+    {#if loadError}<button class="btn" onclick={load}>{t('systeme.diagnostic.retry')}</button>{/if}
   </section>
 {/if}
 

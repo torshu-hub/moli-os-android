@@ -88,6 +88,10 @@ impl DriverCtx {
         &self.instance
     }
 
+    pub fn observe_read(&self, kind: &'static str, event: crate::ReadEvent) {
+        self.hub.observe_read(&self.instance, kind, event);
+    }
+
     /// Builds a device id owned by this instance.
     #[must_use]
     pub fn device_id(&self, native: &str) -> DeviceId {

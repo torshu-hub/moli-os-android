@@ -23,11 +23,12 @@ final class EquipmentMonitor {
                 JSONObject snapshot;try{if(c.getResponseCode()!=200)throw new java.io.IOException();snapshot=new JSONObject(ProfileStore.bounded(c.getInputStream(),262144));}finally{c.disconnect();}
                 if(lease!=EngineHost.currentLease()||EngineHost.state()!=EngineHost.State.RUNNING)return;
                 publish(app,EquipmentStore.read(app),snapshot,display);
-            }catch(Exception ignored){TrialLog.record(TrialJournal.Event.ENGINE_READ_FAILED,0,0);if(display!=null)display.accept(app.getString(R.string.equipment_read_unavailable));}
+            }catch(Exception ignored){TrialLog.record(TrialJournal.Event.ENGINE_READ_FAILED,0,0);TrialLog.ui(app,1,7,0,0);if(display!=null)display.accept(app.getString(R.string.equipment_read_unavailable));}
             finally{synchronized(EquipmentMonitor.class){busy=false;}}
         });
     }
     static void publish(Context app,JSONObject config,JSONObject snapshot,Consumer<String> display)throws Exception {
+        NetatmoDiagnostics.observe(app,snapshot);
         JSONArray rows=new JSONArray();if(config.has("printer"))rows.put(new JSONObject().put("instance","android-printer").put("kind",1));
         if(config.has("gateway"))rows.put(new JSONObject().put("instance","android-gateway").put("kind",2));
         JSONArray plugs=config.optJSONArray("meross");if(plugs!=null)for(int i=0;i<plugs.length();i++){JSONObject p=plugs.getJSONObject(i);if(p.optBoolean("enabled"))rows.put(new JSONObject().put("instance","android-meross-"+p.getString("id")).put("kind",3).put("name",p.optString("name")).put("identity",p.optString("uuid","android-meross-"+p.getString("id"))));}

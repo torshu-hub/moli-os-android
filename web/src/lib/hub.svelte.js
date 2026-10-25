@@ -1,4 +1,5 @@
 import { setLanguage, t } from './i18n.svelte.js';
+import { readJson, reportUi, UI_TOPIC, UI_STATE } from '../maison/lib/ui-diagnostics.js';
 
 // Live model of the hub, fed by /api/events (SSE) and /api/health.
 
@@ -9,6 +10,8 @@ export const hub = $state({
   devices: {},
   /** @type {any[]} */
   drivers: [],
+  diagnostics: [],
+  snapshotStatus: 0,
   /** @type {any[]} most recent first */
   journal: [],
   /** @type {any} */
@@ -43,25 +46,23 @@ function applySnapshot(snapshot) {
   for (const d of snapshot.devices) devices[d.id] = d;
   hub.devices = devices;
   hub.drivers = snapshot.drivers;
+  hub.diagnostics = Array.isArray(snapshot.diagnostics) ? snapshot.diagnostics : [];
+  hub.snapshotStatus = UI_STATE.ready;
   hub.approvals = snapshot.approvals ?? [];
   hub.guard = snapshot.guard ?? null;
 }
 
 /** Re-read sample timestamps: unchanged values intentionally produce no SSE event. */
 export async function refreshSnapshot() {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  reportUi(UI_TOPIC.devices,UI_STATE.loading);
   try {
-    const res = await fetch('/api/devices', { signal: controller.signal });
-    if (!res.ok) return false;
-    const snapshot = await res.json();
-    if (!Array.isArray(snapshot.devices) || !Array.isArray(snapshot.drivers)) return false;
+    const snapshot = await readJson('/api/devices',{timeout:5000,valid:s=>Array.isArray(s?.devices)&&Array.isArray(s?.drivers)});
     applySnapshot(snapshot);
+    reportUi(UI_TOPIC.devices,UI_STATE.ready,snapshot.devices.length,snapshot.drivers.length);
     return true;
-  } catch {
+  } catch(error) {
+    hub.snapshotStatus=error.code;reportUi(UI_TOPIC.devices,error.code);
     return false;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

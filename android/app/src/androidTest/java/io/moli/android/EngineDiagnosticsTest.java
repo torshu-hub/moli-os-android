@@ -41,6 +41,7 @@ public final class EngineDiagnosticsTest {
 
             assertEquals(1, check()[0]);
             assertFalse(EngineHealth.request(EngineHost.origin(), "synthetic-wrong-token"));
+            NetatmoDisplayFixture.verify(activity);
             long lease = EngineHost.currentLease();
             activity.recreate();
             assertEquals(lease, EngineHost.currentLease());

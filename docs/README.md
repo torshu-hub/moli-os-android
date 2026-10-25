@@ -56,6 +56,7 @@ téléphones passent sans Access, avec leur propre jeton.
 | [oauth-common.md](components/oauth-common.md) | Proposition OAuth Rust commune Android/Linux ; comparaison des forks et contrats |
 | [netatmo-local-options.md](components/netatmo-local-options.md) | Android local prioritaire ; exigences fournisseur, variantes Linux et code préparatoire |
 | [netatmo-personal-android.md](components/netatmo-personal-android.md) | Prototype personnel Android local : provisioning, retour manuel, renouvellement et essai bêta |
+| [read-diagnostics.md](components/read-diagnostics.md) | Netatmo visible dans l’accueil, reprise Système et résumé compact dans le rapport d’essai existant |
 | [netatmo-energy.md](components/netatmo-energy.md) | Netatmo Energy portable en lecture seule, fraîcheur et prérequis OAuth |
 | [pilotes.md](components/pilotes.md) | trait `Driver`, chaque pilote natif, `moli-net` |
 | [profils.md](components/profils.md) | moteur de profils déclaratifs, format TOML, ajouter un appareil sans code |

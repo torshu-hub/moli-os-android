@@ -10,12 +10,16 @@
   import PeopleCard from '../ui/PeopleCard.svelte';
   import { hub, home } from '../lib/home.svelte.js';
   import { t, locale } from '../../lib/i18n.svelte.js';
+  import { readJson, ReadFailure, reportUi, UI_TOPIC, UI_STATE } from '../lib/ui-diagnostics.js';
+  import { systemFacts, validSystem } from '../lib/system-status.js';
 
   // « Comment ça marche » : the system as it runs, drawn from /api/system and
   // the live event stream. Nothing here is written by hand: a new driver or
   // brick shows up by itself.
   let sys = $state(null);
   let error = $state('');
+  let busy = $state(false);
+  let renderFailed=false;
   let chosen = $state(null);
   let active = $state({});
   let perMinute = $state(0);
@@ -24,16 +28,18 @@
   let links = $state([]);
 
   async function load() {
+    if(busy)return;busy=true;reportUi(UI_TOPIC.system,UI_STATE.loading);
     try {
-      const res = await fetch('/api/system');
-      if (!res.ok) throw new Error(res.statusText);
-      sys = await res.json();
+      sys = await readJson('/api/system',{valid:validSystem});
       error = '';
       await tick();
       measure();
+      if(!map&&!renderFailed)throw new ReadFailure(UI_STATE.render);
+      if(!renderFailed)reportUi(UI_TOPIC.system,UI_STATE.ready,sys.drivers.length);
     } catch (err) {
-      error = err.message;
-    }
+      error = err.code===UI_STATE.timeout?'timeout':err.code===UI_STATE.render?'render':'unavailable';
+      reportUi(UI_TOPIC.system,err.code??UI_STATE.render);
+    } finally {busy=false;}
   }
 
   onMount(() => {
@@ -103,7 +109,7 @@
 
   // Bricks: their icon here, their description in the catalog (systeme.briques.<id>.desc).
   const BRICKS = { guard: 'shield', history: 'history', energy: 'bolt', automations: 'robot', assistant: 'sparkles', cameras: 'cctv' };
-  const brickWord = (id) => (Object.hasOwn(BRICKS, id) ? t(`systeme.briques.${id}.desc`) : '');
+  const brickWord = (id) => (Object.prototype.hasOwnProperty.call(BRICKS, id) ? t(`systeme.briques.${id}.desc`) : '');
   const SURFACES = { maison: 'home', atelier: 'atelier', mcp: 'robot', rest: 'branch' };
 
   // Commandable devices in no room: nobody can tell whether they sit in a
@@ -136,9 +142,9 @@
     }
   };
 
-  const last = $derived(sys?.perf?.at(-1));
+  const last = $derived(systemFacts(sys).last);
   // Idle CPU is only measured idle: a dashboard showing a camera live is use, not rest.
-  const idle = $derived(sys?.perf?.findLast((p) => !p.clients?.total));
+  const idle = $derived(systemFacts(sys).idle);
   const mem = (side) => side?.mem_mib ?? side?.cgroup_mib;
   const num = (n, d = 0) => Number(n).toLocaleString(locale(), { maximumFractionDigits: d });
   const fmtMem = (mib) => (mib == null ? '—' : mib >= 1024 ? t('systeme.format.go', { value: num(mib / 1024, 2) }) : t('systeme.format.mo', { value: Math.round(mib) }));
@@ -157,7 +163,9 @@
     <p class="page-sub">{t('systeme.page.sous_titre')}</p>
   </header>
 
-  {#if error}<p class="muted">{error}</p>{/if}
+  {#if error}<p role="status" data-system-error>{t('systeme.diagnostic.'+error)}</p><button data-system-retry disabled={busy} onclick={load}>{t('systeme.diagnostic.retry')}</button>{/if}
+
+  <svelte:boundary onerror={()=>{renderFailed=true;reportUi(UI_TOPIC.system,UI_STATE.render);}}>
 
   <IntegrationInventory rows={sys?.integrations} platform={sys?.platform} />
 
@@ -209,6 +217,8 @@
       {/if}
     </section>
 
+  {/if}
+  {#if sys}
     {#if roomless.length}
       <section class="roomless">
         <p><Icon name="info" size={16} /><b>{t('systeme.page.sans_piece', { count: roomless.length })}</b>
@@ -219,7 +229,7 @@
       </section>
     {/if}
 
-    <div class="map" bind:this={map}>
+    <div class="map" data-system-graph bind:this={map}>
       <svg class="links" aria-hidden="true">
         {#each links as l (l.id)}
           <path d={path(l)} class:hot={l.driver && active[l.driver]} class:off={l.off} />
@@ -307,6 +317,10 @@
   {:else if !error}
     <p class="muted">{t('systeme.chargement')}</p>
   {/if}
+  {#snippet failed(_error,reset)}
+    <p role="alert" data-system-render-error>{t('systeme.diagnostic.render')}</p><button onclick={()=>{renderFailed=false;reset();load();}}>{t('systeme.diagnostic.retry')}</button>
+  {/snippet}
+  </svelte:boundary>
 </div>
 
 <style>

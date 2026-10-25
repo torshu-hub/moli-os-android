@@ -9,13 +9,14 @@ final class TrialJournal {
         SELECTION_CHANGED, ENGINE_STARTED, ENGINE_STOPPED, ENGINE_FAILED, ENGINE_READ_OK, ENGINE_READ_FAILED,
         SYNTHETIC_RECEIVED, DEMO_RECEIVED, WEATHER_RECEIVED, PROBE_START, PROBE_OK, PROBE_FAILED,
         PROBE_LIMITED, HEALTH_OK, HEALTH_FAILED, CHECK_GAP, NETWORK_SEARCH, NETWORK_END, IP_COPY, IP_CHOSEN, EQUIPMENT_PROPOSED, EQUIPMENT_SAVED,
-        ACCOUNT_STATUS, ACCOUNT_SIGNIN, ACCOUNT_INVENTORY, ACCOUNT_FORGET, UUID_CHECK, CANDIDATE_CHECK, CANDIDATE_RESULT, EQUIPMENT_READ }
+        ACCOUNT_STATUS, ACCOUNT_SIGNIN, ACCOUNT_INVENTORY, ACCOUNT_FORGET, UUID_CHECK, CANDIDATE_CHECK, CANDIDATE_RESULT, EQUIPMENT_READ, DIAGNOSTIC_CHANGED }
     enum Source { MOTEUR, RESEAU, COMPTE, EQUIPEMENTS, DIAGNOSTICS }
     enum Outcome { DEBUT, REUSSI, REFUSE, INDISPONIBLE, EXPIRE, ANNULE, CACHE, ENREGISTRE, FRAIS, ABSENT }
     enum Error { AUCUNE, RESEAU, IDENTITE, AUTHENTIFICATION, MFA, LIMITE, AUTORISATION, COFFRE, REPONSE, MOTEUR_ACTIF, SAISIE, INVENTAIRE_ABSENT, UUID_DIFFERENT, CLE_REFUSEE, INCOMPATIBLE }
     String salt="";
     boolean active,incomplete;
     int dropped;
+    TrialDiagnostics diagnostics=TrialDiagnostics.empty();
     final JSONArray events = new JSONArray();
     static TrialJournal parse(String text) throws JSONException {
         TrialJournal j = new TrialJournal(); JSONObject root = new JSONObject(text);
@@ -31,9 +32,16 @@ final class TrialJournal {
             }
             catch (IllegalArgumentException ignored) { /* Unrecognized text is never exported. */ }
         }
-        return j;
+        j.diagnostics=TrialDiagnostics.parse(root.optJSONObject("diagnostics"));return j;
     }
     void add(long now, Event event, long a, long b) throws JSONException {
+        if(event==Event.HEALTH_OK||event==Event.HEALTH_FAILED){
+            for(int i=events.length()-1;i>=0;i--){JSONObject old=events.getJSONObject(i);String kind=old.optString("event");
+                if(kind.equals(Event.HEALTH_OK.name())||kind.equals(Event.HEALTH_FAILED.name())){
+                    if(kind.equals(event.name())&&now-old.optLong("time")<300000)return;break;
+                }
+            }
+        }
         if(event==Event.SYNTHETIC_RECEIVED || event==Event.DEMO_RECEIVED || event==Event.WEATHER_RECEIVED) {
             for(int i=events.length()-1;i>=0;i--) { JSONObject previous=events.getJSONObject(i);
                 if(event.name().equals(previous.getString("event"))) { if(previous.getLong("a")==a && previous.getLong("b")==b) return; break; }
@@ -51,9 +59,11 @@ final class TrialJournal {
             .put("result",outcome.name()).put("error",error.name()).put("a",a).put("b",b)
             .put("subject",subject!=null && subject.matches("[0-9a-f]{16}")?subject:"").put("candidate",candidate!=null && candidate.matches("[0-9a-f]{16}")?candidate:"").put("receipt",Math.max(0,receipt)));
     }
-    String json() throws JSONException { return new JSONObject().put("incomplete",incomplete).put("salt",salt).put("active",active).put("dropped",dropped).put("events",events).toString(); }
+    String json() throws JSONException { return new JSONObject().put("diagnostics",diagnostics.json()).put("incomplete",incomplete).put("salt",salt).put("active",active).put("dropped",dropped).put("events",events).toString(); }
     String text() throws JSONException {
         StringBuilder s=new StringBuilder("Rapport d’essai Moli OS\nÉtat : ").append(active?"actif":"terminé").append(" ; événements omis : ").append(dropped).append(" ; incomplet : ").append(incomplete).append('\n');
+        s.append(diagnostics.text(System.currentTimeMillis()));
+        s.append("Les résumés de diagnostic restent disponibles même si les événements anciens ont été omis. HEALTH identique : bilan au plus toutes les cinq minutes, transitions conservées. DIAGNOSTIC_CHANGED a=type et b=état selon les listes fixes : ").append(java.util.Arrays.toString(TrialDiagnostics.Topic.values())).append(" / ").append(java.util.Arrays.toString(TrialDiagnostics.State.values())).append('\n');
         s.append("a/b : compteurs ou durée en ms ; EQUIPMENT_READ : a=type (1 IPP, 2 IGD, 3 MSS310), b=nombre de mesures fraîches. NETWORK_END : a=appareils par IP, b=masque services (1 IPP, 2 HTTP, 4 Cast, 8 UPnP, 16 IGD) ; ACCOUNT_FORGET b=1 révocation confirmée, b=0 non confirmée ; UUID_CHECK a=1 lectures autorisées, a=0 désactivées. Les pseudonymes appareil# désignent les cibles, candidate# les adresses (même HMAC de session que la copie/choix d’adresse). UUID_CHECK début/refus ne prouve aucun enregistrement. EQUIPMENT_READ ABSENT au premier cycle ne prouve pas une prise introuvable : attendre les lectures suivantes. CACHE ne prouve pas la validité distante du jeton.\n");
         java.time.format.DateTimeFormatter local=java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(java.time.ZoneId.systemDefault());
         for(int i=0;i<events.length();i++) { JSONObject e=events.getJSONObject(i);

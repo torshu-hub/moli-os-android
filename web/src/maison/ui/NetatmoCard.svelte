@@ -5,7 +5,7 @@
 
   let { id, name = null } = $props();
   const d = $derived(device(id));
-  const quality = $derived(netatmoStatus(d, hub.drivers.find(r => r.instance === d?.instance), hub.connected && home.snapshotHealthy, home.now));
+  const quality = $derived(netatmoStatus(d, hub.drivers.find(r => r.instance === d?.instance), hub.connected && (!home.config?.android || home.snapshotHealthy), home.now));
   const current = $derived(quality === 'cloud_recent');
   const collected = $derived(d?.state?.collected_at?.value);
   const server = $derived(d?.state?.server_at?.value);

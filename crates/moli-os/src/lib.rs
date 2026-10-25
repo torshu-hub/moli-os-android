@@ -996,6 +996,23 @@ fn spawn_drivers(
 ) -> anyhow::Result<(Vec<tokio::task::JoinHandle<()>>, Gateways)> {
     let mut tasks = Vec::new();
     let mut gates = Gateways::default();
+    for driver in config.drivers.iter().filter(|d| d.kind == "netatmo") {
+        hub.observe_read(
+            &driver.id.clone().into(),
+            "netatmo",
+            moli_runtime::ReadEvent::Configuration {
+                enabled: driver.enabled != Some(false),
+                credential_present: hub
+                    .secret(&driver.id.clone().into(), "oauth_tokens")
+                    .is_some(),
+                target_selected: driver
+                    .options
+                    .get("home_id")
+                    .and_then(toml::Value::as_str)
+                    .is_some_and(|s| !s.is_empty()),
+            },
+        );
+    }
     for driver in config.drivers.iter().filter(|d| d.enabled != Some(false)) {
         let context = || format!("driver {:?} options", driver.id);
         let built: Arc<dyn Driver> = match driver.kind.as_str() {

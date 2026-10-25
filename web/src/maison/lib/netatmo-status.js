@@ -12,3 +12,25 @@ export function netatmoStatus(device, driver, connected, now) {
   if (!Number.isFinite(maxAge) || maxAge <= 0 || !recent(collected) || !recent(server)) return 'stale';
   return device?.online ? 'cloud_recent' : 'unconfirmed';
 }
+
+export function netatmoInstances(devices,drivers,diagnostics) {
+  const rows=new Map();
+  for(const row of diagnostics||[])if(row.kind==='netatmo')rows.set(row.instance,{...row,devices:[]});
+  for(const driver of drivers||[])if(driver.kind==='netatmo'&&!rows.has(driver.instance))rows.set(driver.instance,{instance:driver.instance,configured:true,enabled:true,devices:[]});
+  for(const device of Object.values(devices||{}))if(device.manufacturer==='Netatmo'||rows.has(device.instance)){
+    if(!rows.has(device.instance))rows.set(device.instance,{instance:device.instance,configured:true,devices:[]});
+    rows.get(device.instance).devices.push(device);
+  }
+  return [...rows.values()];
+}
+export function netatmoOverview(row,driver,connected,now) {
+  if(!row?.configured)return 'not_configured';
+  if(row.enabled===false)return 'disabled';
+  if(row.credential_present===false)return 'credentials_required';
+  if(!connected)return 'engine_unavailable';
+  const failed=Object.entries(row.stages||{}).find(([,s])=>s.last_error_at>0&&s.last_error_at>=row.last_attempt_at&&s.status!=='ok'&&s.status!=='pending');
+  if(failed)return 'error_'+(failed[0]==='renewal'&&failed[1].status==='credentials'?'renewal':failed[1].status);
+  if((row.devices||[]).some(d=>netatmoStatus(d,driver,connected,now)==='cloud_recent'))return 'cloud_recent';
+  if((row.devices||[]).length)return 'no_current_data';
+  return row.last_publish_at>0?'no_devices':'waiting_first_read';
+}

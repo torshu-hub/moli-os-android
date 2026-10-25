@@ -3,6 +3,7 @@
 
 import { hub, connect, login, decide, refreshSession, refreshSnapshot } from '../../lib/hub.svelte.js';
 import { t, locale } from '../../lib/i18n.svelte.js';
+import { watchUiErrors } from './ui-diagnostics.js';
 
 export { hub };
 
@@ -43,6 +44,7 @@ let started = false;
 export async function start() {
   if (started) return;
   started = true;
+  watchUiErrors();
   connect();
   setInterval(() => (home.now = Date.now()), 15_000);
   try {

@@ -43,6 +43,7 @@ pub(crate) enum Failure {
     Network,
     Unauthorized,
     Credentials,
+    Ambiguous,
     RateLimited(u64),
     InvalidResponse,
     Api,
@@ -53,6 +54,7 @@ impl Failure {
         match self {
             Self::Network => "network",
             Self::Unauthorized | Self::Credentials => "oauth",
+            Self::Ambiguous => "oauth_ambiguous",
             Self::RateLimited(_) => "rate_limit",
             Self::InvalidResponse => "invalid_response",
             Self::Api => "api",
@@ -62,7 +64,7 @@ impl Failure {
     pub fn retry_seconds(self, poll: u64) -> u64 {
         match self {
             Self::RateLimited(secs) => secs.max(poll),
-            Self::Unauthorized | Self::Credentials | Self::Storage => 3600,
+            Self::Unauthorized | Self::Credentials | Self::Ambiguous | Self::Storage => 3600,
             _ => poll,
         }
     }

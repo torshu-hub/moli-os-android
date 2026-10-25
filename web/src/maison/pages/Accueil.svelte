@@ -13,6 +13,7 @@
   import SkyHero from '../ui/SkyHero.svelte';
   import AndroidSources from '../ui/AndroidSources.svelte';
   import AndroidEquipment from '../ui/AndroidEquipment.svelte';
+  import NetatmoOverview from '../ui/NetatmoOverview.svelte';
 
   const cfg = $derived(home.config ?? {});
   const out = $derived(cfg.outdoor ?? {});
@@ -177,6 +178,7 @@
   </section>
 
   {#if cfg.android}<AndroidSources /><AndroidEquipment />{/if}
+  {#if cfg.android || hub.drivers.some(d=>d.kind==='netatmo') || hub.diagnostics.some(d=>d.kind==='netatmo')}<NetatmoOverview />{/if}
   {#if !cfg.android || cfg.favorites}
   <div class="grid">
     <section class="card lights">

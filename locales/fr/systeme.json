@@ -369,5 +369,10 @@
   "systeme.inventory.backoff": "Reprise après échec",
   "systeme.inventory.waiting": "En attente",
   "systeme.inventory.stopped": "Arrêté",
-  "systeme.inventory.android_host": "Fonctions hôte / découverte Linux limitées sur Android."
+  "systeme.inventory.android_host": "Fonctions hôte / découverte Linux limitées sur Android.",
+  "systeme.diagnostic.unavailable": "Lecture Système indisponible. Le reste du tableau de bord reste accessible.",
+  "systeme.diagnostic.timeout": "La lecture Système a dépassé le délai prévu. Vous pouvez réessayer.",
+  "systeme.diagnostic.retry": "Réessayer la lecture",
+  "systeme.diagnostic.render": "Le schéma Système ne peut pas être affiché. Le rapport d’essai conserve une catégorie d’erreur sans contenu privé.",
+  "systeme.diagnostic.assistant_unavailable": "Historique des échanges indisponible ou assistant non configuré."
 }

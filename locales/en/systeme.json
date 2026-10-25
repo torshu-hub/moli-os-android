@@ -369,5 +369,10 @@
   "systeme.inventory.backoff": "Backing off after failure",
   "systeme.inventory.waiting": "Waiting",
   "systeme.inventory.stopped": "Stopped",
-  "systeme.inventory.android_host": "Host functions / Linux discovery are limited on Android."
+  "systeme.inventory.android_host": "Host functions / Linux discovery are limited on Android.",
+  "systeme.diagnostic.unavailable": "System read unavailable. The rest of the dashboard remains accessible.",
+  "systeme.diagnostic.timeout": "System read exceeded its deadline. You can retry.",
+  "systeme.diagnostic.retry": "Retry read",
+  "systeme.diagnostic.render": "The System graph could not render. The trial report retains an error category without private content.",
+  "systeme.diagnostic.assistant_unavailable": "Exchange history unavailable or assistant not configured."
 }

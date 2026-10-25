@@ -517,6 +517,41 @@ async fn rotated_credentials_are_persisted_together_before_reads() {
     h.stop().await;
 }
 
+#[tokio::test(start_paused = true)]
+async fn diagnostics_distinguish_received_parsed_and_published_without_device_values() {
+    let h = Harness::start(false).await;
+    let diagnostics = &h.hub.snapshot().diagnostics[0].read;
+    assert_eq!(diagnostics.stages[&ReadStage::Homesdata].successes, 1);
+    assert_eq!(diagnostics.stages[&ReadStage::Homestatus].successes, 1);
+    assert_eq!(diagnostics.stages[&ReadStage::Publication].successes, 1);
+    assert_eq!(diagnostics.summary.temperatures, 1);
+    assert_eq!(diagnostics.summary.demand_present, 1);
+    let text = serde_json::to_string(diagnostics).unwrap();
+    for private in [
+        "test-access",
+        "test-refresh",
+        "home-test",
+        "aa:bb:cc",
+        "19.5",
+    ] {
+        assert!(!text.contains(private));
+    }
+    h.mock.add(200, &live_topology());
+    let mut bad = status();
+    bad["body"]["home"]["rooms"][0]["therm_measured_temperature"] = json!("malformed");
+    h.mock.add(200, &bad);
+    advance_poll().await;
+    let diagnostics = &h.hub.snapshot().diagnostics[0].read;
+    assert_eq!(diagnostics.stages[&ReadStage::Homestatus].successes, 2);
+    assert_eq!(
+        diagnostics.stages[&ReadStage::Parsing].status,
+        ReadOutcome::InvalidResponse
+    );
+    assert_eq!(diagnostics.stages[&ReadStage::Publication].successes, 1);
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    h.stop().await;
+}
+
 async fn advance_poll() {
     tokio::time::advance(Duration::from_secs(125)).await;
     for _ in 0..30 {

@@ -102,6 +102,19 @@ public final class MainActivity extends Activity {
         web.getSettings().setAllowFileAccess(false);
         web.getSettings().setAllowContentAccess(false);
         web.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        web.setWebChromeClient(new WebChromeClient(){
+            @Override public boolean onConsoleMessage(ConsoleMessage message){
+                String origin=loaded;
+                if(origin!=null&&origin.equals(EngineHost.origin())&&EngineHost.state()==EngineHost.State.RUNNING){
+                    String text=message.message();
+                    if(text!=null&&text.matches("MOLI_DIAG [1-5] [1-9] [0-9]{1,4} [0-9]{1,4}")){
+                        String[] parts=text.split(" ");TrialLog.ui(MainActivity.this,Integer.parseInt(parts[1]),Integer.parseInt(parts[2]),Integer.parseInt(parts[3]),Integer.parseInt(parts[4]));
+                    }else if(message.messageLevel()==ConsoleMessage.MessageLevel.ERROR)TrialLog.ui(MainActivity.this,4,6,0,0);
+                }
+                // Never forward console text, URLs or throwable details to logcat.
+                return true;
+            }
+        });
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         web.setWebViewClient(new WebViewClient() {
             @Override public void onReceivedError(WebView view,WebResourceRequest request,WebResourceError error) {
@@ -116,6 +129,9 @@ public final class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String origin = loaded;
+                if(request.isForMainFrame()&&origin!=null&&EngineHost.state()==EngineHost.State.RUNNING&&origin.equals(EngineHost.origin())&&(origin+"/android/netatmo").equals(uri.toString())){
+                    startActivity(new Intent(MainActivity.this,NetatmoOAuthActivity.class));return true;
+                }
                 if (request.isForMainFrame() && origin != null && EngineHost.state() == EngineHost.State.RUNNING && origin.equals(EngineHost.origin()) && (origin+"/android/equipment").equals(uri.toString())) {
                     startActivity(new Intent(MainActivity.this,EquipmentSettingsActivity.class)); return true;
                 }
@@ -176,6 +192,7 @@ public final class MainActivity extends Activity {
         startService(new Intent(this,MoliService.class).setAction(command));
     }
     private void dashboardFailed() {
+        TrialLog.ui(this,4,7,0,0);
         pageFailed=true;retryAfter=SystemClock.elapsedRealtime()+5000;
         dashboardStatus.setText(R.string.engine_display_retry);dashboardStatus.setVisibility(View.VISIBLE);
     }

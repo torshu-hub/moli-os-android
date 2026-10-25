@@ -38,6 +38,8 @@ test('Meross distinguishes startup and brief lost confirmation from a significan
 });
 
 import { netatmoStatus } from './netatmo-status.js';
+// Keep the new read/visibility cases in this existing CI entry point.
+import './netatmo-overview.test.js';
 test('Netatmo dates the cloud reply separately and hides cached readings on loss or expiry', () => {
   const driver = {status:{state:'running'}};
   const device = {online:true,state:{freshness:{value:'cloud_recent'},collected_at:{value:2000},server_at:{value:1000},max_age_seconds:{value:300}}};
