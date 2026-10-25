@@ -1320,6 +1320,11 @@ impl Hub {
     pub(crate) fn set_driver_status(&self, instance: &InstanceId, status: DriverStatus) {
         let (changed, back) = {
             let mut model = self.write();
+            if matches!(status, DriverStatus::Stopped | DriverStatus::Backoff { .. })
+                && let Some(read) = model.read_diagnostics.get_mut(instance)
+            {
+                read.observe(crate::ReadEvent::Stopped, moli_core::now_ms());
+            }
             let changed = match model.drivers.get_mut(instance) {
                 Some(slot) if slot.status != status => {
                     slot.status = status.clone();

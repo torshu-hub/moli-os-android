@@ -28,6 +28,7 @@ final class TrialLog {
     static synchronized void record(TrialJournal.Event event,long a,long b) {
         if(app==null || journal==null || !journal.active) return;
         try {
+            if(event==TrialJournal.Event.ENGINE_STOPPED||event==TrialJournal.Event.ENGINE_FAILED)journal.diagnostics.engineStopped(System.currentTimeMillis());
             if(event==TrialJournal.Event.ENGINE_STARTED || event==TrialJournal.Event.ENGINE_STOPPED || event==TrialJournal.Event.ENGINE_FAILED)
                 journal.action(System.currentTimeMillis(),event,TrialJournal.Source.MOTEUR,event==TrialJournal.Event.ENGINE_FAILED?TrialJournal.Outcome.INDISPONIBLE:TrialJournal.Outcome.REUSSI,event==TrialJournal.Event.ENGINE_FAILED?TrialJournal.Error.REPONSE:TrialJournal.Error.AUCUNE,a,b,"");
             else journal.add(System.currentTimeMillis(),event,a,b);
@@ -71,7 +72,10 @@ final class TrialLog {
     interface DiagnosticWork{void run()throws org.json.JSONException;}
     static synchronized void polling(Context c,org.json.JSONObject snapshot)throws org.json.JSONException{
         attach(c);if(!journal.active)return;
-        journal.diagnostics.polling=TrialDiagnostics.Polling.parse(snapshot);
+        journal.diagnostics.polling=TrialDiagnostics.Polling.merge(journal.diagnostics.polling,snapshot);
+    }
+    static synchronized void diagnosticDetail(Context c,TrialDiagnostics.Topic topic,long generation,TrialDiagnostics.Reason reason,long duration,long interruptions,java.util.EnumMap<TrialDiagnostics.Reason,Long> errors){
+        attach(c);if(journal.active)journal.diagnostics.detail(topic,generation,reason,duration,interruptions,errors);
     }
     static synchronized void diagnosticBatch(Context c,DiagnosticWork work)throws org.json.JSONException{
         attach(c);if(!journal.active)return;diagnosticDepth++;

@@ -78,7 +78,7 @@ impl Application {
         .await
         .map_err(|e| match e {
             client::Failure::RateLimited(seconds) => Error::RateLimited(seconds),
-            client::Failure::Network | client::Failure::InvalidResponse => Error::Ambiguous,
+            e if e.network() || e == client::Failure::InvalidResponse => Error::Ambiguous,
             _ => Error::Denied,
         })?;
         Ok(Grant { tokens })

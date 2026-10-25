@@ -141,6 +141,7 @@ fn options_are_inert_bounded_and_have_no_secret_or_command_url() {
 struct Mock {
     replies: Mutex<VecDeque<Result<Response, Failure>>>,
     requests: Mutex<Vec<(String, String, String, String)>>,
+    hang_at: Mutex<Option<usize>>,
 }
 impl Mock {
     fn add(&self, status: u16, body: &Json) {
@@ -169,6 +170,10 @@ impl Transport for Mock {
                     .to_owned(),
                 String::from_utf8(body.to_vec()).unwrap(),
             ));
+            let hang = *self.hang_at.lock().unwrap() == Some(self.requests.lock().unwrap().len());
+            if hang {
+                return std::future::pending().await;
+            }
             self.replies
                 .lock()
                 .unwrap()
@@ -934,4 +939,142 @@ fn a_recent_status_cannot_refresh_an_old_or_undated_topology() {
     top["time_server"] = json!(AT / 1000 + 1);
     let rows = model::parse(&top, &status(), "home-test", AT, 300_000).unwrap();
     assert_eq!(thermostat(&rows).quality, "unconfirmed");
+}
+
+async fn advance_read(seconds: u64) {
+    tokio::time::advance(Duration::from_secs(seconds)).await;
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+}
+fn queue_recovery(mock: &Mock) {
+    mock.add(200, &live_topology());
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    s["body"]["home"]["modules"][1]["boiler_status"] = json!(false);
+    mock.add(200, &s);
+}
+#[tokio::test(start_paused = true)]
+async fn automatic_homesdata_failure_then_hung_retry_recovers_without_restart_or_reauthorization() {
+    let h = Harness::start(false).await;
+    let instance = InstanceId::from("energy-test");
+    let bundle = h.hub.secret(&instance, TOKEN_SECRET).unwrap();
+    h.mock.replies.lock().unwrap().push_back(Err(Failure::Dns));
+    advance_read(120).await;
+    let failed = h.hub.snapshot().diagnostics[0].read.clone();
+    assert_eq!(failed.polling.automatic_cycles, 1);
+    assert_eq!(failed.polling.reason, ReadOutcome::Dns);
+    assert_eq!(failed.polling.delay_seconds, 30);
+    assert_eq!(failed.stages[&ReadStage::Homestatus].attempts, 1);
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    *h.mock.hang_at.lock().unwrap() = Some(4);
+    advance_read(30).await;
+    let pending = h.hub.snapshot().diagnostics[0].read.clone();
+    assert!(pending.polling.in_flight);
+    assert_eq!(pending.polling.automatic_cycles, 2);
+    assert_eq!(
+        pending.stages[&ReadStage::Homesdata].status,
+        ReadOutcome::Pending
+    );
+    assert_eq!(
+        pending.stages[&ReadStage::Homesdata].last_error,
+        ReadOutcome::Dns
+    );
+    advance_read(15).await;
+    let timed_out = h.hub.snapshot().diagnostics[0].read.clone();
+    assert!(!timed_out.polling.in_flight);
+    assert_eq!(timed_out.polling.delay_seconds, 60);
+    assert_eq!(
+        timed_out.stages[&ReadStage::Homesdata].status,
+        ReadOutcome::Timeout
+    );
+    assert_eq!(
+        timed_out.stages[&ReadStage::Homesdata].last_duration_ms,
+        15_000
+    );
+    assert!(
+        timed_out
+            .stages
+            .values()
+            .all(|s| s.status != ReadOutcome::Pending)
+    );
+    queue_recovery(&h.mock);
+    advance_read(59).await;
+    assert_eq!(h.mock.requests.lock().unwrap().len(), 4);
+    advance_read(1).await;
+    assert_eq!(h.point("boiler_status"), Some(Value::Bool(false)));
+    let recovered = h.hub.snapshot().diagnostics[0].read.clone();
+    assert_eq!(recovered.polling.cycles, 4);
+    assert_eq!(recovered.polling.automatic_cycles, 3);
+    assert_eq!(recovered.polling.successes, 2);
+    assert_eq!(recovered.polling.failures, 2);
+    assert_eq!(recovered.polling.delay_seconds, 120);
+    assert_eq!(recovered.polling.last_error, ReadOutcome::Timeout);
+    assert_eq!(
+        recovered.stages[&ReadStage::Homesdata].errors[&ReadOutcome::Dns],
+        1
+    );
+    assert_eq!(
+        recovered.stages[&ReadStage::Homesdata].errors[&ReadOutcome::Timeout],
+        1
+    );
+    assert_eq!(bundle, h.hub.secret(&instance, TOKEN_SECRET).unwrap());
+    assert!(h.mock.requests.lock().unwrap().iter().all(|r| r.0 == "GET"));
+    h.stop().await;
+}
+#[tokio::test(start_paused = true)]
+async fn stopping_a_pending_automatic_read_closes_diagnostics_without_claiming_a_provider_failure()
+{
+    let h = Harness::start(false).await;
+    *h.mock.hang_at.lock().unwrap() = Some(3);
+    advance_read(120).await;
+    assert!(h.hub.snapshot().diagnostics[0].read.polling.in_flight);
+    h.cancel.cancel();
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+    let stopped = h.hub.snapshot().diagnostics[0].read.clone();
+    assert!(!stopped.driver_started);
+    assert!(!stopped.polling.in_flight);
+    assert_eq!(stopped.polling.next_due_at, 0);
+    assert_eq!(stopped.polling.automatic_cycles, 1);
+    assert_eq!(stopped.polling.interruptions, 1);
+    assert_eq!(stopped.polling.failures, 0);
+    assert_eq!(
+        stopped.stages[&ReadStage::Homesdata].status,
+        ReadOutcome::Cancelled
+    );
+    assert_eq!(stopped.stages[&ReadStage::Homesdata].failures, 0);
+    h.stop().await;
+}
+
+#[cfg(feature = "personal-oauth")]
+#[tokio::test]
+async fn categorized_renewal_network_errors_remain_ambiguous_instead_of_requesting_a_new_login() {
+    let app =
+        oauth::personal::Application::new("app-test", "synthetic-personal-secret", true).unwrap();
+    let previous = oauth::Grant {
+        tokens: Tokens {
+            access_token: "test-access".into(),
+            refresh_token: "test-refresh".into(),
+            expires_at: 0,
+        },
+    };
+    for failure in [
+        Failure::Timeout,
+        Failure::Dns,
+        Failure::Connect,
+        Failure::Tls,
+        Failure::Headers,
+        Failure::Body,
+        Failure::CycleTimeout,
+    ] {
+        let m = Mock::default();
+        m.replies.lock().unwrap().push_back(Err(failure));
+        assert!(matches!(
+            app.renew_with(&m, &previous, now_ms()).await,
+            Err(oauth::Error::Ambiguous)
+        ));
+        assert_eq!(m.requests.lock().unwrap().len(), 1);
+    }
 }

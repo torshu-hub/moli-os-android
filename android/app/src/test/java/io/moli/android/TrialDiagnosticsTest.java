@@ -2,6 +2,34 @@ package io.moli.android;
 import org.json.*;import org.junit.Test;import static org.junit.Assert.*;
 import static io.moli.android.TrialDiagnostics.*;
 public final class TrialDiagnosticsTest {
+ @Test public void pendingAndRecoveryRetainFailureCauseAcrossMissedSnapshotsAndRestart()throws Exception{
+  long now=System.currentTimeMillis();TrialDiagnostics d=TrialDiagnostics.empty();
+  java.util.EnumMap<Reason,Long> errors=new java.util.EnumMap<>(Reason.class);errors.put(Reason.DNS,1L);
+  // The monitor missed the failed state: the next snapshot is already pending.
+  d.observe(now,Topic.NETATMO_HOMESDATA,State.PENDING,Reason.NONE,0,0,1000,3,1,1,now,now-1000,now-500);
+  d.detail(Topic.NETATMO_HOMESDATA,1000,Reason.DNS,0,0,errors);
+  d=TrialDiagnostics.parse(d.json());
+  assertTrue(d.text(now).contains("dernière_cause_erreur=DNS"));assertTrue(d.text(now).contains("erreurs_DNS=1"));
+  d.observe(now+1,Topic.NETATMO_HOMESDATA,State.OK,Reason.NONE,0,0,1000,3,2,1,now,now+1,now-500);
+  d.detail(Topic.NETATMO_HOMESDATA,1000,Reason.DNS,25,0,errors);
+  assertEquals(Long.valueOf(1),d.entries.get(Topic.NETATMO_HOMESDATA).errors.get(Reason.DNS));
+  d.observe(now+2,Topic.NETATMO_HOMESDATA,State.PENDING,Reason.NONE,0,0,2000,1,0,0,now+2,0,0);
+  d.detail(Topic.NETATMO_HOMESDATA,2000,Reason.NONE,0,0,new java.util.EnumMap<>(Reason.class));
+  d.engineStopped(now+3);String text=d.text(now+4);
+  assertTrue(text.contains("NETATMO_HOMESDATA : CANCELLED cause=ENGINE_STOPPED"));assertTrue(text.contains("dernière_cause_erreur=DNS"));assertFalse(text.contains("CHARGEMENT_NON_TERMINE"));
+ }
+ @Test public void pollingTotalsSurviveEngineReplacementAndDoNotDoubleCountSnapshots()throws Exception{
+  long now=System.currentTimeMillis();TrialDiagnostics d=TrialDiagnostics.empty();
+  JSONObject first=new JSONObject().put("generation",1000).put("observed_at",now).put("cycles",2).put("automatic_cycles",1).put("failures",1).put("last_automatic_at",now-500).put("last_error_at",now-500).put("last_error","TIMEOUT");
+  d.polling=Polling.merge(d.polling,first);d.polling=Polling.merge(d.polling,first);
+  assertEquals(2,d.polling.values.getLong("total_cycles"));
+  d=TrialDiagnostics.parse(d.json());
+  JSONObject restarted=new JSONObject().put("generation",2000).put("observed_at",now).put("cycles",1).put("automatic_cycles",0).put("in_flight",true).put("trigger","INITIAL");
+  d.polling=Polling.merge(d.polling,restarted);
+  String text=d.text(now);assertTrue(text.contains("cycles_moteur=1 cycles_automatiques=0 total_cycles_observés=3 total_automatiques_observés=1"));assertTrue(text.contains("dernière_cause_erreur=TIMEOUT"));
+  d.engineStopped(now+1);assertFalse(d.polling.inFlight);assertEquals(1,d.polling.values.getLong("total_interruptions"));
+  assertFalse(d.text(now+90000).contains("CYCLE_NON_TERMINE"));
+ }
  @Test public void pollingDeadlineAndQuotaSurviveRoundTripWithoutPrivateFields()throws Exception{
   long now=System.currentTimeMillis();JSONObject raw=new JSONObject().put("period_min",120).put("period_max",120).put("cycles",4).put("automatic_cycles",3).put("next_due_at",now+3600000).put("last_cycle_at",now).put("last_automatic_at",now).put("last_gap_ms",120000).put("reason","RATE_LIMIT").put("trigger","DEADLINE").put("observed_at",now).put("private","secret@example.com");
   TrialDiagnostics d=TrialDiagnostics.empty();d.polling=Polling.parse(raw);

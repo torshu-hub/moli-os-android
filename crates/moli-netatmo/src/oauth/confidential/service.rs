@@ -430,9 +430,7 @@ impl Service {
                 self.save(next).await?;
                 Err(Error::RateLimited(seconds))
             }
-            Err(client::Failure::Network | client::Failure::InvalidResponse) => {
-                Err(Error::Ambiguous)
-            }
+            Err(e) if e.network() || e == client::Failure::InvalidResponse => Err(Error::Ambiguous),
             Err(_) => Err(Error::Denied),
         }
     }

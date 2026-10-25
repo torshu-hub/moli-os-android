@@ -22,7 +22,7 @@
   {#each visible as row,index (row.instance??index)}
     <article class="card" data-netatmo-overview-status={status(row)}>
       <h3>{t('pilotes.netatmo.'+(status(row)==='cloud_recent'?'connected_short':status(row)))}</h3>
-      {#if row.last_response_at>0}{@const age=netatmoAge(row.last_response_at,now)}<p class="muted">{t('pilotes.netatmo.'+age.key,{count:age.count})}</p>{/if}
+      {#if row.last_response_at>0}{@const age=netatmoAge(row.last_response_at,now)}<p class="muted">{t('pilotes.netatmo.'+age.key,{count:age.count,seconds:age.seconds})}</p>{/if}
       <details><summary>{t('pilotes.netatmo.connection_details')}</summary>
       <p class="muted">{t('pilotes.netatmo.time_caution')}</p>
       {#if row.configured}

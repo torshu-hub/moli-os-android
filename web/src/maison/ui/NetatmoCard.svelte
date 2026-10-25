@@ -30,7 +30,7 @@
   <div class="card-head"><h3>{nameOf(id, name)}</h3><span class="chip" class:warning={!current}>{t('pilotes.netatmo.'+(current?'current_short':quality==='stale'?'stale_short':'unavailable_short'))}</span></div>
   {#if primary.length}<div class="readings">{#each primary as p (p.key)}<div><small>{p.key==='declared_demand'?t('pilotes.netatmo.declared_demand'):p.label}</small><strong>{shown(p)}</strong></div>{/each}</div>{/if}
   {#if mode!=null}<p class="mode">{t('pilotes.netatmo.mode')} : {String(mode)}</p>{/if}
-  <p class="muted receipt">{t('pilotes.netatmo.'+age.key,{count:age.count})}</p>
+  <p class="muted receipt">{t('pilotes.netatmo.'+age.key,{count:age.count,seconds:age.seconds})}</p>
   {#if !current}<p role="status">{t('pilotes.netatmo.'+(quality==='error'?'status_error':quality))}</p>{/if}
   <details><summary>{t('pilotes.netatmo.details')}</summary>
     <p class="muted">{t('pilotes.netatmo.time_caution')}</p>

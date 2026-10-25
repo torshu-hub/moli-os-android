@@ -1,10 +1,64 @@
-# Netatmo — cadence autonome et cartes compactes, code28
+# Netatmo — relecture bornée et diagnostics, code29
 
 Le propriétaire a confirmé les lectures réelles avec code27 : températures,
 consignes et demande déclarée visibles sur S5e. Il a signalé une attente prolongée
 et des redémarrages manuels pour voir un changement. Le test de cycles successifs
 sur code27 passe déjà : il ne suffit donc pas à attribuer ce retard physique à un
 blocage déterminé. L’ancienne synthèse n’indiquait ni cadence effective ni échéance.
+
+## Retour code28 et correction code29
+
+Le retour réel code28 confirme une relecture `homesdata` en échec autour de
+l’échéance normale, puis des redémarrages avec une lecture encore en cours.
+**La cause physique n’est pas établie** : aucun motif réseau/API n’avait été
+conservé dans l’export. Les tests de code28 ne prouvaient pas cette récupération.
+Ne pas déclarer le jalon autonome terminé avant un cycle continu réel sur S5e.
+
+Code29 conserve les deux GET officiels, la maison et la période normale configurée.
+Après un échec réseau transitoire uniquement, le pilote reprend à **30, 60 puis
+120 s** avec le réglage par défaut ; le plafond est la période configurée. Un
+succès rétablit la cadence normale. Pas de rafale, restart, réautorisation,
+contournement de `429/Retry-After` ou appel depuis l’export. Les erreurs API et
+OAuth gardent leurs délais/protections existants.
+
+Le transport Netatmo utilise le composant HTTPS public Rust `web_diagnostics` :
+un budget total de 10 s couvre DNS, connexion TCP, TLS, en-têtes et corps borné.
+Il ne suit aucun redirect et vérifie toujours le certificat. Les erreurs ne
+contiennent que phase et indicateur de timeout ; requêtes, réponses et erreurs
+brutes sont jetées. La tâche de connexion Hyper est arrêtée à la fin, y compris
+lors d’une annulation. Les autres transports et pilotes ne sont pas modifiés.
+Chaque étape est limitée à 15 s et le cycle complet à 60 s de temps runtime ;
+les timers ne réveillent pas Android suspendu. Une rotation interrompue garde
+son marqueur de sécurité ; une ancienne paire n’est pas rejouée automatiquement.
+
+Le snapshot conserve fin de cycle, durée, échéance ayant déclenché le cycle,
+**dernière cause d’échec indépendante du nouvel état**, et compteurs par catégorie
+(DNS/TCP/TLS/en-têtes/corps, timeout, transport, refus OAuth, quota, format/API,
+stockage). Un arrêt superviseur termine les étapes encore `Pending` en
+`Cancelled`, distinct d’une panne fournisseur. Les données sont invalidées après
+échec ; les anciennes demandes ne deviennent pas récentes grâce à un retry.
+
+Le même journal d’essai cumule aussi les cycles et derniers cycles automatiques
+observés entre remplacements du moteur. Il distingue ces totaux des compteurs du
+hub actuel. L’époque des compteurs reste stable lors d’un redémarrage supervisé ;
+une nouvelle observation identique ne double pas les chiffres. Dernière cause,
+catégories et cumuls survivent au prochain essai, au succès, au redémarrage et à
+l’élagage des événements. Un arrêt Android explicite ferme les observations en
+cours même si l’ultime snapshot n’a pas pu être lu. Une fin jamais observée avant
+une destruction brutale reste une limite du rapport en cache, pas une preuve API.
+Les nouveaux champs sont fermés et n’enregistrent aucune identité ou mesure.
+
+L’âge de communication affiche les secondes jusqu’à 59 s, `1 min 30 s` entre
+60 et 119 s, puis des minutes compactes. L’horloge reste uniquement visuelle.
+
+Preuves ciblées : première lecture réussie puis échec DNS `homesdata`, retry qui
+reste muet, timeout, récupération automatique sans restart ni modification des
+jetons ; annulation d’une lecture automatique ; timeout de cycle et époque
+stable ; classification réseau/rotation ambiguë ; reprise/quota existants ;
+conservation des erreurs malgré un snapshot raté, compteurs cumulés et zéro
+champ privé dans le rapport ; seuils d’âge 59/60/90/119/120 s. La fixture WebView
+exerce aussi l’âge mixte et le chemin snapshot → résumé après reprise. Les
+résultats exécutés et la signature sont consignés dans le bilan de livraison.
 
 ## Planification
 

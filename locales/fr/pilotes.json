@@ -529,6 +529,7 @@
   "pilotes.netatmo.account_settings": "Voir le compte Netatmo existant",
   "pilotes.netatmo.home_name": "Maison Netatmo",
   "pilotes.netatmo.age_seconds": "Communication : reçue il y a {count} s",
+  "pilotes.netatmo.age_minutes_seconds": "Communication : reçue il y a {count} min {seconds} s",
   "pilotes.netatmo.age_minutes": "Communication : reçue il y a {count} min",
   "pilotes.netatmo.age_hours": "Communication : reçue il y a {count} h",
   "pilotes.netatmo.age_unknown": "Communication non confirmée",

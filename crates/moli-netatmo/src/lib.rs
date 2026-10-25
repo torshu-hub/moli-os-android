@@ -314,6 +314,7 @@ impl Driver for Netatmo {
             let mut polling = polling::Polling::new(Instant::now(), now_ms());
             let mut force_refresh = false;
             let mut pending = None;
+            let mut network_retry = 30;
             let mut tick = tokio::time::interval(Duration::from_secs(5));
             tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
@@ -342,7 +343,7 @@ impl Driver for Netatmo {
                 );
                 let result = tokio::select! {
                     () = ctx.cancelled() => return Ok(()),
-                    result = self.collect(ctx, force_refresh, &mut pending) => result,
+                    result = tokio::time::timeout(Duration::from_secs(60), self.collect(ctx, force_refresh, &mut pending)) => result.unwrap_or(Err(Failure::CycleTimeout)),
                 };
                 let outcome = result
                     .as_ref()
@@ -356,6 +357,7 @@ impl Driver for Netatmo {
                             self.config.max_age_seconds,
                         );
                         force_refresh = false;
+                        network_retry = 30;
                         ctx.ready();
                         self.config.poll_seconds
                     }
@@ -371,6 +373,12 @@ impl Driver for Netatmo {
                         force_refresh = failure == Failure::Unauthorized;
                         if force_refresh {
                             self.config.poll_seconds
+                        } else if failure.network() {
+                            // Read-only transient recovery, independently of the
+                            // normal configured period. Back off, never burst.
+                            let delay = network_retry.min(self.config.poll_seconds);
+                            network_retry = (network_retry * 2).min(self.config.poll_seconds);
+                            delay
                         } else {
                             failure.retry_seconds(self.config.poll_seconds)
                         }
@@ -384,6 +392,7 @@ impl Driver for Netatmo {
                         delay_seconds: delay,
                         next_due_at: polling.next_wall,
                         reason: outcome,
+                        duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
                     },
                 );
             }
@@ -448,7 +457,20 @@ async fn observed<T>(
     future: impl std::future::Future<Output = Result<T, Failure>>,
 ) -> Result<T, Failure> {
     ctx.observe_read("netatmo", ReadEvent::Stage(stage, ReadOutcome::Pending));
-    let result = future.await;
+    let start = Instant::now();
+    // A transport/broker/storage adapter must not leave the pipeline pending.
+    // Ambiguous OAuth rotation remains protected by its durable marker; no
+    // timed-out renewal is silently replayed with an old pair.
+    let result = tokio::time::timeout(Duration::from_secs(15), future)
+        .await
+        .unwrap_or(Err(Failure::Timeout));
+    ctx.observe_read(
+        "netatmo",
+        ReadEvent::Latency(
+            stage,
+            u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
+        ),
+    );
     let outcome = result
         .as_ref()
         .map_or_else(|failure| failure_outcome(*failure), |_| ReadOutcome::Ok);
@@ -458,6 +480,13 @@ async fn observed<T>(
 fn failure_outcome(failure: Failure) -> ReadOutcome {
     match failure {
         Failure::Network => ReadOutcome::Transport,
+        Failure::Timeout => ReadOutcome::Timeout,
+        Failure::Dns => ReadOutcome::Dns,
+        Failure::Connect => ReadOutcome::Connect,
+        Failure::Tls => ReadOutcome::Tls,
+        Failure::Headers => ReadOutcome::Headers,
+        Failure::Body => ReadOutcome::Body,
+        Failure::CycleTimeout => ReadOutcome::CycleTimeout,
         Failure::Unauthorized => ReadOutcome::Authorization,
         Failure::Credentials => ReadOutcome::Credentials,
         Failure::Ambiguous => ReadOutcome::Ambiguous,

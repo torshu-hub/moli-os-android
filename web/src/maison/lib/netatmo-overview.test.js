@@ -9,6 +9,7 @@ test('association and enabled instance remain visible with no device; running is
  assert.equal(rows.length,1);assert.equal(netatmoOverview(rows[0],{status:{state:'running'}},true,10000),'waiting_first_read');
  assert.equal(netatmoOverview({...rows[0],enabled:false},null,true,10000),'disabled');
  assert.equal(netatmoOverview({...rows[0],last_attempt_at:9000,stages:{homesdata:{status:'transport',last_error_at:9500}}},null,true,10000),'error_transport');
+ for(const status of ['timeout','dns','connect','tls','headers','body','cycle_timeout'])assert.equal(netatmoOverview({...rows[0],last_attempt_at:9000,stages:{homesdata:{status,last_error_at:9500}}},null,true,10000),'error_transport');
 });
 test('automatic cards use real instance identity and hide expired/currently disconnected demand',()=>{
  const d={id:'fixture:room-test',instance:'fixture',manufacturer:'Netatmo',online:true,state:{freshness:{value:'cloud_recent'},max_age_seconds:{value:120},server_at:{value:10000},collected_at:{value:11000}}};
@@ -31,7 +32,8 @@ test('system graph facts work without Array.at or findLast',()=>{
 });
 test('compact communication age preserves unknown and future dates and orders temperature before accessories',()=>{
  assert.deepEqual(netatmoAge(10000,10000),{key:'age_seconds',count:0});
- assert.deepEqual(netatmoAge(10000,71000),{key:'age_minutes',count:1});
+ assert.deepEqual(netatmoAge(10000,71000),{key:'age_minutes_seconds',count:1,seconds:1});
+ for(const [seconds,expected] of [[59,{key:'age_seconds',count:59}],[60,{key:'age_minutes_seconds',count:1,seconds:0}],[90,{key:'age_minutes_seconds',count:1,seconds:30}],[119,{key:'age_minutes_seconds',count:1,seconds:59}],[120,{key:'age_minutes',count:2}]])assert.deepEqual(netatmoAge(10000,10000+seconds*1000),expected);
  assert.deepEqual(netatmoAge(10000,3610000),{key:'age_hours',count:1});
  assert.equal(netatmoAge(null,10000).key,'age_unknown');assert.equal(netatmoAge(11000,10000).key,'age_unknown');
  assert.deepEqual([{model:'NRV'},{model:'NATherm1'},{model:'room'}].sort((a,b)=>netatmoCardPriority(a)-netatmoCardPriority(b)).map(d=>d.model),['room','NATherm1','NRV']);

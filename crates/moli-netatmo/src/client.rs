@@ -41,6 +41,13 @@ fn valid_token(s: &str) -> bool {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Failure {
     Network,
+    Timeout,
+    Dns,
+    Connect,
+    Tls,
+    Headers,
+    Body,
+    CycleTimeout,
     Unauthorized,
     Credentials,
     Ambiguous,
@@ -50,9 +57,29 @@ pub(crate) enum Failure {
     Storage,
 }
 impl Failure {
+    pub fn network(self) -> bool {
+        matches!(
+            self,
+            Self::Network
+                | Self::Timeout
+                | Self::Dns
+                | Self::Connect
+                | Self::Tls
+                | Self::Headers
+                | Self::Body
+                | Self::CycleTimeout
+        )
+    }
     pub fn code(self) -> &'static str {
         match self {
-            Self::Network => "network",
+            Self::Network
+            | Self::Timeout
+            | Self::Dns
+            | Self::Connect
+            | Self::Tls
+            | Self::Headers
+            | Self::Body
+            | Self::CycleTimeout => "network",
             Self::Unauthorized | Self::Credentials => "oauth",
             Self::Ambiguous => "oauth_ambiguous",
             Self::RateLimited(_) => "rate_limit",
@@ -89,16 +116,26 @@ impl Transport for Https {
             } else {
                 MAX_BODY
             };
-            let (status, headers, body) = moli_net::web_with_headers(
+            let (status, headers, body) = moli_net::web_diagnostics::https(
                 "api.netatmo.com",
-                443,
-                true,
                 request,
                 Duration::from_secs(10),
                 max_body,
             )
             .await
-            .map_err(|_| Failure::Network)?;
+            .map_err(|error| {
+                use moli_net::web_diagnostics::Phase;
+                if error.timeout {
+                    return Failure::Timeout;
+                }
+                match error.phase {
+                    Phase::Dns => Failure::Dns,
+                    Phase::Connect => Failure::Connect,
+                    Phase::Tls => Failure::Tls,
+                    Phase::Headers => Failure::Headers,
+                    Phase::Body => Failure::Body,
+                }
+            })?;
             Ok(Response {
                 status,
                 headers,

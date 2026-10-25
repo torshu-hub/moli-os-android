@@ -221,7 +221,7 @@ impl Grant {
             .await
             .map_err(|e| match e {
                 crate::client::Failure::RateLimited(seconds) => Error::RateLimited(seconds),
-                crate::client::Failure::Network => Error::Network,
+                e if e.network() => Error::Network,
                 _ => Error::Tokens,
             })?;
         let homes = reply["body"]["homes"]
@@ -273,7 +273,7 @@ fn read_error(error: crate::client::Failure) -> Error {
     match error {
         crate::client::Failure::RateLimited(seconds) => Error::RateLimited(seconds),
         crate::client::Failure::Unauthorized => Error::Denied,
-        crate::client::Failure::Network => Error::Network,
+        e if e.network() => Error::Network,
         _ => Error::Tokens,
     }
 }
