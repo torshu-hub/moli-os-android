@@ -133,3 +133,18 @@ Cet écran n’active aucun pilote, ne modifie aucun fichier et ne déclenche au
 authentification cloud. Il ne garantit pas la compatibilité Android. Les formulaires
 existants et le générateur Android restent inchangés. Vérification synthétique du
 rendu FR/EN : `cd web && node scripts/integration-inventory.check.mjs`.
+
+## Android : réception discrète dans les cartes
+
+Les cartes IPP, IGD, MSS310, météo et tablette placent l'heure reçue et l'âge en
+haut à droite (`Receipt.svelte`). L'âge suit l'horloge réactive existante, sans
+modifier le timestamp du relevé ni les seuils de fraîcheur. Les états anciens,
+indisponibles, à confirmer, non reçus et heure inconnue restent textuels ; une date
+future n'affiche pas un âge nul. Les dates et âges individuels restent sous Détails.
+Ce composant ne s'applique pas aux dates cloud/physiques Netatmo et ne touche pas
+au bandeau Android natif, aux pilotes ou à la persistance.
+
+Vérifications ciblées : `cd web && node scripts/receipt.check.mjs` (rendu FR/EN)
+et `python3 scripts/receipt-browser.check.py` (Chromium + Python Playwright,
+FR/EN, portrait 360/800 px, frais/ancien/inconnu/hors ligne/non reçu, débordement
+et progression de l'âge à timestamp constant). Les fixtures sont synthétiques.

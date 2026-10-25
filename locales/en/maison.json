@@ -256,5 +256,13 @@
   "maison.equipment.duration": "{days} d {hours} h {minutes} min",
   "maison.equipment.read_confirmed": "Reading active: fresh response received, distinct from saved configuration.",
   "maison.android.checking": "Confirming readings",
-  "maison.equipment.details": "Reading details"
+  "maison.equipment.details": "Reading details",
+  "maison.receipt.days": "{count} d",
+  "maison.receipt.elapsed": "Received {age} ago",
+  "maison.receipt.waiting": "Not received",
+  "maison.receipt.unknown": "Unknown time",
+  "maison.receipt.stale": "Stale",
+  "maison.receipt.unavailable": "Unavailable",
+  "maison.receipt.checking": "Unconfirmed",
+  "maison.receipt.help": "Reception help"
 }

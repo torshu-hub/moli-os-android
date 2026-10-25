@@ -3,7 +3,7 @@
   import { equipmentStatus, durationParts, sampleMaxAge } from '../lib/equipment-status.js';
   import { t } from '../../lib/i18n.svelte.js';
   const firstSeen = Date.now();
-  const compactClock = (ts) => new Date(ts).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  import Receipt from './Receipt.svelte';
   const cfg = $derived(home.config.android);
   const printer = $derived(device(cfg.printer_id));
   const gateway = $derived(Object.values(hub.devices).find(d => d.instance === 'android-gateway'));
@@ -37,17 +37,17 @@
     {#each cards as card (card.instance || card.kind)}
       {@const observed = status(card)}
       <article class="card" data-equipment={card.kind} data-equipment-status={observed.state} data-equipment-instance={card.instance}>
-        <h3>{card.name || t('maison.equipment.' + card.kind)}</h3>
-        <p class="chip" class:good={observed.state === 'fresh'}>{t('maison.android.' + observed.state)}</p>
+        <div class="equipment-head"><h3>{card.name || t('maison.equipment.' + card.kind)}</h3>
+          <div data-equipment-received={observed.ts || undefined}><Receipt ts={observed.ts} now={observed.now} state={observed.state} present={!!card.data} /></div>
+        </div>
         {#if card.data}
           <p>{[card.data.manufacturer,card.data.model].filter(Boolean).join(' ') || card.data.native_name}</p>
-          {#if observed.ts}<p class="muted" data-equipment-received={observed.ts}>{t('maison.android.received',{time:compactClock(observed.ts)})}</p>{/if}
           <dl>
             {#each card.data.points.filter(p => p.access.read && !p.access.write && p.key !== 'responding') as point (point.key)}
               {@const sample = card.data.state?.[point.key]}
               <dt>{card.kind === 'meross' ? t('maison.equipment.mss_'+point.key) : point.label}</dt><dd>{shown(sample,point)}
-                {#if sample?.value != null && (sample.ts > observed.now || observed.now - sample.ts > sampleMaxAge(card.kind,point.key))}
-                  <small>{t('maison.android.stale')}</small>
+                {#if sample?.value != null && (!Number.isFinite(sample.ts) || sample.ts <= 0 || sample.ts > observed.now || observed.now - sample.ts > sampleMaxAge(card.kind,point.key))}
+                  <small>{t(!Number.isFinite(sample.ts) || sample.ts <= 0 || sample.ts > observed.now ? 'maison.receipt.unknown' : 'maison.receipt.stale')}</small>
                 {/if}
               </dd>
             {/each}
@@ -65,13 +65,15 @@
           </details>
         {/if}
         {#if card.kind === 'meross'}<p class="muted">{t('maison.equipment.meross_help')}</p>{/if}
-        {#if observed.state==='fresh'}<p class="muted">{t('maison.equipment.read_confirmed')}</p>{/if}
-        {#if ['stale','unavailable'].includes(observed.state)}<p class="muted">{t(card.kind === 'meross' ? 'maison.equipment.meross_unavailable' : 'maison.equipment.unavailable_help')}</p>{/if}
+        {#if ['stale','unavailable'].includes(observed.state)}<details><summary>{t('maison.receipt.help')}</summary><p>{t(card.kind === 'meross' ? 'maison.equipment.meross_unavailable' : 'maison.equipment.unavailable_help')}</p></details>{/if}
       </article>
     {/each}
   </div>
 </section>
 <style>
+ .equipment-head {display:flex;align-items:flex-start;gap:12px;}
+ .equipment-head h3 {flex:1;min-width:0;margin:0;overflow-wrap:anywhere;}
+ .equipment-head > div {flex:0 1 6rem;min-width:0;}
  .equipment {margin-top:24px;}
  .devices {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:20px;}
  dl {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 16px;overflow-wrap:anywhere;}

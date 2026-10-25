@@ -256,5 +256,13 @@
   "maison.equipment.duration": "{days} j {hours} h {minutes} min",
   "maison.equipment.read_confirmed": "Lecture active : réponse fraîche reçue, distincte de la configuration enregistrée.",
   "maison.android.checking": "Lecture en cours de confirmation",
-  "maison.equipment.details": "Détails des relevés"
+  "maison.equipment.details": "Détails des relevés",
+  "maison.receipt.days": "{count} j",
+  "maison.receipt.elapsed": "Reçue il y a {age}",
+  "maison.receipt.waiting": "Non reçue",
+  "maison.receipt.unknown": "Heure inconnue",
+  "maison.receipt.stale": "Anciennes",
+  "maison.receipt.unavailable": "Indisponibles",
+  "maison.receipt.checking": "À confirmer",
+  "maison.receipt.help": "Aide sur la réception"
 }
