@@ -524,6 +524,21 @@ async fn advance_poll() {
     }
 }
 #[cfg(feature = "personal-oauth")]
+async fn wait_for_personal_poll(done: impl Fn() -> bool) {
+    // Vault commits await real filesystem work. A fixed number of yields is
+    // not a completion barrier, and depends on the unified Tokio features.
+    // Resume time while waiting so a blocked assertion has a real deadline.
+    tokio::time::resume();
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        while !done() {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await;
+    tokio::time::pause();
+    result.expect("personal poll did not finish");
+}
+#[cfg(feature = "personal-oauth")]
 #[tokio::test(start_paused = true)]
 async fn personal_rotation_survives_driver_restart_without_repeating_the_provider_refresh() {
     let mut h = Harness::start(false).await;
@@ -554,6 +569,15 @@ async fn personal_rotation_survives_driver_restart_without_repeating_the_provide
     s["time_server"] = json!(now_ms() / 1000);
     h.mock.add(200, &s);
     advance_poll().await;
+    wait_for_personal_poll(|| {
+        Tokens::parse(&h.hub.secret(&instance, TOKEN_SECRET).unwrap())
+            .unwrap()
+            .refresh_token
+            == "personal-refresh"
+            && h.mock.replies.lock().unwrap().is_empty()
+            && h.point("boiler_status") == Some(Value::Bool(true))
+    })
+    .await;
     assert_eq!(
         Tokens::parse(&h.hub.secret(&instance, TOKEN_SECRET).unwrap())
             .unwrap()
@@ -571,12 +595,10 @@ async fn personal_rotation_survives_driver_restart_without_repeating_the_provide
     driver.transport = h.mock.clone();
     h.cancel = CancellationToken::new();
     h.task = spawn_driver(&h.hub, instance, Arc::new(driver), h.cancel.clone());
-    for _ in 0..10000 {
-        if h.hub.stats().drivers_running == 1 {
-            break;
-        }
-        tokio::task::yield_now().await;
-    }
+    wait_for_personal_poll(|| {
+        h.hub.stats().drivers_running == 1 && h.point("boiler_status") == Some(Value::Bool(true))
+    })
+    .await;
     assert_eq!(h.point("boiler_status"), Some(Value::Bool(true)));
     assert_eq!(
         h.mock
@@ -621,6 +643,13 @@ async fn personal_ambiguous_refresh_keeps_its_durable_marker_and_never_replays()
         .unwrap()
         .push_back(Err(Failure::Network));
     advance_poll().await;
+    wait_for_personal_poll(|| {
+        h.hub
+            .secret(&instance, oauth::personal::ROTATION_SECRET)
+            .is_some()
+            && h.point("boiler_status") == Some(Value::Null)
+    })
+    .await;
     assert!(
         h.hub
             .secret(&instance, oauth::personal::ROTATION_SECRET)
