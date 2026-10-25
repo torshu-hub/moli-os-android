@@ -130,3 +130,15 @@ identity/certificate/version. Only then: stop the engine, install over 0.17 with
 uninstall/clear, check stable device bindings/rooms/settings, and restart twice.
 A preservation/read-only message calls for reviewed resolution, not a reset.
 No tablet action or intermediate APK publication is requested by this increment.
+
+## Beta 0.18.0 candidate (code 23)
+
+The delivery candidate uses the existing `io.moli.android.app.beta` identity and
+beta certificate. The release circuit verifies its unsigned artifact and evidence
+before signing those same bytes. No device migration or endurance result is implied.
+
+S5e check: stop the engine, install the verified signed APK over 0.17 without
+uninstalling or clearing data, then reopen/start. Check the same equipment
+associations, room/settings and integration inventory; restart the engine twice
+and check them again. A configuration conflict must preserve the installation:
+record its message and stop rather than resetting or recreating devices.
