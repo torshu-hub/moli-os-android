@@ -348,7 +348,9 @@
     <string name="netatmo_saving">Enregistrement protégé de l’autorisation…</string>
     <string name="netatmo_denied">Autorisation refusée. Les accès précédents et vos réglages restent conservés.</string>
     <string name="netatmo_expired">Connexion expirée ou interrompue. Lancez une nouvelle autorisation.</string>
-    <string name="netatmo_stored">Autorisation enregistrée dans le coffre. La sélection de maison et la lecture API restent à confirmer.</string>
+    <string name="netatmo_stored">Autorisation conservée dans le coffre. Choisir la maison si nécessaire ; une nouvelle connexion n’est pas requise par défaut.</string>
+    <string name="netatmo_association_preserved">Autorisation et maison conservées. Le moteur utilise cette association pour les lectures, sans nouvelle connexion à refaire par défaut.</string>
+    <string name="netatmo_reauthorize">Réautoriser dans le navigateur</string>
     <string name="netatmo_disconnected">Aucune autorisation Netatmo enregistrée pour cette instance.</string>
     <string name="netatmo_existing_setup">Des jetons locaux existent sans application personnelle configurée. Déconnectez explicitement cette instance avant de la configurer.</string>
     <string name="netatmo_interrupted">La connexion précédente a été interrompue. Aucune session de navigateur n’a été restaurée ; vos données sont conservées.</string>

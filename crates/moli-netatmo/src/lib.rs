@@ -3,6 +3,7 @@
 mod client;
 mod model;
 pub mod oauth;
+mod polling;
 #[cfg(test)]
 mod tests;
 
@@ -310,7 +311,7 @@ impl Driver for Netatmo {
             for id in ctx.devices() {
                 invalidate(ctx, &id, "unconfirmed", "");
             }
-            let mut next = Instant::now();
+            let mut polling = polling::Polling::new(Instant::now(), now_ms());
             let mut force_refresh = false;
             let mut pending = None;
             let mut tick = tokio::time::interval(Duration::from_secs(5));
@@ -320,57 +321,41 @@ impl Driver for Netatmo {
                     command = ctx.next_command() => {
                         let Some(command) = command else { return Ok(()); };
                         command.reply(Err(tr!("pilotes.netatmo.read_only")));
+                        continue;
                     }
+                    () = tokio::time::sleep_until(polling.next) => {},
                     _ = tick.tick() => {}
                 }
                 expire(ctx, &mut records, self.config.max_age_seconds * 1000);
-                if Instant::now() < next {
+                let start = Instant::now();
+                let start_wall = now_ms();
+                let Some((trigger, late_ms)) = polling.due(start, start_wall) else {
                     continue;
-                }
+                };
+                ctx.observe_read(
+                    "netatmo",
+                    ReadEvent::Cycle {
+                        period_seconds: self.config.poll_seconds,
+                        trigger,
+                        late_ms,
+                    },
+                );
                 let result = tokio::select! {
                     () = ctx.cancelled() => return Ok(()),
                     result = self.collect(ctx, force_refresh, &mut pending) => result,
                 };
+                let outcome = result
+                    .as_ref()
+                    .map_or_else(|failure| failure_outcome(*failure), |_| ReadOutcome::Ok);
                 let delay = match result {
                     Ok(observations) => {
-                        ctx.observe_read(
-                            "netatmo",
-                            ReadEvent::Stage(ReadStage::Publication, ReadOutcome::Pending),
+                        publish_observations(
+                            ctx,
+                            &mut records,
+                            observations,
+                            self.config.max_age_seconds,
                         );
-                        let summary = ReadSummary {
-                            devices: observations.len() as u64,
-                            fresh: observations.iter().filter(|o| o.current()).count() as u64,
-                            temperatures: reading_count(&observations, "temperature"),
-                            setpoints: reading_count(&observations, "setpoint_temperature"),
-                            modes: reading_count(&observations, "mode"),
-                            demand_present: reading_count(&observations, "boiler_status"),
-                            demand_unknown: observations
-                                .iter()
-                                .filter(|o| {
-                                    matches!(o.model.as_str(), "NATherm1" | "OTM")
-                                        && o.readings
-                                            .get("boiler_status")
-                                            .is_none_or(|v| *v == Value::Null)
-                                })
-                                .count() as u64,
-                        };
-                        let seen: std::collections::BTreeSet<_> = observations
-                            .iter()
-                            .map(|o| ctx.device_id(&o.native))
-                            .collect();
-                        for id in ctx.devices().into_iter().filter(|id| !seen.contains(id)) {
-                            invalidate(ctx, &id, "missing", "");
-                            records.remove(&id);
-                        }
-                        for observation in observations {
-                            let id = publish(ctx, &observation, self.config.max_age_seconds);
-                            records.insert(
-                                id,
-                                (observation.server_at, Instant::now(), observation.current()),
-                            );
-                        }
                         force_refresh = false;
-                        ctx.observe_read("netatmo", ReadEvent::Published(summary));
                         ctx.ready();
                         self.config.poll_seconds
                     }
@@ -391,10 +376,64 @@ impl Driver for Netatmo {
                         }
                     }
                 };
-                next = Instant::now() + Duration::from_secs(delay.min(7 * 86400));
+                let delay = delay.min(7 * 86400);
+                polling.schedule(start, start_wall, Instant::now(), now_ms(), delay, outcome);
+                ctx.observe_read(
+                    "netatmo",
+                    ReadEvent::Scheduled {
+                        delay_seconds: delay,
+                        next_due_at: polling.next_wall,
+                        reason: outcome,
+                    },
+                );
             }
         })
     }
+}
+
+fn publish_observations(
+    ctx: &DriverCtx,
+    records: &mut Records,
+    observations: Vec<Observation>,
+    max_age_seconds: u64,
+) {
+    ctx.observe_read(
+        "netatmo",
+        ReadEvent::Stage(ReadStage::Publication, ReadOutcome::Pending),
+    );
+    let summary = ReadSummary {
+        devices: observations.len() as u64,
+        fresh: observations.iter().filter(|o| o.current()).count() as u64,
+        temperatures: reading_count(&observations, "temperature"),
+        setpoints: reading_count(&observations, "setpoint_temperature"),
+        modes: reading_count(&observations, "mode"),
+        demand_present: reading_count(&observations, "boiler_status"),
+        demand_unknown: observations
+            .iter()
+            .filter(|o| {
+                matches!(o.model.as_str(), "NATherm1" | "OTM")
+                    && o.readings
+                        .get("boiler_status")
+                        .is_none_or(|v| *v == Value::Null)
+            })
+            .count() as u64,
+    };
+    let seen: std::collections::BTreeSet<_> = observations
+        .iter()
+        .map(|o| ctx.device_id(&o.native))
+        .collect();
+    for id in ctx.devices().into_iter().filter(|id| !seen.contains(id)) {
+        invalidate(ctx, &id, "missing", "");
+        records.remove(&id);
+    }
+    for observation in observations {
+        let id = publish(ctx, &observation, max_age_seconds);
+        records.insert(
+            id,
+            (observation.server_at, Instant::now(), observation.current()),
+        );
+    }
+    ctx.observe_read("netatmo", ReadEvent::Published(summary));
 }
 
 fn reading_count(observations: &[Observation], key: &str) -> u64 {
@@ -410,19 +449,23 @@ async fn observed<T>(
 ) -> Result<T, Failure> {
     ctx.observe_read("netatmo", ReadEvent::Stage(stage, ReadOutcome::Pending));
     let result = future.await;
-    let outcome = match &result {
-        Ok(_) => ReadOutcome::Ok,
-        Err(Failure::Network) => ReadOutcome::Transport,
-        Err(Failure::Unauthorized) => ReadOutcome::Authorization,
-        Err(Failure::Credentials) => ReadOutcome::Credentials,
-        Err(Failure::Ambiguous) => ReadOutcome::Ambiguous,
-        Err(Failure::RateLimited(_)) => ReadOutcome::RateLimit,
-        Err(Failure::Storage) => ReadOutcome::Storage,
-        Err(Failure::InvalidResponse) => ReadOutcome::InvalidResponse,
-        Err(Failure::Api) => ReadOutcome::Provider,
-    };
+    let outcome = result
+        .as_ref()
+        .map_or_else(|failure| failure_outcome(*failure), |_| ReadOutcome::Ok);
     ctx.observe_read("netatmo", ReadEvent::Stage(stage, outcome));
     result
+}
+fn failure_outcome(failure: Failure) -> ReadOutcome {
+    match failure {
+        Failure::Network => ReadOutcome::Transport,
+        Failure::Unauthorized => ReadOutcome::Authorization,
+        Failure::Credentials => ReadOutcome::Credentials,
+        Failure::Ambiguous => ReadOutcome::Ambiguous,
+        Failure::RateLimited(_) => ReadOutcome::RateLimit,
+        Failure::Storage => ReadOutcome::Storage,
+        Failure::InvalidResponse => ReadOutcome::InvalidResponse,
+        Failure::Api => ReadOutcome::Provider,
+    }
 }
 
 async fn persist_pending(ctx: &DriverCtx, pending: &mut Option<Tokens>) -> Result<(), Failure> {

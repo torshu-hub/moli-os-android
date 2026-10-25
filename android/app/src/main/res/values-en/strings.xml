@@ -348,7 +348,9 @@
     <string name="netatmo_saving">Saving authorization securely…</string>
     <string name="netatmo_denied">Authorization refused. Previous access and your settings remain.</string>
     <string name="netatmo_expired">Connection expired or interrupted. Start a new authorization.</string>
-    <string name="netatmo_stored">Authorization saved in the vault. Home selection and API reading still need confirmation.</string>
+    <string name="netatmo_stored">Authorization preserved in the vault. Select the home if needed; a new login is not required by default.</string>
+    <string name="netatmo_association_preserved">Authorization and home preserved. The engine uses this association for reads, without a new login by default.</string>
+    <string name="netatmo_reauthorize">Reauthorize in browser</string>
     <string name="netatmo_disconnected">No Netatmo authorization saved for this instance.</string>
     <string name="netatmo_existing_setup">Local tokens exist without a configured personal application. Explicitly disconnect this instance before configuring it.</string>
     <string name="netatmo_interrupted">The previous connection was interrupted. No browser session was restored; your data remains.</string>

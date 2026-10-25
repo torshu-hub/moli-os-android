@@ -34,3 +34,10 @@ export function netatmoOverview(row,driver,connected,now) {
   if((row.devices||[]).length)return 'no_current_data';
   return row.last_publish_at>0?'no_devices':'waiting_first_read';
 }
+
+export function netatmoAge(at,now) {
+  if(!Number.isFinite(at)||at<=0||at>now)return {key:'age_unknown',count:0};
+  const seconds=Math.floor((now-at)/1000);
+  return seconds<60?{key:'age_seconds',count:seconds}:seconds<3600?{key:'age_minutes',count:Math.floor(seconds/60)}:{key:'age_hours',count:Math.floor(seconds/3600)};
+}
+export const netatmoCardPriority=d=>d?.model==='room'?0:['NATherm1','OTM'].includes(d?.model)?1:2;

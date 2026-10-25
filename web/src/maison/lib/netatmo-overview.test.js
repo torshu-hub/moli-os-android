@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {netatmoInstances,netatmoOverview,netatmoStatus} from './netatmo-status.js';
+import {netatmoInstances,netatmoOverview,netatmoStatus,netatmoAge,netatmoCardPriority} from './netatmo-status.js';
 import {readJson,UI_STATE} from './ui-diagnostics.js';
 import {systemFacts,validSystem} from './system-status.js';
 
@@ -28,4 +28,11 @@ test('system graph facts work without Array.at or findLast',()=>{
  const perf=[{clients:{total:0},moli:{mem_mib:1}},{clients:{total:1}}];perf.at=undefined;perf.findLast=undefined;
   assert.deepEqual(systemFacts({perf}),{last:{clients:{total:1}},idle:{clients:{total:0},moli:{mem_mib:1}}});
   assert.equal(systemFacts(null).last,undefined);
+});
+test('compact communication age preserves unknown and future dates and orders temperature before accessories',()=>{
+ assert.deepEqual(netatmoAge(10000,10000),{key:'age_seconds',count:0});
+ assert.deepEqual(netatmoAge(10000,71000),{key:'age_minutes',count:1});
+ assert.deepEqual(netatmoAge(10000,3610000),{key:'age_hours',count:1});
+ assert.equal(netatmoAge(null,10000).key,'age_unknown');assert.equal(netatmoAge(11000,10000).key,'age_unknown');
+ assert.deepEqual([{model:'NRV'},{model:'NATherm1'},{model:'room'}].sort((a,b)=>netatmoCardPriority(a)-netatmoCardPriority(b)).map(d=>d.model),['room','NATherm1','NRV']);
 });

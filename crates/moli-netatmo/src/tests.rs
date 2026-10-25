@@ -558,6 +558,43 @@ async fn advance_poll() {
         tokio::task::yield_now().await;
     }
 }
+
+#[tokio::test(start_paused = true)]
+async fn consecutive_automatic_cycles_publish_changes_without_restarting() {
+    let h = Harness::start(false).await;
+    for wanted in [false, true, false] {
+        h.mock.add(200, &live_topology());
+        let mut next = status();
+        next["time_server"] = json!(now_ms() / 1000);
+        next["body"]["home"]["modules"][1]["boiler_status"] = json!(wanted);
+        h.mock.add(200, &next);
+        advance_poll().await;
+        assert_eq!(h.point("boiler_status"), Some(Value::Bool(wanted)));
+    }
+    assert_eq!(
+        h.hub.snapshot().diagnostics[0].read.stages[&ReadStage::Publication].successes,
+        4
+    );
+    let polling = &h.hub.snapshot().diagnostics[0].read.polling;
+    assert_eq!(polling.period_seconds, 120);
+    assert_eq!(polling.cycles, 4);
+    assert_eq!(polling.automatic_cycles, 3);
+    assert_eq!(polling.successes, 4);
+    assert_eq!(polling.reason, ReadOutcome::Ok);
+    assert!(!polling.in_flight);
+    assert!(polling.next_due_at >= polling.last_cycle_at + 120_000);
+    assert_eq!(
+        h.mock
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.0 == "GET")
+            .count(),
+        8
+    );
+    h.stop().await;
+}
 #[cfg(feature = "personal-oauth")]
 async fn wait_for_personal_poll(done: impl Fn() -> bool) {
     // Vault commits await real filesystem work. A fixed number of yields is

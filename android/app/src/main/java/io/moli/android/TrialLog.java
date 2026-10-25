@@ -63,12 +63,16 @@ final class TrialLog {
         try{
             long now=System.currentTimeMillis();
             boolean changed=journal.diagnostics.observe(now,topic,state,reason,a,b,generation,attempts,successes,failures,attemptAt,successAt,errorAt);
-            if(changed)
+            if(changed&&journal.diagnostics.trace(topic,state,now))
                 journal.add(now,TrialJournal.Event.DIAGNOSTIC_CHANGED,topic.ordinal(),state.ordinal());
             if(diagnosticDepth==0&&(changed||now-diagnosticSaved>=15000)){save();diagnosticSaved=now;}
         }catch(Exception ignored){}
     }
     interface DiagnosticWork{void run()throws org.json.JSONException;}
+    static synchronized void polling(Context c,org.json.JSONObject snapshot)throws org.json.JSONException{
+        attach(c);if(!journal.active)return;
+        journal.diagnostics.polling=TrialDiagnostics.Polling.parse(snapshot);
+    }
     static synchronized void diagnosticBatch(Context c,DiagnosticWork work)throws org.json.JSONException{
         attach(c);if(!journal.active)return;diagnosticDepth++;
         try{work.run();}finally{diagnosticDepth--;if(diagnosticDepth==0){save();diagnosticSaved=System.currentTimeMillis();}}

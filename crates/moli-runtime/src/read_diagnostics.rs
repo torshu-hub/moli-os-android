@@ -50,6 +50,31 @@ pub struct ReadSummary {
     pub demand_present: u64,
     pub demand_unknown: u64,
 }
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadTrigger {
+    #[default]
+    Initial,
+    Deadline,
+    WallDeadline,
+}
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct ReadPolling {
+    pub period_seconds: u64,
+    pub delay_seconds: u64,
+    pub next_due_at: u64,
+    pub cycles: u64,
+    pub automatic_cycles: u64,
+    pub successes: u64,
+    pub failures: u64,
+    pub last_cycle_at: u64,
+    pub last_automatic_at: u64,
+    pub last_gap_ms: u64,
+    pub late_ms: u64,
+    pub trigger: ReadTrigger,
+    pub reason: ReadOutcome,
+    pub in_flight: bool,
+}
 #[derive(Clone, Debug, Serialize)]
 // Independent observations (enabled, vault, target, process, expiry), not
 // mutually exclusive states. Keep their explicit boolean API representation.
@@ -68,9 +93,20 @@ pub struct ReadDiagnostics {
     pub last_publish_at: u64,
     pub stages: BTreeMap<ReadStage, ReadStep>,
     pub summary: ReadSummary,
+    pub polling: ReadPolling,
 }
 #[derive(Clone, Copy, Debug)]
 pub enum ReadEvent {
+    Cycle {
+        period_seconds: u64,
+        trigger: ReadTrigger,
+        late_ms: u64,
+    },
+    Scheduled {
+        delay_seconds: u64,
+        next_due_at: u64,
+        reason: ReadOutcome,
+    },
     Configuration {
         enabled: bool,
         credential_present: bool,
@@ -101,10 +137,49 @@ impl ReadDiagnostics {
             last_publish_at: 0,
             stages: BTreeMap::new(),
             summary: ReadSummary::default(),
+            polling: ReadPolling::default(),
         }
     }
     pub(crate) fn observe(&mut self, event: ReadEvent, now: u64) {
         match event {
+            ReadEvent::Cycle {
+                period_seconds,
+                trigger,
+                late_ms,
+            } => {
+                let p = &mut self.polling;
+                p.period_seconds = period_seconds;
+                p.trigger = trigger;
+                p.late_ms = late_ms;
+                p.in_flight = true;
+                p.last_gap_ms = if p.last_cycle_at == 0 {
+                    0
+                } else {
+                    now.saturating_sub(p.last_cycle_at)
+                };
+                p.last_cycle_at = now;
+                p.cycles = p.cycles.saturating_add(1);
+                if !matches!(trigger, ReadTrigger::Initial) {
+                    p.last_automatic_at = now;
+                    p.automatic_cycles = p.automatic_cycles.saturating_add(1);
+                }
+            }
+            ReadEvent::Scheduled {
+                delay_seconds,
+                next_due_at,
+                reason,
+            } => {
+                let p = &mut self.polling;
+                p.delay_seconds = delay_seconds;
+                p.next_due_at = next_due_at;
+                p.reason = reason;
+                p.in_flight = false;
+                if reason == ReadOutcome::Ok {
+                    p.successes = p.successes.saturating_add(1);
+                } else {
+                    p.failures = p.failures.saturating_add(1);
+                }
+            }
             ReadEvent::Configuration {
                 enabled,
                 credential_present,

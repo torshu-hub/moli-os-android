@@ -18,10 +18,19 @@ final class NetatmoDiagnostics {
         Topic[] topics={Topic.NETATMO_AUTHORIZATION,Topic.NETATMO_TOKENS,Topic.NETATMO_HOMESDATA,Topic.NETATMO_HOMESTATUS,Topic.NETATMO_PARSING,Topic.NETATMO_PUBLICATION};
         long[][] counts=new long[6][6];String[] outcomes=new String[6];
         long now=System.currentTimeMillis();
+        JSONObject polling=new JSONObject();long minPeriod=0,maxPeriod=0,nextDue=0,pollCycles=0,pollAutomatic=0,pollSuccess=0,pollFailure=0,lastCycle=0,lastAuto=0,gap=0,late=0,delay=0;boolean inFlight=false;Reason pollReason=Reason.NONE;String trigger="UNOBSERVED";
         for(int i=0;i<Math.min(64,diagnostics.length());i++){
             JSONObject row=diagnostics.optJSONObject(i);if(row==null||!"netatmo".equals(row.optString("kind")))continue;
             configured++;if(row.optBoolean("enabled"))enabled++;if(row.optBoolean("credential_present"))credentials++;if(row.optBoolean("target_selected"))homes++;if(row.optBoolean("driver_started"))started++;if(row.optBoolean("token_expired"))expired++;
             if(row.optLong("last_response_at")>0)confirmed++;generation=Math.max(generation,row.optLong("started_at"));
+            JSONObject p=row.optJSONObject("polling");if(p!=null&&p.optLong("period_seconds")>0){
+                long period=p.optLong("period_seconds");minPeriod=minPeriod==0?period:Math.min(minPeriod,period);maxPeriod=Math.max(maxPeriod,period);
+                long due=p.optLong("next_due_at");if(due>0)nextDue=nextDue==0?due:Math.min(nextDue,due);
+                pollCycles+=p.optLong("cycles");pollAutomatic+=p.optLong("automatic_cycles");pollSuccess+=p.optLong("successes");pollFailure+=p.optLong("failures");
+                if(p.optLong("last_cycle_at")>=lastCycle){lastCycle=p.optLong("last_cycle_at");trigger=switch(p.optString("trigger")){case "initial"->"INITIAL";case "deadline"->"DEADLINE";case "wall_deadline"->"WALL_DEADLINE";default->"UNOBSERVED";};}
+                lastAuto=Math.max(lastAuto,p.optLong("last_automatic_at"));gap=Math.max(gap,p.optLong("last_gap_ms"));late=Math.max(late,p.optLong("late_ms"));delay=Math.max(delay,p.optLong("delay_seconds"));inFlight|=p.optBoolean("in_flight");
+                Reason r=reason(p.optString("reason"));if(r!=Reason.NONE)pollReason=r;
+            }
             JSONObject values=row.optJSONObject("summary");if(values!=null){returned+=values.optLong("devices");boiler+=values.optLong("demand_present");unknown+=values.optLong("demand_unknown");}
             JSONObject steps=row.optJSONObject("stages");
             for(int k=0;k<6;k++){
@@ -44,6 +53,10 @@ final class NetatmoDiagnostics {
         flag(c,Topic.NETATMO_DRIVER,started>0?State.OK:State.ABSENT,started,enabled);
         flag(c,Topic.NETATMO_DATA,seen==0?State.ABSENT:fresh>0?State.OK:State.STALE,temperatures,setpoints);
         flag(c,Topic.NETATMO_BOILER_FIELD,boiler>0?State.OK:State.ABSENT,boiler,unknown);
+        polling.put("period_min",minPeriod).put("period_max",maxPeriod).put("delay_seconds",delay).put("cycles",pollCycles).put("automatic_cycles",pollAutomatic).put("successes",pollSuccess).put("failures",pollFailure)
+            .put("last_cycle_at",lastCycle).put("last_automatic_at",lastAuto).put("next_due_at",nextDue).put("last_gap_ms",gap).put("late_ms",late).put("trigger",trigger).put("reason",pollReason.name()).put("in_flight",inFlight).put("observed_at",minPeriod>0?now:0);
+        TrialLog.polling(c,polling);
+        TrialLog.diagnostic(c,Topic.NETATMO_POLLING,minPeriod==0?State.UNOBSERVED:inFlight?State.PENDING:pollReason==Reason.NONE?State.OK:State.FAILED,pollReason,minPeriod,delay,generation,pollCycles,pollSuccess,pollFailure,lastCycle,pollReason==Reason.NONE?lastCycle:0,pollReason==Reason.NONE?0:lastCycle);
         for(int k=0;k<6;k++){
             String outcome=outcomes[k]==null?"unobserved":outcomes[k];
             State state="ok".equals(outcome)?State.OK:"pending".equals(outcome)?State.PENDING:"unobserved".equals(outcome)?State.UNOBSERVED:State.FAILED;

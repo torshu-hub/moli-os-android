@@ -527,5 +527,19 @@
   "pilotes.netatmo.not_observed": "Not observed yet",
   "pilotes.netatmo.disabled_help": "The association is preserved. To read, stop the engine and enable reads in the Netatmo account home selection; no new login needed.",
   "pilotes.netatmo.account_settings": "View existing Netatmo account",
-  "pilotes.netatmo.home_name": "Netatmo home"
+  "pilotes.netatmo.home_name": "Netatmo home",
+  "pilotes.netatmo.age_seconds": "Communication: received {count} s ago",
+  "pilotes.netatmo.age_minutes": "Communication: received {count} min ago",
+  "pilotes.netatmo.age_hours": "Communication: received {count} h ago",
+  "pilotes.netatmo.age_unknown": "Communication not confirmed",
+  "pilotes.netatmo.current_short": "Up to date",
+  "pilotes.netatmo.stale_short": "Stale",
+  "pilotes.netatmo.unavailable_short": "Unavailable",
+  "pilotes.netatmo.connected_short": "Connected",
+  "pilotes.netatmo.demand_on": "Yes",
+  "pilotes.netatmo.demand_off": "No",
+  "pilotes.netatmo.details": "Read details",
+  "pilotes.netatmo.connection_details": "Connection details",
+  "pilotes.netatmo.frequency": "Configured frequency",
+  "pilotes.netatmo.frequency_seconds": "Every {count} s"
 }

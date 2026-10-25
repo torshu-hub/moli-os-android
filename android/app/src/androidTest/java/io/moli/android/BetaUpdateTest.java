@@ -78,6 +78,8 @@ public final class BetaUpdateTest {
         }
         secrets.put("android-meross-account/session",new JSONObject().put("credentials",new JSONObject().put("host","iotx-eu.meross.com").put("key",LOCAL_KEY).put("token","invented-session-token"))
                 .put("items",items).put("cached_ms",System.currentTimeMillis()).toString());
+        secrets.put("energy-update-fixture/oauth_personal_application",new JSONObject().put("client_id","fixture-personal").put("client_secret","invented-personal-secret").put("experimental",true).toString());
+        secrets.put("energy-update-fixture/oauth_tokens",new JSONObject().put("access_token","invented-netatmo-access").put("refresh_token","invented-netatmo-refresh").put("expires_at",System.currentTimeMillis()/1000+10800).toString());
         byte[] master=new byte[32],nonce=new byte[12];new SecureRandom().nextBytes(nonce);
         for(int i=0;i<32;i++)master[i]=(byte)Integer.parseInt(keys.getString("master").substring(i*2,i*2+2),16);
         Cipher cipher=Cipher.getInstance("ChaCha20/Poly1305/NoPadding");
@@ -92,6 +94,8 @@ public final class BetaUpdateTest {
         // No configured drivers at this point: native vault/config initialization, no network.
         NativeServer.start(dir.getAbsolutePath(),keys.getString("master"),ProtectedKey.randomHex(),keys.getString("pin"));
         NativeServer.stop();
+        File toml=new File(dir,"moli.toml");
+        ProfileStore.atomic(toml,ProfileStore.read(toml,524288)+"\n[[driver]]\nid='energy-update-fixture'\nkind='netatmo'\nenabled=false\n[driver.options]\nhome_id='home-update-fixture'\nclient_id='fixture-personal'\npoll_seconds=240\nmax_age_seconds=600\n");
         JSONArray plugs=new JSONArray();
         for(int i=1;i<=4;i++) {String id=String.format(java.util.Locale.ROOT,"%032x",i);plugs.put(new JSONObject().put("id",id).put("uuid",id).put("name","Invented plug "+i).put("host","192.168.1."+(20+i)).put("port",80).put("enabled",false));}
         JSONObject config=new JSONObject().put("meross",plugs).put("gateway",new JSONObject().put("location","http://192.168.1.1:80/root.xml"));
@@ -122,6 +126,9 @@ public final class BetaUpdateTest {
         try(SQLiteDatabase db=SQLiteDatabase.openDatabase(new File(dir,"update-check.db").getPath(),null,SQLiteDatabase.OPEN_READONLY);android.database.Cursor row=db.rawQuery("SELECT value FROM sample",null)) {assertTrue(row.moveToFirst());assertEquals(42,row.getInt(0));}
         JSONObject status=MerossAccountStore.request(c,new JSONObject().put("action","status"));
         assertEquals("connected",status.getString("state"));assertEquals(4,status.getJSONArray("items").length());assertFalse(status.toString().contains("invented-session-token"));assertFalse(status.toString().contains(LOCAL_KEY));
+        JSONObject netatmo=NetatmoOAuthStore.request(c,new JSONObject().put("action","status").put("instance","energy-update-fixture"));
+        assertFalse(netatmo.getBoolean("setup_required"));assertTrue(netatmo.getBoolean("credential_present"));assertEquals("home-update-fixture",netatmo.getString("selected_home"));
+        assertEquals("idle",netatmo.getString("state"));assertFalse(netatmo.toString().contains("invented-personal-secret"));assertFalse(netatmo.toString().contains("invented-netatmo"));
         JSONObject equipment=EquipmentStore.read(c);assertEquals(4,equipment.getJSONArray("meross").length());assertTrue(equipment.has("gateway"));assertTrue(ProfileStore.state(c).getBoolean("demo"));
         JSONArray required=new JSONArray();for(int i=1;i<=4;i++)required.put(new JSONObject().put("id",String.format(java.util.Locale.ROOT,"%032x",i)).put("key","").put("required",true));
         ProfileStore.nativeResult(new JSONObject().put("data",dir.getAbsolutePath()).put("master",keys.getString("master")).put("keys",required).toString(),4);

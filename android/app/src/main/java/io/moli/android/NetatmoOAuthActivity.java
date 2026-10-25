@@ -122,6 +122,7 @@ public final class NetatmoOAuthActivity extends Activity {
         if(status==null||connect==null)return;
         explanation.setText(model.setupRequired?R.string.netatmo_personal_setup:R.string.netatmo_personal_ready);
         connect.setEnabled(!busy&&!model.setupRequired&&consent.isChecked()&&!model.state.equals("pending")&&!model.state.equals("saving")&&EngineHost.state()==EngineHost.State.STOPPED);
+        connect.setText(model.credentials?R.string.netatmo_reauthorize:R.string.netatmo_connect);
         check.setEnabled(!busy);cancel.setEnabled(!busy&&(model.state.equals("pending")||model.state.equals("saving")));
         disconnect.setEnabled(!busy&&model.credentials&&EngineHost.state()==EngineHost.State.STOPPED);
         boolean stopped=EngineHost.state()==EngineHost.State.STOPPED;
@@ -140,8 +141,9 @@ public final class NetatmoOAuthActivity extends Activity {
         if(!model.instances.isEmpty())instance.setSelection(model.instances.indexOf(model.selected));
         status.setText(switch(model.state){case "pending"->R.string.netatmo_pending;case "saving"->R.string.netatmo_saving;case "denied"->R.string.netatmo_denied;case "expired"->R.string.netatmo_expired;case "stored"->R.string.netatmo_stored;default->model.credentials?R.string.netatmo_stored:R.string.netatmo_disconnected;});
         if(model.setupRequired)status.setText(model.credentials?R.string.netatmo_existing_setup:R.string.netatmo_disconnected);
+        if(model.credentials&&!model.setupRequired&&!model.selectedHome.isEmpty()&&!model.state.equals("pending")&&!model.state.equals("saving"))status.setText(R.string.netatmo_association_preserved);
         if(model.verified)status.setText(R.string.netatmo_connected);
-        else if(EngineHost.state()!=EngineHost.State.STOPPED)status.setText(R.string.netatmo_stop_first);
+        else if(EngineHost.state()!=EngineHost.State.STOPPED&&!model.credentials)status.setText(R.string.netatmo_stop_first);
     }
     private static int error(String code){
         if(code==null)return R.string.netatmo_error;

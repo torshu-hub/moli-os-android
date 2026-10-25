@@ -2,6 +2,19 @@ package io.moli.android;
 import org.json.*;import org.junit.Test;import static org.junit.Assert.*;
 import static io.moli.android.TrialDiagnostics.*;
 public final class TrialDiagnosticsTest {
+ @Test public void pollingDeadlineAndQuotaSurviveRoundTripWithoutPrivateFields()throws Exception{
+  long now=System.currentTimeMillis();JSONObject raw=new JSONObject().put("period_min",120).put("period_max",120).put("cycles",4).put("automatic_cycles",3).put("next_due_at",now+3600000).put("last_cycle_at",now).put("last_automatic_at",now).put("last_gap_ms",120000).put("reason","RATE_LIMIT").put("trigger","DEADLINE").put("observed_at",now).put("private","secret@example.com");
+  TrialDiagnostics d=TrialDiagnostics.empty();d.polling=Polling.parse(raw);
+  TrialDiagnostics read=TrialDiagnostics.parse(d.json());assertEquals(now+3600000,read.polling.values.getLong("next_due_at"));
+  assertTrue(read.text(now).contains("cycles_automatiques=3"));assertTrue(read.text(now).contains("report=RATE_LIMIT"));assertFalse(read.json().toString().contains("secret@example.com"));
+ }
+ @Test public void flappingDiagnosticsCoalesceTraceButKeepCounters()throws Exception{
+  TrialDiagnostics d=TrialDiagnostics.empty();int traces=0;
+  for(int i=1;i<=500;i++){State s=i%2==0?State.OK:State.FAILED;
+   if(d.observe(i*100,Topic.UI_SCRIPT,s,Reason.RENDER,0,0,-1,0,0,0,0,0,0)&&d.trace(Topic.UI_SCRIPT,s,i*100))traces++;
+  }
+  assertEquals(1,traces);assertEquals(250,d.entries.get(Topic.UI_SCRIPT).failures);assertTrue(d.entries.get(Topic.UI_SCRIPT).coalesced>400);
+ }
  @Test public void repeatedPollsKeepCountersAndLastTimesWithoutRepeatingTransitions()throws Exception{
   TrialDiagnostics d=TrialDiagnostics.empty();int transitions=0;
   for(int i=1;i<=500;i++){

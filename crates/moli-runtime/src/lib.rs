@@ -29,7 +29,8 @@ pub use hub::{
     IntegrationReadView, LabelError, LabelPatch, MAX_LABEL, Snapshot,
 };
 pub use read_diagnostics::{
-    ReadDiagnostics, ReadEvent, ReadOutcome, ReadStage, ReadStep, ReadSummary,
+    ReadDiagnostics, ReadEvent, ReadOutcome, ReadPolling, ReadStage, ReadStep, ReadSummary,
+    ReadTrigger,
 };
 pub use secrets::{MasterKey, forget_secret, has_secret, read_secret, set_secret};
 pub use stats::Stats;
