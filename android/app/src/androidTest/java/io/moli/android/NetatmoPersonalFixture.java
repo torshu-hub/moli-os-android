@@ -33,7 +33,10 @@ final class NetatmoPersonalFixture {
             JSONObject begin=NetatmoOAuthStore.request(fixture,new JSONObject().put("action","begin").put("instance","energy-test").put("consent",true));
             assertTrue(NetatmoOAuthUi.validAuthorization(begin.getString("authorization_url"),"personal-test",NetatmoOAuthUi.PERSONAL_REDIRECT));
             try{NetatmoOAuthStore.request(fixture,new JSONObject().put("action","complete").put("instance","energy-test").put("callback","http://localhost.evil/moli-netatmo?code=synthetic"));fail("forged redirect must be rejected before HTTP");}
-            catch(ProfileStore.Rejected expected){assertEquals("oauth_state",expected.getMessage());}
+            catch(java.util.concurrent.ExecutionException expected){
+                assertTrue(expected.getCause() instanceof ProfileStore.Rejected);
+                assertEquals("oauth_state",expected.getCause().getMessage());
+            }
             NetatmoOAuthStore.request(fixture,new JSONObject().put("action","cancel").put("instance","energy-test"));
             assertEquals(config,ProfileStore.read(new File(dir,"moli.toml"),524288));assertArrayEquals(home,Files.readAllBytes(new File(dir,"home.json").toPath()));
             assertArrayEquals(wrapped,Files.readAllBytes(new File(noBackup,"moli-key.wrap").toPath()));
