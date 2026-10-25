@@ -1,5 +1,9 @@
 # Netatmo OAuth Android : préparation, service confidentiel requis
 
+Voir aussi la [proposition OAuth commune Rust Android/Linux](oauth-common.md) :
+comparaison des quatre références et contrats à extraire, sans changement du
+parcours Netatmo existant ni activation d'un service.
+
 Le parcours natif est préparé dans **Paramètres → Compte Netatmo — lecture seule**.
 **La connexion réelle reste bloquée** : aucune application Netatmo, URL de service,
 redirect enregistré ou identité de serveur n'est fourni dans ce dépôt. Aucun compte
