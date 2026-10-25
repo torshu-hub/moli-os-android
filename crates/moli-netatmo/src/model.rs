@@ -117,12 +117,7 @@ pub(crate) fn parse(
     {
         return Err(Failure::Api);
     }
-    let server_at = timestamp(&status["time_server"]);
-    let cloud_quality = match server_at {
-        Some(at) if at <= now && now - at <= max_age_ms => "cloud_recent",
-        Some(at) if at <= now => "stale",
-        _ => "unconfirmed",
-    };
+    let (server_at, cloud_quality) = cloud_time(topology, status, now, max_age_ms);
     let room_status = index(items(&live["rooms"])?)?;
     let module_status = index(items(&live["modules"])?)?;
     let modules = items(&home["modules"])?;
@@ -266,4 +261,28 @@ fn selected_schedule(home: &Json) -> Result<Value> {
     selected
         .first()
         .map_or(Ok(Value::Null), |s| optional_text(&s["name"]))
+}
+
+/// Both replies contribute values. A new status cannot make an old topology's
+/// selected program or mode current; use the oldest of the two cloud times.
+fn cloud_time(
+    topology: &Json,
+    status: &Json,
+    now: u64,
+    max_age: u64,
+) -> (Option<u64>, &'static str) {
+    let Some((top, live)) =
+        timestamp(&topology["time_server"]).zip(timestamp(&status["time_server"]))
+    else {
+        return (None, "unconfirmed");
+    };
+    let oldest = top.min(live);
+    let quality = if top > now || live > now {
+        "unconfirmed"
+    } else if now - oldest > max_age {
+        "stale"
+    } else {
+        "cloud_recent"
+    };
+    (Some(oldest), quality)
 }

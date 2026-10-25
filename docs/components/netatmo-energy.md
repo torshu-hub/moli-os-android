@@ -105,7 +105,8 @@ pas une certification matérielle. Les appareils et les points n'apparaissent
 qu'après une réponse décodable ; ils ne sont jamais marqués vérifiés par le seul
 manifeste. Leurs cartes dans Maison affichent des lectures, aucun contrôle.
 
-`cloud_recent` exige une date serveur non future, un âge dans la limite et
+`cloud_recent` exige des dates serveur non futures pour **les deux réponses**,
+un âge dans la limite (la plus ancienne date gagne) et
 `reachable=true`. `offline`, `stale`, `unconfirmed`, `missing` et `error` ne
 conservent **aucune valeur de température/consigne/demande comme valeur courante** :
 les points concernés passent à null, la demande à indéterminée et la disponibilité

@@ -17,6 +17,11 @@ fn topology() -> Json {
     ))
     .unwrap()
 }
+fn live_topology() -> Json {
+    let mut t = topology();
+    t["time_server"] = json!(now_ms() / 1000);
+    t
+}
 fn status() -> Json {
     serde_json::from_str(include_str!(
         "../../../integrations/netatmo/fixtures/homestatus.json"
@@ -333,7 +338,7 @@ impl Harness {
         }
         let mut s = status();
         s["time_server"] = json!(now_ms() / 1000);
-        mock.add(200, &topology());
+        mock.add(200, &live_topology());
         mock.add(200, &s);
         let mut d = Netatmo::new(config()).unwrap();
         d.transport = mock.clone();
@@ -399,7 +404,7 @@ async fn driver_clears_old_demand_on_network_loss_retains_identity_then_recovers
             .iter()
             .all(|d| d.online == Some(false))
     );
-    h.mock.add(200, &topology());
+    h.mock.add(200, &live_topology());
     let mut s = status();
     s["time_server"] = json!(now_ms() / 1000);
     s["body"]["home"]["modules"][1]["boiler_status"] = json!(false);
@@ -447,7 +452,7 @@ async fn advance_poll() {
 #[tokio::test(start_paused = true)]
 async fn omitted_fields_clear_previous_values_without_erasing_devices() {
     let h = Harness::start(false).await;
-    h.mock.add(200, &topology());
+    h.mock.add(200, &live_topology());
     let mut s = status();
     s["time_server"] = json!(now_ms() / 1000);
     s["body"]["home"]["modules"][1]
@@ -509,7 +514,7 @@ async fn failed_vault_rotation_stops_before_any_read_and_preserves_unrelated_sec
     );
     // Repair the synthetic vault and persist the pending pair without rotating again.
     std::fs::write(h.data.join("secrets.enc"), saved).unwrap();
-    h.mock.add(200, &topology());
+    h.mock.add(200, &live_topology());
     let mut s = status();
     s["time_server"] = json!(now_ms() / 1000);
     h.mock.add(200, &s);
@@ -546,7 +551,7 @@ async fn premature_access_token_revocation_refreshes_once_on_the_next_poll() {
         200,
         &json!({"access_token":"next-access","refresh_token":"next-refresh","expires_in":10800}),
     );
-    h.mock.add(200, &topology());
+    h.mock.add(200, &live_topology());
     let mut s = status();
     s["time_server"] = json!(now_ms() / 1000);
     h.mock.add(200, &s);
@@ -598,7 +603,7 @@ async fn stale_cloud_replies_never_publish_current_values_and_commands_are_refus
         .await;
     assert!(matches!(command, Err(moli_runtime::CommandError::ReadOnly)));
     assert_eq!(h.mock.requests.lock().unwrap().len(), 2);
-    h.mock.add(200, &topology());
+    h.mock.add(200, &live_topology());
     let mut s = status();
     s["time_server"] = json!(now_ms() / 1000 - 400);
     h.mock.add(200, &s);
@@ -613,4 +618,19 @@ async fn stale_cloud_replies_never_publish_current_values_and_commands_are_refus
             .all(|d| d.online == Some(false))
     );
     h.stop().await;
+}
+
+#[test]
+fn a_recent_status_cannot_refresh_an_old_or_undated_topology() {
+    let mut top = topology();
+    top["time_server"] = json!(AT / 1000 - 400);
+    let rows = model::parse(&top, &status(), "home-test", AT, 300_000).unwrap();
+    assert!(rows.iter().all(|o| !o.current()));
+    assert_eq!(thermostat(&rows).quality, "stale");
+    top["time_server"] = Json::Null;
+    let rows = model::parse(&top, &status(), "home-test", AT, 300_000).unwrap();
+    assert_eq!(thermostat(&rows).quality, "unconfirmed");
+    top["time_server"] = json!(AT / 1000 + 1);
+    let rows = model::parse(&top, &status(), "home-test", AT, 300_000).unwrap();
+    assert_eq!(thermostat(&rows).quality, "unconfirmed");
 }
