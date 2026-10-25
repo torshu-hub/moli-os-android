@@ -465,6 +465,8 @@
   "pilotes.profile.absent_reponse": "{names} missing from the device’s last response",
   "pilotes.ipp.reponse": "IPP response received",
   "pilotes.netatmo.read_only": "Read only",
+  "pilotes.netatmo.oauth_return_title": "Netatmo authorization",
+  "pilotes.netatmo.oauth_return_message": "Return to Moli to check the authorization result.",
   "pilotes.netatmo.description": "Read-only Netatmo Energy observations; Netatmo retains regulation.",
   "pilotes.netatmo.temperature": "Reported temperature",
   "pilotes.netatmo.setpoint_temperature": "Reported setpoint",

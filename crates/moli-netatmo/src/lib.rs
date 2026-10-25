@@ -39,6 +39,7 @@ fn age_default() -> u64 {
 pub struct Netatmo {
     config: Config,
     transport: Arc<dyn Transport>,
+    broker: Option<Arc<dyn oauth::Broker>>,
 }
 impl std::fmt::Debug for Netatmo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -63,7 +64,53 @@ impl Netatmo {
         Ok(Self {
             config,
             transport: Arc::new(Https),
+            broker: None,
         })
+    }
+    /// Bind an approved renewal adapter to this application's existing driver.
+    /// No endpoint or secret is accepted from device data or a callback.
+    ///
+    /// # Errors
+    /// Rejects an unconfigured broker or a different application registration.
+    pub fn with_broker(mut self, broker: Arc<dyn oauth::Broker>) -> anyhow::Result<Self> {
+        let policy = broker
+            .policy()
+            .ok_or_else(|| anyhow::anyhow!("OAuth setup required"))?;
+        anyhow::ensure!(
+            self.config.client_id.as_deref() == Some(policy.client_id()),
+            "OAuth application mismatch"
+        );
+        self.broker = Some(broker);
+        Ok(self)
+    }
+    async fn broker_refresh(
+        &self,
+        ctx: &DriverCtx,
+        tokens: &Tokens,
+        now: u64,
+    ) -> Result<Option<Tokens>, Failure> {
+        let Some(broker) = &self.broker else {
+            return Ok(None);
+        };
+        if !ctx.can_store_secrets() {
+            return Err(Failure::Storage);
+        }
+        let previous = oauth::Grant {
+            tokens: tokens.clone(),
+        };
+        let next = broker
+            .renew(ctx.instance().as_str(), &previous, now.saturating_mul(1000))
+            .await
+            .map_err(|error| match error {
+                oauth::Error::Storage => Failure::Storage,
+                oauth::Error::Network => Failure::Network,
+                oauth::Error::RateLimited(seconds) => Failure::RateLimited(seconds),
+                _ => Failure::Credentials,
+            })?;
+        if next.tokens.expires_at <= now || next.tokens.expires_at > now.saturating_add(86400) {
+            return Err(Failure::Credentials);
+        }
+        Ok(Some(next.tokens))
     }
     // Netatmo explicitly forbids the client secret on mobile. Keep the
     // original confidential refresh path on servers; Android awaits its broker.
@@ -74,6 +121,9 @@ impl Netatmo {
         tokens: &Tokens,
         now: u64,
     ) -> Result<Tokens, Failure> {
+        if let Some(tokens) = self.broker_refresh(ctx, tokens, now).await? {
+            return Ok(tokens);
+        }
         let client_id = self
             .config
             .client_id
@@ -88,11 +138,13 @@ impl Netatmo {
     #[cfg(target_os = "android")]
     async fn refresh_tokens(
         &self,
-        _ctx: &DriverCtx,
-        _tokens: &Tokens,
-        _now: u64,
+        ctx: &DriverCtx,
+        tokens: &Tokens,
+        now: u64,
     ) -> Result<Tokens, Failure> {
-        Err(Failure::Credentials)
+        self.broker_refresh(ctx, tokens, now)
+            .await?
+            .ok_or(Failure::Credentials)
     }
     async fn collect(
         &self,

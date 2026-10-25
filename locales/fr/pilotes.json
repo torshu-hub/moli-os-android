@@ -465,6 +465,8 @@
   "pilotes.profile.absent_reponse": "{names} absent de la dernière réponse de l'appareil",
   "pilotes.ipp.reponse": "Réponse IPP reçue",
   "pilotes.netatmo.read_only": "Lecture seule",
+  "pilotes.netatmo.oauth_return_title": "Autorisation Netatmo",
+  "pilotes.netatmo.oauth_return_message": "Retournez dans Moli pour vérifier le résultat de l’autorisation.",
   "pilotes.netatmo.description": "Netatmo Energy observé en lecture seule ; la régulation reste chez Netatmo.",
   "pilotes.netatmo.temperature": "Température déclarée",
   "pilotes.netatmo.setpoint_temperature": "Consigne déclarée",

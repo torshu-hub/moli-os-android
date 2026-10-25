@@ -4,6 +4,12 @@ Voir aussi la [proposition OAuth commune Rust Android/Linux](oauth-common.md) :
 comparaison des quatre références et contrats à extraire, sans changement du
 parcours Netatmo existant ni activation d'un service.
 
+**Précision du 25/10 :** le choix d'hôte reste ouvert, avec priorité au moteur
+Android local et aux credentials personnels provisionnés après installation.
+Voir [l'évaluation et les conditions fournisseur](netatmo-local-options.md).
+Les adaptateurs de renouvellement et le noyau confidentiel facultatif préparés
+depuis ne sélectionnent ni hébergeur ni déploiement ; Android reste non configuré.
+
 Le parcours natif est préparé dans **Paramètres → Compte Netatmo — lecture seule**.
 **La connexion réelle reste bloquée** : aucune application Netatmo, URL de service,
 redirect enregistré ou identité de serveur n'est fourni dans ce dépôt. Aucun compte

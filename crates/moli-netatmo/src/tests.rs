@@ -304,6 +304,9 @@ struct Harness {
 }
 impl Harness {
     async fn start(expired: bool) -> Self {
+        Self::start_with_broker(expired, None).await
+    }
+    async fn start_with_broker(expired: bool, broker: Option<Arc<dyn oauth::Broker>>) -> Self {
         static SERIAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let data = std::env::temp_dir().join(format!(
             "moli-netatmo-{}-{}",
@@ -333,7 +336,7 @@ impl Harness {
             .await
             .unwrap();
         let mock = Arc::new(Mock::default());
-        if expired {
+        if expired && broker.is_none() {
             mock.add(200, &json!({"access_token":"rotated-access","refresh_token":"rotated-refresh","expires_in":10800}));
         }
         let mut s = status();
@@ -341,6 +344,9 @@ impl Harness {
         mock.add(200, &live_topology());
         mock.add(200, &s);
         let mut d = Netatmo::new(config()).unwrap();
+        if let Some(broker) = broker {
+            d = d.with_broker(broker).unwrap();
+        }
         d.transport = mock.clone();
         let cancel = CancellationToken::new();
         let task = spawn_driver(&hub, instance, Arc::new(d), cancel.clone());
@@ -372,6 +378,74 @@ impl Harness {
         drop(self.hub);
         std::fs::remove_dir_all(self.data).unwrap();
     }
+}
+struct RenewalBroker {
+    policy: oauth::Policy,
+    renewals: std::sync::atomic::AtomicUsize,
+}
+impl oauth::Broker for RenewalBroker {
+    fn policy(&self) -> Option<&oauth::Policy> {
+        Some(&self.policy)
+    }
+    fn begin<'a>(&'a self, _: &'a str, _: &'a str) -> BoxFuture<'a, oauth::Result<String>> {
+        Box::pin(async { Err(oauth::Error::SetupRequired) })
+    }
+    fn poll<'a>(&'a self, _: &'a str, _: &'a str) -> BoxFuture<'a, oauth::Result<oauth::Reply>> {
+        Box::pin(async { Err(oauth::Error::SetupRequired) })
+    }
+    fn cancel<'a>(&'a self, _: &'a str) -> BoxFuture<'a, oauth::Result<()>> {
+        Box::pin(async { Ok(()) })
+    }
+    fn renew<'a>(
+        &'a self,
+        instance: &'a str,
+        previous: &'a oauth::Grant,
+        now: u64,
+    ) -> BoxFuture<'a, oauth::Result<oauth::Grant>> {
+        Box::pin(async move {
+            assert_eq!(instance, "energy-test");
+            assert_eq!(previous.tokens.refresh_token, "test-refresh");
+            self.renewals
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            oauth::Grant::from_broker(
+                &json!({"access_token":"broker-access","refresh_token":"broker-refresh","expires_at":now/1000+3600,"scope":oauth::SCOPE}),
+                now,
+            )
+        })
+    }
+}
+#[tokio::test(start_paused = true)]
+async fn driver_uses_the_bound_broker_and_commits_rotation_before_reading() {
+    let broker = Arc::new(RenewalBroker {
+        policy: oauth::Policy::new("app-test", "https://oauth.example.com/return").unwrap(),
+        renewals: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let h = Harness::start_with_broker(true, Some(broker.clone())).await;
+    assert_eq!(broker.renewals.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let bundle = h
+        .hub
+        .secret(&InstanceId::from("energy-test"), TOKEN_SECRET)
+        .unwrap();
+    assert_eq!(
+        Tokens::parse(&bundle).unwrap().refresh_token,
+        "broker-refresh"
+    );
+    assert!(
+        h.mock
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|r| r.0 == "GET" && r.2 == "Bearer broker-access")
+    );
+    assert_eq!(h.point("boiler_status"), Some(Value::Bool(true)));
+    assert!(
+        Netatmo::new(config())
+            .unwrap()
+            .with_broker(Arc::new(oauth::Unconfigured))
+            .is_err()
+    );
+    h.stop().await;
 }
 #[tokio::test(start_paused = true)]
 async fn driver_clears_old_demand_on_network_loss_retains_identity_then_recovers() {

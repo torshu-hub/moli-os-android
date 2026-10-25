@@ -9,10 +9,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 
 pub(crate) const MAX_BODY: usize = 1024 * 1024;
+pub(crate) const MAX_TOKEN_BODY: usize = 16 * 1024;
 pub(crate) const TOKEN_SECRET: &str = "oauth_tokens";
 
 /// One encrypted bundle makes access/refresh token rotation an atomic vault write.
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Tokens {
     pub access_token: String,
@@ -81,13 +82,18 @@ pub(crate) struct Https;
 impl Transport for Https {
     fn send(&self, request: Request<Full<Body>>) -> BoxFuture<'_, Result<Response, Failure>> {
         Box::pin(async move {
+            let max_body = if request.uri().path() == "/oauth2/token" {
+                MAX_TOKEN_BODY
+            } else {
+                MAX_BODY
+            };
             let (status, headers, body) = moli_net::web_with_headers(
                 "api.netatmo.com",
                 443,
                 true,
                 request,
                 Duration::from_secs(10),
-                MAX_BODY,
+                max_body,
             )
             .await
             .map_err(|_| Failure::Network)?;
@@ -120,17 +126,28 @@ pub(crate) async fn read(
     home: &str,
     topology: bool,
 ) -> Result<Json, Failure> {
+    let endpoint = if topology { "homesdata" } else { "homestatus" };
+    read_path(
+        transport,
+        token,
+        format!("/api/{endpoint}?home_id={}", encode(home)),
+    )
+    .await
+}
+pub(crate) async fn homes(transport: &dyn Transport, token: &str) -> Result<Json, Failure> {
+    read_path(transport, token, "/api/homesdata".into()).await
+}
+async fn read_path(transport: &dyn Transport, token: &str, path: String) -> Result<Json, Failure> {
     if !valid_token(token) {
         return Err(Failure::Credentials);
     }
-    let endpoint = if topology { "homesdata" } else { "homestatus" };
     let mut authorization = http::HeaderValue::from_str(&format!("Bearer {token}"))
         .map_err(|_| Failure::Credentials)?;
     authorization.set_sensitive(true);
     let request = empty(
         Request::builder()
             .method("GET")
-            .uri(format!("/api/{endpoint}?home_id={}", encode(home)))
+            .uri(path)
             .header("Authorization", authorization),
     )
     .map_err(|_| Failure::Credentials)?;
@@ -225,7 +242,7 @@ pub(crate) fn decode(response: &Response, oauth: bool) -> Result<Json, Failure> 
             Failure::Api
         });
     }
-    if response.body.len() > MAX_BODY {
+    if response.body.len() > if oauth { MAX_TOKEN_BODY } else { MAX_BODY } {
         return Err(Failure::InvalidResponse);
     }
     let json: Json =

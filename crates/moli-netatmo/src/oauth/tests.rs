@@ -6,6 +6,52 @@ use std::sync::{
 };
 
 const NOW: u64 = 1_800_000_000_000;
+#[tokio::test]
+async fn homes_are_private_choices_and_do_not_select_or_modify_an_instance() {
+    use crate::client::{Failure, Response, Transport};
+    use http::{HeaderMap, Request, StatusCode};
+    use http_body_util::Full;
+    struct Homes {
+        body: Json,
+    }
+    impl Transport for Homes {
+        fn send(
+            &self,
+            request: Request<Full<moli_net::Body>>,
+        ) -> BoxFuture<'_, std::result::Result<Response, Failure>> {
+            Box::pin(async move {
+                assert_eq!(request.method(), "GET");
+                assert_eq!(request.uri(), "/api/homesdata");
+                assert!(request.headers()["authorization"].is_sensitive());
+                Ok(Response {
+                    status: StatusCode::OK,
+                    headers: HeaderMap::new(),
+                    body: self.body.to_string().into(),
+                })
+            })
+        }
+    }
+    let g = grant();
+    let homes=g.homes_with(&Homes {body:json!({"status":"ok","body":{"homes":[{"id":"home-a","name":"Synthetic A"},{"id":"home-b","name":"Synthetic B"}]}})},NOW).await.unwrap();
+    assert_eq!(homes.len(), 2);
+    assert_eq!(homes[0].id, "home-a");
+    assert_eq!(format!("{:?}", homes[0]), "OAuthHome(<redacted>)");
+    assert!(
+        g.homes_with(
+            &Homes {
+                body: json!({"status":"ok","body":{"homes":[{"id":"home-a"},{"id":"home-a"}]}})
+            },
+            NOW
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        g.homes_with(&Homes { body: Json::Null }, NOW + 86_400_000)
+            .await
+            .is_err()
+    );
+}
 fn policy() -> Policy {
     Policy::new(
         "synthetic-client",

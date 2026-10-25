@@ -1,6 +1,7 @@
 //! Optional confidential-server primitives. Excluded from Android even when the
 //! feature is selected. Hosting, device authentication and durable handoffs are
 //! deliberately pending the owner's deployment decision.
+pub mod service;
 use http::Request;
 use http_body_util::Full;
 use serde_json::{Value as Json, json};
@@ -39,9 +40,19 @@ async fn exchange_with(
         .header("content-type", "application/x-www-form-urlencoded")
         .body(Full::new(moli_net::Body::from(form)))
         .map_err(|_| Error::Input)?;
-    let response = transport.send(request).await.map_err(|_| Error::Network)?;
-    let answer = client::decode(&response, true).map_err(|_| Error::Denied)?;
+    let response = transport
+        .send(request)
+        .await
+        .map_err(|_| Error::Ambiguous)?;
+    let answer = client::decode(&response, true).map_err(provider_error)?;
     provider_grant(&answer, now)
+}
+fn provider_error(error: client::Failure) -> Error {
+    match error {
+        client::Failure::RateLimited(seconds) => Error::RateLimited(seconds),
+        client::Failure::Storage => Error::Storage,
+        _ => Error::Denied,
+    }
 }
 fn provider_grant(answer: &Json, now: u64) -> Result<Grant> {
     if let Some(scope) = answer.get("scope")

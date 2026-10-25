@@ -5,6 +5,7 @@
 mod callback;
 #[cfg(all(feature = "confidential-oauth", not(target_os = "android")))]
 pub mod confidential;
+pub mod remote;
 #[cfg(not(target_os = "android"))]
 pub use callback::{CallbackSession, Code};
 #[cfg(all(test, not(target_os = "android")))]
@@ -34,6 +35,8 @@ pub enum Error {
     Network,
     Tokens,
     Storage,
+    Ambiguous,
+    RateLimited(u64),
 }
 impl Error {
     pub fn code(self) -> &'static str {
@@ -47,6 +50,8 @@ impl Error {
             Self::Network => "oauth_network",
             Self::Tokens => "oauth_tokens",
             Self::Storage => "storage",
+            Self::Ambiguous => "oauth_ambiguous",
+            Self::RateLimited(_) => "rate_limit",
         }
     }
 }
@@ -127,7 +132,7 @@ pub fn proof_challenge(verifier: &str) -> String {
 /// Returned only inside Rust over an approved, authenticated broker transport.
 /// Its JSON never crosses to Java, a callback URL, public status or a log.
 pub struct Grant {
-    tokens: Tokens,
+    pub(crate) tokens: Tokens,
 }
 impl fmt::Debug for Grant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -135,6 +140,50 @@ impl fmt::Debug for Grant {
     }
 }
 impl Grant {
+    /// List the homes returned by this fresh consent, without selecting one,
+    /// enabling a driver or rewriting any existing associations.
+    pub async fn homes(&self) -> Result<Vec<Home>> {
+        self.homes_with(&crate::client::Https, moli_core::now_ms())
+            .await
+    }
+    async fn homes_with(
+        &self,
+        transport: &dyn crate::client::Transport,
+        now: u64,
+    ) -> Result<Vec<Home>> {
+        if self.tokens.expires_at <= now / 1000 {
+            return Err(Error::Expired);
+        }
+        let reply = crate::client::homes(transport, &self.tokens.access_token)
+            .await
+            .map_err(|e| match e {
+                crate::client::Failure::RateLimited(seconds) => Error::RateLimited(seconds),
+                crate::client::Failure::Network => Error::Network,
+                _ => Error::Tokens,
+            })?;
+        let homes = reply["body"]["homes"]
+            .as_array()
+            .filter(|v| v.len() <= 32)
+            .ok_or(Error::Input)?;
+        let mut ids = std::collections::BTreeSet::new();
+        homes
+            .iter()
+            .map(|home| {
+                let id = home["id"]
+                    .as_str()
+                    .filter(|id| crate::model::valid_id(id))
+                    .ok_or(Error::Input)?;
+                let name = home["name"].as_str().unwrap_or(id);
+                if name.len() > 256 || name.chars().any(char::is_control) || !ids.insert(id) {
+                    return Err(Error::Input);
+                }
+                Ok(Home {
+                    id: id.to_owned(),
+                    name: name.to_owned(),
+                })
+            })
+            .collect()
+    }
     pub fn from_broker(json: &Json, now_ms: u64) -> Result<Self> {
         let object = json.as_object().ok_or(Error::Tokens)?;
         if object.len() != 4 || json["scope"] != SCOPE {
@@ -156,6 +205,17 @@ impl Grant {
         serde_json::to_string(&self.tokens).map_err(|_| Error::Tokens)
     }
 }
+/// Account-scoped choice for an authorized private UI, never public diagnostics.
+#[derive(Clone, serde::Serialize)]
+pub struct Home {
+    pub id: String,
+    pub name: String,
+}
+impl fmt::Debug for Home {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("OAuthHome(<redacted>)")
+    }
+}
 #[derive(Debug)]
 pub enum Reply {
     Pending,
@@ -170,6 +230,17 @@ pub trait Broker: Send + Sync {
     fn begin<'a>(&'a self, state: &'a str, challenge: &'a str) -> BoxFuture<'a, Result<String>>;
     fn poll<'a>(&'a self, ticket: &'a str, verifier: &'a str) -> BoxFuture<'a, Result<Reply>>;
     fn cancel<'a>(&'a self, ticket: &'a str) -> BoxFuture<'a, Result<()>>;
+    /// Renew through the same approved account/application and authenticated
+    /// device binding. Retrying the previous pair must recover the same durable
+    /// result, never blindly repeat a consumed provider refresh.
+    fn renew<'a>(
+        &'a self,
+        _instance: &'a str,
+        _previous: &'a Grant,
+        _now_ms: u64,
+    ) -> BoxFuture<'a, Result<Grant>> {
+        Box::pin(async { Err(Error::SetupRequired) })
+    }
 }
 #[derive(Debug)]
 pub struct Unconfigured;

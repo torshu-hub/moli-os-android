@@ -1545,6 +1545,7 @@ name = "moli-netatmo"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "http",
  "http-body-util",
  "httpdate",
@@ -1557,6 +1558,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+ "tower",
 ]
 
 [[package]]
