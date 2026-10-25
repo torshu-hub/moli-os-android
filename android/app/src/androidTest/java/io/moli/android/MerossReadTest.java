@@ -47,7 +47,8 @@ public final class MerossReadTest {
     }
     @Test public void multipleSignedReadersProtectKeysPersistAndIsolateFailures() throws Exception {
         assertTrue(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.MODEL.contains("sdk"));
-        Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(EngineHost.State.STOPPED,EngineHost.state());
+        Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        FreshEquipmentFixture.create(app);assertEquals(EngineHost.State.STOPPED,EngineHost.state());
         if(!ProtectedKey.exists(app))ProtectedKey.create(app,"4826");
         app.getSharedPreferences("host",Context.MODE_PRIVATE).edit().putBoolean("wanted",false).commit();ProfileStore.remove(app,"weather");
         String ip=address();

@@ -37,6 +37,7 @@ public final class NetworkDiscoveryTest {
     @Test public void evidenceCopyConsentCancellationAndSavedConfiguration() throws Exception {
         assertTrue("Disposable emulator only",android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.MODEL.contains("sdk"));
         Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        FreshEquipmentFixture.create(app);
         assertEquals(EngineHost.State.STOPPED,EngineHost.state());
         NetworkEvidence.Entry ipp=NetworkEvidence.mdns("192.168.1.20",631,"Fictitious printer","_ipp._tcp.","ipp/print".getBytes(StandardCharsets.UTF_8));
         NetworkEvidence.Entry http=new NetworkEvidence.Entry("192.168.1.21",8080,"Fictitious HTTP service",NetworkEvidence.Kind.HTTP,NetworkEvidence.Proof.OPEN_PORT,"","");

@@ -20,7 +20,8 @@ public final class UsabilityJourneyTest {
     }
     @Test public void cachedAccountReturnsWithoutPasswordAndExportCorrelatesOnlyPseudonyms()throws Exception {
         assertTrue(android.os.Build.FINGERPRINT.contains("generic")||android.os.Build.MODEL.contains("sdk"));
-        Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(EngineHost.State.STOPPED,EngineHost.state());if(!ProtectedKey.exists(app))ProtectedKey.create(app,"4826");
+        Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        FreshEquipmentFixture.create(app);assertEquals(EngineHost.State.STOPPED,EngineHost.state());if(!ProtectedKey.exists(app))ProtectedKey.create(app,"4826");
         app.getSharedPreferences("meross-draft",Context.MODE_PRIVATE).edit().clear().commit();
         TrialLog.end(app);TrialLog.begin(app);
         MerossAccountTest.Fixture fixture=new MerossAccountTest.Fixture(app);fixture.connected=true;

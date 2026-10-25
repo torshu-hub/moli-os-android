@@ -51,7 +51,8 @@ public final class MerossAccountTest {
     static void ready(ActivityScenario<MerossManualActivity> ui)throws Exception{until(() -> {AtomicReference<Boolean> done=new AtomicReference<>(false);ui.onActivity(a -> done.set(!a.busy && a.connect.isEnabled()));return done.get();});}
     @Test public void voluntaryMfaPreviewDiscoveryUuidRefusalExpiryAndForgetPreserveLocalSetup()throws Exception{
         assertTrue("Disposable emulator only",android.os.Build.FINGERPRINT.contains("generic")||android.os.Build.MODEL.contains("sdk"));
-        Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(EngineHost.State.STOPPED,EngineHost.state());if(!ProtectedKey.exists(app))ProtectedKey.create(app,"4826");
+        Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        FreshEquipmentFixture.create(app);assertEquals(EngineHost.State.STOPPED,EngineHost.state());if(!ProtectedKey.exists(app))ProtectedKey.create(app,"4826");
         Fixture fixture=new Fixture(app);
         try{
             try(ActivityScenario<MerossManualActivity> ui=ActivityScenario.launch(MerossManualActivity.class)){
