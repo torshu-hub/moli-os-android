@@ -68,7 +68,7 @@ def check_run(run, source, owner_id, *, candidate=False):
         raise ValueError('Explicit trusted ready-branch promotion required')
 
 REQUIRED_WORKFLOWS = {'check':'.github/workflows/check.yml','audit':'.github/workflows/audit.yml',
-    'Source hygiene':'.github/workflows/source-hygiene.yml','Android home and integrations':'.github/workflows/android-integrations.yml'}
+    'Source hygiene':'.github/workflows/source-hygiene.yml','Android profile import':'.github/workflows/android-integrations.yml'}
 def latest_checks(rows):
     latest={}
     for row in sorted(rows,key=lambda x:x['id'],reverse=True):

@@ -73,7 +73,7 @@ def main():
         if attempt==120: raise ValueError('Source checks did not complete')
         time.sleep(5)
     for name in required: check_run(api('/actions/runs/'+str(latest[name]['id'])),head,owner)
-    if latest['Android home and integrations']['id']!=run['id']: raise ValueError('Superseded candidate validation')
+    if latest['Android profile import']['id']!=run['id']: raise ValueError('Superseded candidate validation')
     previous=previous_release()
     # Tags reserve versionCodes even if an interrupted draft publication remains.
     metadata=candidate_metadata(properties(file_bytes(head,'android/beta.properties').decode()),previous)

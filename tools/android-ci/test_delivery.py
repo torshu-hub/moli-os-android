@@ -20,7 +20,7 @@ ROOT=Path(__file__).resolve().parents[2]
 HEAD='a'*40
 ENTRY={'path':'android/app/src/main/java/io/moli/android/MainActivity.java','mode':'100644','type':'blob','sha':'b'*40}
 def run(**kw):
-    return dict(dict(id=100,run_attempt=1,head_sha=HEAD,head_repository={'full_name':P.REPOSITORY},repository={'full_name':P.REPOSITORY},status='completed',conclusion='success',actor={'id':1},triggering_actor={'id':1},event='push',head_branch=P.READY_BRANCH,path='.github/workflows/android-integrations.yml',name='Android home and integrations'),**kw)
+    return dict(dict(id=100,run_attempt=1,head_sha=HEAD,head_repository={'full_name':P.REPOSITORY},repository={'full_name':P.REPOSITORY},status='completed',conclusion='success',actor={'id':1},triggering_actor={'id':1},event='push',head_branch=P.READY_BRANCH,path='.github/workflows/android-integrations.yml',name='Android profile import'),**kw)
 
 def fixture(reused=False):
     plan=P.select(['android/app/src/main/java/io/moli/android/MainActivity.java'])
@@ -64,8 +64,8 @@ class ProvenanceTest(unittest.TestCase):
         for changes in [{'head_sha':'b'*40},{'conclusion':'failure'},{'status':'in_progress'},{'actor':{'id':2}},{'triggering_actor':{'id':2}},{'repository':{'full_name':'fork/repo'}},{'head_repository':{'full_name':'fork/repo'}},{'event':'pull_request'},{'head_branch':'main'},{'path':'.github/workflows/spoof.yml'}]:
             with self.subTest(changes=changes),self.assertRaises(ValueError):G.check_run(run(**changes),HEAD,1,candidate=True)
     def test_latest_check_cannot_be_shadowed_by_same_name_elsewhere(self):
-        rows=[run(id=5,conclusion='success'),run(id=6,conclusion='failure'),run(id=7,path='.github/workflows/spoof.yml')]
-        self.assertEqual(G.latest_checks(rows)['Android home and integrations']['conclusion'],'failure')
+        rows=[run(id=5,conclusion='success'),run(id=6,conclusion='failure'),run(id=7,path='.github/workflows/spoof.yml'),run(id=8,name='Android home and integrations')]
+        self.assertEqual(G.latest_checks(rows)['Android profile import']['conclusion'],'failure')
     def test_redirect_does_not_forward_token(self):
         req=urllib.request.Request('https://api.github.com/test',headers={'Authorization':'Bearer fake'})
         redirected=G.StripAuthRedirect().redirect_request(req,None,302,'',{},'https://storage.example.test/signed')
@@ -140,6 +140,19 @@ class GateTest(unittest.TestCase):
 
 class WorkflowTest(unittest.TestCase):
     def load(self,name):return yaml.safe_load((ROOT/'.github/workflows'/name).read_text())
+    def test_candidate_name_matches_automatic_trigger_and_provenance(self):
+        candidate=self.load('android-integrations.yml')
+        signer=self.load('android-beta-sign.yml')
+        name=candidate['name']
+        self.assertEqual(name,'Android profile import')
+        trigger=signer.get('on',signer.get(True))['workflow_run']
+        self.assertEqual(trigger,{'workflows':[name],'types':['completed'],'branches':[P.READY_BRANCH]})
+        self.assertEqual(set(signer.get('on',signer.get(True))),{'workflow_run','workflow_dispatch'})
+        self.assertEqual(G.REQUIRED_WORKFLOWS[name],'.github/workflows/android-integrations.yml')
+        self.assertEqual(G.latest_checks([run()])[name]['id'],100)
+        for job in signer['jobs'].values():
+            for step in job['steps']:
+                self.assertNotIn('Android home and integrations',step.get('run',''))
     def test_secret_only_in_main_signer_and_write_only_in_publisher(self):
         w=self.load('android-beta-sign.yml');jobs=w['jobs']
         self.assertEqual(jobs['sign']['environment'],'android-beta-signing')

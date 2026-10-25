@@ -129,9 +129,10 @@ screenshot containing them to chat, issue, PR, Git, CI logs or public artifacts.
 
 ### Prepared automatic delivery, without keys in a build
 
-**Activation is pending.** Main still contains the earlier manual signer. The
-replacement `.github/workflows/android-beta-sign.yml` in this draft PR is a
-self-contained, reviewable activation diff. No key, environment, ruleset or main
+**Trigger correction is pending.** The main-only signer is installed and manual
+fallback deliveries work. Its automatic subscription used a different name from
+the registered candidate workflow. The generated `.github/workflows/android-beta-sign.yml`
+on this correction branch is the self-contained, reviewable deployment diff. No key, environment, ruleset or main
 change is performed by this preparation. The existing certificate is pinned;
 never recreate the key.
 
@@ -171,13 +172,12 @@ workflow. Work continues on `android/profile-import`, with PR #7 kept in draft.
    complete release. The JSON release ledger binds versionCode to source and hash.
    The initial ledger is the already signed code 17; same/lower codes are rejected.
 
-**Single activation decision:** approve replacing only the protected workflow on
-main, including its isolated publication job's `contents: write` permission and
-public APK prerelease assets. Keep `android-beta-signing` restricted to **main only**,
+**Single activation decision:** approve installing only the corrected protected
+workflow on main, with its regenerated pipeline pins and existing permissions.
+Publication remains in the isolated job; no new write permission is requested. Keep `android-beta-signing` restricted to **main only**,
 its existing secret and all current protections. No application PR merge, environment
-expansion, new secret or repeated per-version dispatch is required. The activation
-push can process the already validated current ready milestone; later successful
-ready workflows trigger it automatically. Manual dispatch remains only an owner
+expansion, new secret or repeated per-version dispatch is required. Installing the corrected file does not process the already delivered milestone;
+the next successful genuine ready workflow triggers it automatically. Manual dispatch remains only an owner
 fallback, without SHA fields. If environment required reviewers are enabled later,
 their approval remains a real GitHub gate and is not bypassed.
 
@@ -231,3 +231,30 @@ No wake lock, global battery exemption, boot receiver or unattended restart is
 introduced. A notification does not prove continuous engine activity while asleep.
 Samsung prolonged sleep still needs owner-observed evidence when convenient;
 this update test does not repeat or replace it. No physical commands or Pi work.
+
+## Prepared trigger-name correction after code 23
+
+GitHub registers `.github/workflows/android-integrations.yml` (workflow 390860558)
+as **Android profile import**. Candidate runs used **Android home and integrations**,
+while the protected signer subscribed to that new name. Keep the registered name
+as the single current candidate name in the candidate YAML, `workflow_run`
+subscription, required source checks and latest-candidate lookup. Regenerate the
+protected inline workflow and its SHA-256 pipeline pins from the reviewed sources;
+changing only the subscription would leave provenance checks inconsistent.
+
+This branch prepares that coordinated change; it does not activate it. One owner
+approval is needed to install **only** the generated
+`.github/workflows/android-beta-sign.yml` on protected `main`, with its matching
+pipeline pins. Incorporate the companion pipeline files into the non-protected
+application work branch before the next ready milestone. Preserve the existing
+main-only signing environment, key, certificate and permissions.
+
+Code 23 is already delivered: do not dispatch, rebuild, repromote or republish it.
+The obsolete main-push bootstrap hook is removed so installing this correction
+does not attempt to process the already delivered ready head. The only automatic
+entry is completion of the candidate workflow; existing provenance and monotonic
+version guards remain unchanged. Verify automatic event delivery on the next genuine milestone
+with a higher code. Local fixtures validate the handler/provenance logic, not
+GitHub's live event routing. Manual dispatch remains an exceptional fallback;
+future successful owner-originated ready milestones should trigger signing and
+publication without a recurring owner click.

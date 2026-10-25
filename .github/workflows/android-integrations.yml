@@ -1,4 +1,4 @@
-name: Android home and integrations
+name: Android profile import
 'on':
   pull_request:
     branches:
