@@ -28,6 +28,9 @@ final class MerossForm {
         loading=true; entries.clear(); rows.removeAllViews();
         if(selected!=null) for(int i=0;i<selected.length();i++) append(selected.getJSONObject(i));
         loading=false;
+        // Loaded Views default to enabled. Apply the current lock immediately,
+        // rather than exposing editable rows until the next activity refresh.
+        setEnabled(enabled);
     }
     private void append(JSONObject input) {
         Row row=new Row(input); entries.add(row); rows.addView(row.body);
