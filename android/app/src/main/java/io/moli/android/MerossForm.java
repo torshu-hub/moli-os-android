@@ -15,6 +15,7 @@ final class MerossForm {
     private final Runnable changed;
     final ArrayList<Row> entries = new ArrayList<>();
     final Button add;
+    android.app.AlertDialog controlDialog;
     private boolean loading, enabled;
     MerossForm(Activity a, LinearLayout body, Runnable changed) {
         activity=a; this.changed=changed;
@@ -41,7 +42,7 @@ final class MerossForm {
     JSONArray settings() throws Exception {
         JSONArray result=new JSONArray();
         for(Row r:entries) { JSONObject entry=new JSONObject().put("id",r.id).put("name",r.name.getText().toString().trim())
-                .put("host",r.host.getText().toString().trim()).put("port",Integer.parseInt(r.port.getText().toString().trim())).put("enabled",r.read.isChecked()); if(!r.uuid.isEmpty())entry.put("uuid",r.uuid); result.put(entry); }
+                .put("host",r.host.getText().toString().trim()).put("port",Integer.parseInt(r.port.getText().toString().trim())).put("enabled",r.read.isChecked()).put("manual_control",r.control.isChecked()); if(!r.uuid.isEmpty())entry.put("uuid",r.uuid);if(r.control.isChecked()||r.hadManualIdentity)entry.put("manual_uuid",r.manualUuid); result.put(entry); }
         return result;
     }
     JSONArray keys() throws Exception {
@@ -53,6 +54,7 @@ final class MerossForm {
     void setEnabled(boolean value) {
         enabled=value; add.setEnabled(value && entries.size()<8);
         for(Row r:entries) for(View v:new View[]{r.name,r.host,r.port,r.key,r.read,r.remove}) v.setEnabled(value);
+        for(Row r:entries)r.control.setEnabled(value&&r.read.isChecked()&&r.manualUuid.matches("[a-fA-F0-9]{32}"));
     }
     private void edited() { if(!loading) changed.run(); }
     private void text(LinearLayout body,int id) { TextView t=new TextView(activity); t.setText(id); body.addView(t); }
@@ -71,12 +73,15 @@ final class MerossForm {
     }
     final class Row {
         final String id,uuid;
+        final String manualUuid;final boolean hadManualIdentity;
         final LinearLayout body=new LinearLayout(activity);
         final CheckBox read=new CheckBox(activity);
+        final CheckBox control=new CheckBox(activity);
         final EditText name,host,port,key;
         final Button remove=new Button(activity);
         Row(JSONObject input) {
             id=input.optString("id",UUID.randomUUID().toString().replace("-","")); uuid=input.optString("uuid","");
+            manualUuid=input.optString("manual_uuid",uuid.isEmpty()?EquipmentMonitor.identity(id):uuid);hadManualIdentity=input.has("manual_uuid");
             body.setOrientation(LinearLayout.VERTICAL); body.setPadding(0,16,0,16);
             if(!uuid.isEmpty()) {TextView bound=new TextView(activity);bound.setText(activity.getString(R.string.account_uuid_bound,uuid));body.addView(bound);}
             read.setText(R.string.meross_read); read.setChecked(input.optBoolean("enabled")); body.addView(read);
@@ -84,6 +89,9 @@ final class MerossForm {
             host=field(body,R.string.equipment_host,false); host.setText(input.optString("host",""));
             port=field(body,R.string.equipment_port,false); port.setInputType(InputType.TYPE_CLASS_NUMBER); port.setText(input.optString("port","80"));
             key=field(body,R.string.meross_key,true); key.setHint(R.string.meross_key_hint);
+            control.setText(R.string.meross_manual_enable);control.setSaveEnabled(false);control.setChecked(input.optBoolean("manual_control",false));body.addView(control);
+            text(body,R.string.meross_manual_help);
+            if(!manualUuid.matches("[a-fA-F0-9]{32}"))text(body,R.string.meross_manual_identity_required);
             remove.setText(R.string.meross_remove); body.addView(remove);
             TextWatcher watcher=new TextWatcher() {
                 public void beforeTextChanged(CharSequence s,int a,int c,int after) {}
@@ -91,7 +99,18 @@ final class MerossForm {
                 public void afterTextChanged(Editable e) {}
             };
             for(EditText f:new EditText[]{name,host,port,key}) f.addTextChangedListener(watcher);
-            read.setOnCheckedChangeListener((v,c) -> edited());
+            read.setOnCheckedChangeListener((v,c) -> {if(!c)control.setChecked(false);setEnabled(enabled);edited();});
+            control.setOnCheckedChangeListener((v,c)->{
+                if(loading)return;
+                if(!c){edited();return;}
+                loading=true;control.setChecked(false);loading=false;
+                controlDialog=new android.app.AlertDialog.Builder(activity).setTitle(R.string.meross_manual_confirm_title)
+                    .setMessage(activity.getString(R.string.meross_manual_confirm,name.getText().toString(),host.getText().toString(),manualUuid))
+                    .setNegativeButton(android.R.string.cancel,null)
+                    .setPositiveButton(R.string.meross_manual_confirm_action,(d,w)->{
+                        loading=true;for(Row other:entries)other.control.setChecked(other==this);loading=false;edited();
+                    }).show();
+            });
             remove.setOnClickListener(v -> { key.setText(""); entries.remove(this); rows.removeView(body); edited(); setEnabled(enabled); });
         }
     }

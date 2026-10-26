@@ -1,10 +1,10 @@
 // Closed numeric protocol consumed by the Android trial report. No URLs,
 // identifiers, measurements, exception messages or DOM content cross it.
-export const UI_TOPIC = { devices:1, system:2, netatmo:3, script:4, assistant:5 };
+export const UI_TOPIC = { devices:1, system:2, netatmo:3, script:4, assistant:5, merossCommand:6 };
 export const UI_STATE = { loading:1, ready:2, http:3, timeout:4, invalid:5, render:6, transport:7, empty:8, stale:9 };
 const previous=new Map();
 export function reportUi(topic,state,a=0,b=0) {
-  if(!Number.isInteger(topic)||topic<1||topic>5||!Number.isInteger(state)||state<1||state>9)return;
+  if(!Number.isInteger(topic)||topic<1||topic>6||!Number.isInteger(state)||state<1||state>9)return;
   a=Math.min(4096,Math.max(0,Math.floor(Number(a)||0)));b=Math.min(4096,Math.max(0,Math.floor(Number(b)||0)));
   const key=`${state} ${a} ${b}`,old=previous.get(topic),now=Date.now();
   if(old?.key===key&&now-old.at<60000)return;

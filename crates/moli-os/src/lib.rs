@@ -833,7 +833,9 @@ fn print_profile(compiled: &moli_profile::Compiled, file: Option<&moli_profile::
     }
     println!("  writes (each one is a command: guard and journal apply):");
     for w in &compiled.writes {
-        let transport = if w.meross {
+        let transport = if w.meross && compiled.source == moli_profile::Source::Builtin {
+            moli_i18n::tr!("pilotes.profile.meross_manual_transport")
+        } else if w.meross {
             moli_i18n::tr!("pilotes.profile.meross_transport")
         } else {
             "GET".to_owned()

@@ -400,7 +400,7 @@ impl Profile {
                 return Err(fail(format!("two [[write]] for point {:?}", w.point)));
             }
             let write = if w.transport == Transport::Meross {
-                compile_meross_write(w, point, &answers, &self.profile, &mut vars)
+                compile_meross_write(w, point, &answers, &self.profile, source, &mut vars)
             } else {
                 compile_write(w, &point.spec, &answers, secrets, &mut vars)
             }
@@ -846,12 +846,15 @@ fn compile_meross_write(
     point: &CompiledPoint,
     answers: &Answers,
     meta: &Meta,
+    source: Source,
     vars: &mut BTreeSet<String>,
 ) -> Result<CompiledWrite, String> {
-    if !meta
-        .host
-        .as_deref()
-        .is_some_and(super::meross_set::loopback)
+    let manual = source == Source::Builtin && meta.id == "meross-mss310" && meta.host.is_none();
+    if (!manual
+        && !meta
+            .host
+            .as_deref()
+            .is_some_and(super::meross_set::loopback))
         || meta.https
         || meta.secret.is_none()
     {
@@ -885,7 +888,14 @@ fn compile_meross_write(
     {
         return Err("Meross SET requires direct System.All UUID identity and unmapped channel-0 onoff confirmation".into());
     }
-    vars.insert("expected_uuid".into());
+    vars.insert(
+        if manual {
+            "manual_uuid"
+        } else {
+            "expected_uuid"
+        }
+        .into(),
+    );
     Ok(CompiledWrite {
         key: point.spec.key.clone(),
         path: w.path.clone(),
@@ -1230,6 +1240,16 @@ impl CompiledPoint {
 /// Built-in profiles, shipped in the binary.
 #[must_use]
 pub fn builtin(id: &str) -> Option<&'static str> {
+    if id == "meross-mss310-manual" {
+        static MANUAL: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+            format!(
+                "{}\n{}",
+                include_str!("../../../integrations/meross-mss310/profile.toml"),
+                include_str!("../../../integrations/meross-mss310/manual-write.toml")
+            )
+        });
+        return Some(MANUAL.as_str());
+    }
     BUILTIN
         .iter()
         .find(|(name, _)| *name == id)

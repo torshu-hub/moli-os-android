@@ -101,6 +101,7 @@ fn meross(entries: &Value) -> Result<Value, &'static str> {
     let mut uuids = std::collections::HashSet::new();
     let mut addresses = std::collections::HashSet::new();
     let mut checked = vec![];
+    let mut manual_count = 0;
     for entry in entries {
         let id = entry["id"]
             .as_str()
@@ -131,6 +132,37 @@ fn meross(entries: &Value) -> Result<Value, &'static str> {
             }
             checked.last_mut().ok_or("meross_settings")?["uuid"] = json!(uuid);
         }
+        if let Some(manual) = entry.get("manual_control") {
+            let manual = manual.as_bool().ok_or("meross_settings")?;
+            if manual {
+                if !entry
+                    .get("manual_uuid")
+                    .or_else(|| entry.get("uuid"))
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+                {
+                    return Err("meross_settings");
+                }
+                manual_count += 1;
+                if manual_count > 1 {
+                    return Err("meross_settings");
+                }
+            }
+            checked.last_mut().ok_or("meross_settings")?["manual_control"] = json!(manual);
+        }
+        if let Some(uuid) = entry.get("manual_uuid") {
+            let uuid = uuid
+                .as_str()
+                .filter(|s| s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+                .ok_or("meross_settings")?;
+            if entry["uuid"]
+                .as_str()
+                .is_some_and(|old| !old.eq_ignore_ascii_case(uuid))
+            {
+                return Err("meross_settings");
+            }
+            checked.last_mut().ok_or("meross_settings")?["manual_uuid"] = json!(uuid);
+        }
     }
     Ok(json!(checked))
 }
@@ -157,8 +189,18 @@ pub fn drivers(input: &Value) -> Result<Vec<Value>, &'static str> {
         for entry in entries {
             let mut driver = json!({"id":format!("android-meross-{}",entry["id"].as_str().ok_or("meross_settings")?),"kind":"profile","enabled":entry["enabled"],"options":{
                 "profile":"meross-mss310","host":entry["host"],"port":entry["port"],"name":entry["name"],"discovery":false}});
+            if entry["manual_control"] == true {
+                driver["options"]["profile"] = json!("meross-mss310-manual");
+            }
             if entry["uuid"].is_string() {
                 driver["options"]["vars"] = json!({"expected_uuid":entry["uuid"]});
+            }
+            if entry["manual_control"] == true || entry["manual_uuid"].is_string() {
+                if !driver["options"]["vars"].is_object() {
+                    driver["options"]["vars"] = json!({});
+                }
+                driver["options"]["vars"]["manual_uuid"] =
+                    entry.get("manual_uuid").unwrap_or(&entry["uuid"]).clone();
             }
             result.push(driver);
         }
@@ -329,5 +371,48 @@ mod meross_tests {
         input["master"] = json!(wrong.expose_for_file());
         assert!(store_keys(&input).is_err());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod manual_tests {
+    use super::*;
+    #[test]
+    fn manual_control_is_explicit_single_bound_and_does_not_replace_legacy_identity() {
+        let uuid = "00000000000000000000000000000001";
+        let mut input =
+            json!({"meross":[{"id":uuid,"name":"Fixture","host":"192.168.1.20","enabled":true}]});
+        let original = validate(&input).unwrap();
+        assert!(original["meross"][0].get("manual_control").is_none());
+        assert_eq!(
+            drivers(&input).unwrap()[0]["options"]["profile"],
+            "meross-mss310"
+        );
+        input["meross"][0]["manual_control"] = json!(true);
+        assert!(validate(&input).is_err());
+        input["meross"][0]["manual_uuid"] = json!(uuid);
+        let ds = drivers(&input).unwrap();
+        assert_eq!(ds[0]["options"]["profile"], "meross-mss310-manual");
+        assert_eq!(ds[0]["options"]["vars"]["manual_uuid"], uuid);
+        assert!(ds[0]["options"]["vars"].get("expected_uuid").is_none());
+        assert!(validate(&input).unwrap()["meross"][0].get("uuid").is_none());
+        input["meross"][0]["uuid"] = json!("00000000000000000000000000000002");
+        assert!(validate(&input).is_err());
+        input["meross"][0]["uuid"] = json!(uuid);
+        let mut second = input["meross"][0].clone();
+        second["id"] = json!("00000000000000000000000000000003");
+        second["uuid"] = json!("00000000000000000000000000000003");
+        second["manual_uuid"] = second["uuid"].clone();
+        second["host"] = json!("192.168.1.21");
+        input["meross"].as_array_mut().unwrap().push(second);
+        assert!(validate(&input).is_err());
+        input["meross"][1]["manual_control"] = json!(false);
+        assert!(validate(&input).is_ok());
+        input["meross"][0]["manual_control"] = json!("true");
+        assert!(validate(&input).is_err());
+        input["meross"][0]["manual_control"] = json!(true);
+        input["meross"][0]["enabled"] = json!(false);
+        assert!(validate(&input).is_ok());
+        assert_eq!(drivers(&input).unwrap()[0]["enabled"], false);
     }
 }

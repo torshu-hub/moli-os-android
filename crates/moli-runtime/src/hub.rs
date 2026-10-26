@@ -525,7 +525,7 @@ impl Hub {
         let result = match self.prepare(point, &value) {
             Err(e) => Err(e),
             Ok(prepared) => match self.verdict(point, origin) {
-                Verdict::Allow => self.send(prepared).await,
+                Verdict::Allow => self.send(prepared, origin).await,
                 Verdict::Approval(reason) => {
                     let id = self.hold(point, &value, origin, actor.clone(), &reason);
                     Err(CommandError::NeedsApproval { id, reason })
@@ -796,7 +796,7 @@ impl Hub {
         }
         let (decision, outcome, result) = if approve {
             let sent = match self.prepare(&request.point, &request.value) {
-                Ok(prepared) => self.send(prepared).await,
+                Ok(prepared) => self.send(prepared, origin).await,
                 Err(e) => Err(e),
             };
             match sent {
@@ -1160,7 +1160,7 @@ impl Hub {
     }
 
     /// Hands a prepared order to its driver and waits for the answer.
-    async fn send(&self, prepared: Prepared) -> Result<(), CommandError> {
+    async fn send(&self, prepared: Prepared, origin: Origin) -> Result<(), CommandError> {
         let Prepared {
             point,
             device,
@@ -1171,6 +1171,7 @@ impl Hub {
         let (reply, answer) = oneshot::channel();
         commands
             .try_send(CommandRequest {
+                origin,
                 point,
                 device,
                 key,

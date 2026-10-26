@@ -116,12 +116,15 @@ public final class MerossReadTest {
                 EngineHost.maintain(()->{EquipmentStore.save(app,new JSONObject());return null;}).get();
             }
         }
+        MerossManualFixture.verify();
     }
     static final class Fixture implements AutoCloseable {
         final int id;final ServerSocket server=new ServerSocket(0,8,InetAddress.getByName("0.0.0.0"));final Thread worker;
-        volatile boolean running=true,available=true;volatile int reads,errors;volatile Throwable failure;
-        Fixture(int id)throws Exception {this.id=id;server.setSoTimeout(500);worker=new Thread(this::serve,"mss310-fixture");worker.start();}
-        int port(){return server.getLocalPort();}void check(){if(failure!=null)throw new AssertionError("Only signed GET fixture requests allowed",failure);}
+        final boolean manual;
+        volatile boolean running=true,available=true,on,badAck;volatile int reads,errors,sets;volatile Throwable failure;
+        Fixture(int id)throws Exception {this(id,false);}
+        Fixture(int id,boolean manual)throws Exception {this.id=id;this.manual=manual;on=id!=2;server.setSoTimeout(500);worker=new Thread(this::serve,"mss310-fixture");worker.start();}
+        int port(){return server.getLocalPort();}void check(){if(failure!=null)throw new AssertionError("Only explicitly enabled signed fixture requests allowed",failure);}
         void serve(){while(running)try(Socket socket=server.accept()){
             if(!available)continue; // Deliberate connection loss, not a synthetic successful response.
             socket.setSoTimeout(4000);InputStream in=socket.getInputStream();ByteArrayOutputStream h=new ByteArrayOutputStream();int b;
@@ -129,17 +132,29 @@ public final class MerossReadTest {
             String header=h.toString(StandardCharsets.US_ASCII.name());if(!header.startsWith("POST /config HTTP/1.1"))throw new IOException("Unexpected endpoint");
             int size=0;for(String line:header.split("\\r\\n"))if(line.toLowerCase(Locale.ROOT).startsWith("content-length:"))size=Integer.parseInt(line.substring(15).trim());if(size<=0 || size>8192)throw new IOException("Body bound");
             byte[] raw=new byte[size];new DataInputStream(in).readFully(raw);JSONObject request=new JSONObject(new String(raw,StandardCharsets.UTF_8)),rh=request.getJSONObject("header");
-            if(!"GET".equals(rh.getString("method")))throw new IOException("Write forbidden");
+            String method=rh.getString("method");
+            if(!"GET".equals(method)&&!(manual&&"SET".equals(method)))throw new IOException("Write forbidden");
             String ns=rh.getString("namespace"),file;
-            switch(ns){case "Appliance.System.All":file="all";break;case "Appliance.Control.Electricity":file="electricity";break;case "Appliance.Control.ConsumptionX":file="consumption";break;case "Appliance.System.Runtime":file="runtime";break;default:throw new IOException("Namespace forbidden");}
+            switch(ns){case "Appliance.System.All":file="all";break;case "Appliance.Control.Electricity":file="electricity";break;case "Appliance.Control.ConsumptionX":file="consumption";break;case "Appliance.System.Runtime":file="runtime";break;case "Appliance.System.Ability":if(!manual)throw new IOException("Ability not enabled");file="ability";break;case "Appliance.Control.ToggleX":if(!manual||!method.equals("SET"))throw new IOException("ToggleX not enabled");file="set";break;default:throw new IOException("Namespace forbidden");}
             String signed=rh.getString("messageId")+"a".repeat(32)+rh.getLong("timestamp");StringBuilder expected=new StringBuilder();for(byte v:MessageDigest.getInstance("MD5").digest(signed.getBytes(StandardCharsets.UTF_8)))expected.append(String.format(Locale.ROOT,"%02x",v&255));
             JSONObject response;
             if(!expected.toString().equals(rh.getString("sign"))){errors++;response=new JSONObject().put("header",new JSONObject().put("method","ERROR").put("namespace",ns)).put("payload",new JSONObject().put("error",new JSONObject().put("code",5001)));}
             else {
-                reads++;String text=ProfileStore.bounded(InstrumentationRegistry.getInstrumentation().getContext().getAssets().open("mss310/"+file+".json"),8192);response=new JSONObject(text);
+                if(method.equals("SET")){
+                    if(!file.equals("set"))throw new IOException("Wrong SET namespace");
+                    JSONObject payload=request.getJSONObject("payload");JSONArray toggles=payload.getJSONArray("togglex");
+                    if(payload.length()!=1||toggles.length()!=1||toggles.getJSONObject(0).length()!=2||toggles.getJSONObject(0).getInt("channel")!=0)throw new IOException("Unexpected write");
+                    int value=toggles.getJSONObject(0).getInt("onoff");if(value<0||value>1)throw new IOException("Wrong value");on=value==1;sets++;response=new JSONObject().put("payload",new JSONObject());
+                }else{
+                    reads++;
+                    if(file.equals("ability"))response=new JSONObject().put("payload",new JSONObject().put("ability",new JSONObject().put("Appliance.Control.ToggleX",new JSONObject())));
+                    else{String text=ProfileStore.bounded(InstrumentationRegistry.getInstrumentation().getContext().getAssets().open("mss310/"+file+".json"),8192);response=new JSONObject(text);}
+                }
                 if(file.equals("all"))response.getJSONObject("payload").getJSONObject("all").getJSONObject("system").getJSONObject("hardware").put("uuid",String.format(Locale.ROOT,"%032x",id));
                 if(id==2 && file.equals("electricity")){response.getJSONObject("payload").getJSONObject("electricity").remove("voltage");response.getJSONObject("payload").getJSONObject("electricity").put("power",246912);}
-                if(id==2 && file.equals("all"))response.getJSONObject("payload").getJSONObject("all").getJSONObject("digest").getJSONArray("togglex").getJSONObject(0).put("onoff",0);
+                if(file.equals("all"))response.getJSONObject("payload").getJSONObject("all").getJSONObject("digest").getJSONArray("togglex").getJSONObject(0).put("onoff",on?1:0);
+                long timestamp=System.currentTimeMillis()/1000;String message=rh.getString("messageId");String signature=message+"a".repeat(32)+timestamp;StringBuilder sign=new StringBuilder();for(byte v:MessageDigest.getInstance("MD5").digest(signature.getBytes(StandardCharsets.UTF_8)))sign.append(String.format(Locale.ROOT,"%02x",v&255));
+                response.put("header",new JSONObject().put("namespace",ns).put("method",method+"ACK").put("messageId",message).put("timestamp",timestamp).put("payloadVersion",1).put("from","/appliance/"+String.format(Locale.ROOT,"%032x",id)+"/publish").put("sign",method.equals("SET")&&badAck?"invalid":sign.toString()));
             }
             byte[] body=response.toString().getBytes(StandardCharsets.UTF_8);OutputStream out=socket.getOutputStream();out.write(("HTTP/1.1 "+(available?"200 OK":"503 Unavailable")+"\r\nContent-Length: "+body.length+"\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));out.write(body);out.flush();
         }catch(SocketTimeoutException idle){}catch(Exception error){if(running){failure=error;running=false;}}}

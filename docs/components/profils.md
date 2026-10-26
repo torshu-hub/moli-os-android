@@ -573,3 +573,14 @@ annoncée et une relecture de confirmation avant succès. Les GET ordinaires
 conservent leur comportement. **Cette extension n'accepte que les hôtes
 littéraux de boucle locale**, à la compilation et à l'exécution ; aucun profil
 embarqué ne l'active. Voir [contrat, écarts amont, tests et limites](meross-set-simulation.md).
+
+
+### MSS310 manual built-in variant
+
+`meross-mss310` remains read-only. The optional `meross-mss310-manual` variant
+uses the same package plus its declared ToggleX write, a selected `manual_uuid`,
+private IPv4 host and human command origin. Existing identity bindings must match.
+Android exposes it only after local confirmation for one plug. External files
+retain the loopback-only SET restriction and fixed-host secret trust controls.
+See [manual beta](meross-manual-beta.md) for the minimal runtime additions,
+protocol checks, preserved timer settings, trial procedure and limitations.

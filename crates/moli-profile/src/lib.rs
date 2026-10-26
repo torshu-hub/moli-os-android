@@ -1010,6 +1010,16 @@ async fn run(driver: &ProfileDriver, ctx: &mut DriverCtx) -> anyhow::Result<()> 
     {
         return Ok(()); // waiting for a human, then shut down
     }
+    if meross_set::manual(profile) {
+        ctx.observe_read(
+            "meross",
+            moli_runtime::ReadEvent::Configuration {
+                enabled: true,
+                credential_present: false,
+                target_selected: configured.vars.contains_key("manual_uuid"),
+            },
+        );
+    }
     let Some(secret) = required_secret(profile, ctx).await else {
         return Ok(()); // waiting for a human, then shut down
     };
@@ -1198,7 +1208,24 @@ async fn serve(
 ) -> anyhow::Result<Ended> {
     let profile = &*driver.profile;
     let mut session = Session::new(target, profile, secret);
-    session.first_round().await?;
+    if meross_set::manual(profile) {
+        ctx.observe_read(
+            "meross",
+            moli_runtime::ReadEvent::Configuration {
+                enabled: true,
+                credential_present: secret.is_some(),
+                target_selected: target.vars.contains_key("manual_uuid"),
+            },
+        );
+    }
+    if meross_set::manual(profile) {
+        session.meross_first_round(ctx).await?;
+    } else {
+        session.first_round().await?;
+    }
+    if meross_set::manual(profile) {
+        ctx.observe_read("meross", moli_runtime::ReadEvent::Started);
+    }
     let lookup = |reference: &Option<String>| read(&session.answers, reference.as_deref());
     // A declared identity is mandatory: falling back to the address would
     // split one device in two the day the identity comes back.

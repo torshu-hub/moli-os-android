@@ -4,6 +4,7 @@
   import { t } from '../../lib/i18n.svelte.js';
   const firstSeen = Date.now();
   import Receipt from './Receipt.svelte';
+  import MerossManual from './MerossManual.svelte';
   import { useReceiptClock } from '../lib/receipt-clock.svelte.js';
   const receiptClock = useReceiptClock();
   const receiptNow = $derived(receiptClock.now ?? home.now);
@@ -13,7 +14,7 @@
   const cards = $derived([
     ...(cfg.printer ? [{kind:'printer', data:printer, key:'responding', age:65000}] : []),
     ...(cfg.gateway ? [{kind:'gateway', data:gateway, key:'connected', age:35000}] : []),
-    ...(cfg.meross || []).filter(e => e.enabled).map(e => ({kind:'meross', instance:'android-meross-'+e.id, name:e.name,
+    ...(cfg.meross || []).filter(e => e.enabled).map(e => ({kind:'meross', instance:'android-meross-'+e.id, name:e.name,manual:e.manual_control===true,uuid:e.manual_uuid||e.uuid,
       data:Object.values(hub.devices).find(d => d.instance === 'android-meross-'+e.id), key:'reported_model', age:65000})),
   ]);
   const status = (card) => equipmentStatus(card.kind,card.data,
@@ -46,7 +47,7 @@
         {#if card.data}
           <p>{[card.data.manufacturer,card.data.model].filter(Boolean).join(' ') || card.data.native_name}</p>
           <dl>
-            {#each card.data.points.filter(p => p.access.read && !p.access.write && p.key !== 'responding') as point (point.key)}
+            {#each card.data.points.filter(p => p.access.read && (!p.access.write||card.kind==='meross'&&p.key==='on') && p.key !== 'responding') as point (point.key)}
               {@const sample = card.data.state?.[point.key]}
               <dt>{card.kind === 'meross' ? t('maison.equipment.mss_'+point.key) : point.label}</dt><dd>{shown(sample,point)}
                 {#if sample?.value != null && (!Number.isFinite(sample.ts) || sample.ts <= 0 || sample.ts > observed.now || observed.now - sample.ts > sampleMaxAge(card.kind,point.key))}
@@ -57,7 +58,7 @@
           </dl>
           <details data-equipment-details><summary>{t('maison.equipment.details')}</summary>
             <dl>
-              {#each card.data.points.filter(p => p.access.read && !p.access.write) as point (point.key)}
+              {#each card.data.points.filter(p => p.access.read && (!p.access.write||card.kind==='meross'&&p.key==='on')) as point (point.key)}
                 {@const sample=card.data.state?.[point.key]}
                 <dt>{card.kind==='meross'?t('maison.equipment.mss_'+point.key):point.label}</dt>
                 <dd>{sample?.ts ? clock(sample.ts) : t('maison.equipment.not_reported')}
@@ -67,7 +68,9 @@
             </dl>
           </details>
         {/if}
-        {#if card.kind === 'meross'}<p class="muted">{t('maison.equipment.meross_help')}</p>{/if}
+        {#if card.kind === 'meross'}
+          {#if card.manual}<MerossManual data={card.data} uuid={card.uuid} name={card.name} fresh={observed.state==='fresh'}/>{:else}<p class="muted">{t('maison.equipment.meross_help')}</p>{/if}
+        {/if}
         {#if ['stale','unavailable'].includes(observed.state)}<details><summary>{t('maison.receipt.help')}</summary><p>{t(card.kind === 'meross' ? 'maison.equipment.meross_unavailable' : 'maison.equipment.unavailable_help')}</p></details>{/if}
       </article>
     {/each}

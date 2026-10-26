@@ -386,4 +386,10 @@
     <string name="netatmo_quota">Netatmo demande une pause. Attendez avant de réessayer ; aucune lecture supplémentaire n’est lancée.</string>
     <string name="netatmo_tokens_rejected">Réponse Netatmo non acceptée : jetons incomplets, permissions trop larges ou données non vérifiables. Utilisez une application personnelle limitée à read_thermostat.</string>
     <string name="netatmo_network">Netatmo est inaccessible ou la réponse réseau est invalide. Vérifiez Internet puis réessayez.</string>
+    <string name="meross_manual_enable">Autoriser un essai ON/OFF manuel sur cette prise</string>
+    <string name="meross_manual_help">Désactivé par défaut. Une seule prise non critique, choisie par vous. Aucune automatisation Netatmo/Finder. La limite de 30 minutes, si configurée dans Meross, reste inchangée ; son fonctionnement hors Internet n’est pas garanti. Le retour en lecture seule n’éteint pas la prise.</string>
+    <string name="meross_manual_identity_required">Une identité UUID déjà liée ou récemment observée est nécessaire. Démarrez la lecture, attendez un relevé frais puis arrêtez le moteur et rouvrez cet écran.</string>
+    <string name="meross_manual_confirm_title">Choisir la prise pour l’essai manuel</string>
+    <string name="meross_manual_confirm">Prise : %1$s\nAdresse : %2$s\nUUID : %3$s\n\nJe confirme avoir choisi une prise non critique. Je déclencherai moi-même ON puis OFF. Finder/chaudière nécessite un accord séparé. Les routines et la limite Meross ne seront pas modifiées.</string>
+    <string name="meross_manual_confirm_action">Autoriser cette prise</string>
 </resources>

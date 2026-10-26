@@ -20,6 +20,7 @@ const PROFILE: &str =
 enum Fault {
     None,
     OtherUuid,
+    WrongModel,
     BadKey,
     NoAbility,
     BadAck,
@@ -171,7 +172,7 @@ fn reply(request: &Json, state: &State, fault: Fault, after_set: bool) -> Json {
     };
     let payload = match (method, namespace) {
         ("GET", ALL) => {
-            json!({"all":{"system":{"hardware":{"uuid":uuid}},"digest":{"togglex":[{"channel":0,"onoff":u8::from(state.on.load(Ordering::SeqCst))}]}}})
+            json!({"all":{"system":{"hardware":{"uuid":uuid,"type":if fault==Fault::WrongModel {"other"}else{"mss310"},"version":"synthetic"}},"digest":{"togglex":[{"channel":0,"onoff":u8::from(state.on.load(Ordering::SeqCst))}]}}})
         }
         ("GET", ABILITY) => {
             if fault == Fault::NoAbility {
@@ -180,6 +181,11 @@ fn reply(request: &Json, state: &State, fault: Fault, after_set: bool) -> Json {
                 json!({"ability":{TOGGLE:{}}})
             }
         }
+        ("GET", "Appliance.Control.Electricity") => {
+            json!({"electricity":{"power":1000,"current":1,"voltage":2300}})
+        }
+        ("GET", "Appliance.Control.ConsumptionX") => json!({"consumptionx":[]}),
+        ("GET", "Appliance.System.Runtime") => json!({"runtime":{"signal":80}}),
         ("SET", TOGGLE) => json!({}),
         _ => panic!("unexpected simulated RPC"),
     };
@@ -590,4 +596,136 @@ async fn only_a_valid_identity_read_restores_availability_after_a_refused_comman
     assert_eq!(h.value(), Value::Bool(false));
     assert_eq!(fake.sets(), 0);
     h.stop().await;
+}
+
+impl Harness {
+    async fn manual(fake: &Fake) -> Self {
+        let mut h = Self::start(fake, PROFILE, true).await;
+        h.config.profile = "meross-mss310-manual".into();
+        h.config.host = Some("127.0.0.1".into());
+        h.config.vars.insert("manual_uuid".into(), UUID.into());
+        h.restart().await;
+        h
+    }
+    async fn human(&self, on: bool, origin: Origin) -> Result<(), moli_runtime::CommandError> {
+        self.hub
+            .command(&Self::point(), Value::Bool(on), origin, None)
+            .await
+    }
+    fn step(&self, stage: &str) -> Json {
+        serde_json::to_value(self.hub.snapshot()).unwrap()["diagnostics"][0]["stages"][stage]
+            .clone()
+    }
+}
+
+#[tokio::test]
+async fn manual_opt_in_uses_original_reader_human_origin_guard_and_read_only_revocation() {
+    let fake = Fake::start().await;
+    let mut h = Harness::manual(&fake).await;
+    assert_eq!(fake.sets(), 0, "startup cannot replay a command");
+    assert_eq!(h.value(), Value::Bool(false));
+    assert_eq!(h.step("parsing")["status"], "ok");
+    for origin in [
+        Origin::Api,
+        Origin::Mcp,
+        Origin::Cli,
+        Origin::System,
+        Origin::Assistant,
+        Origin::Automation,
+    ] {
+        let calls = fake.state.calls.load(Ordering::SeqCst);
+        assert!(h.human(true, origin).await.is_err());
+        assert_eq!(
+            fake.state.calls.load(Ordering::SeqCst),
+            calls,
+            "refuse before any request"
+        );
+        assert_eq!(h.value(), Value::Bool(false));
+    }
+    assert_eq!(h.step("command_preflight")["status"], "authorization");
+    assert!(h.human(true, Origin::Household).await.is_ok());
+    assert_eq!(h.value(), Value::Bool(true));
+    for stage in [
+        "command_preflight",
+        "command_send",
+        "command_ack",
+        "command_readback",
+    ] {
+        assert_eq!(h.step(stage)["status"], "ok", "{stage}");
+    }
+    assert_eq!(h.step("command_preflight")["errors"]["authorization"], 6);
+    assert!(h.human(true, Origin::Ui).await.is_ok());
+    assert_eq!(fake.sets(), 1);
+    assert_eq!(h.step("command_send")["status"], "unobserved");
+    assert_eq!(h.step("command_readback")["status"], "ok");
+    assert!(h.human(false, Origin::Ui).await.is_ok());
+    assert_eq!(fake.sets(), 2);
+    h.restart().await;
+    assert_eq!(fake.sets(), 2);
+    h.config.profile = "meross-mss310".into();
+    h.restart().await;
+    assert!(h.human(true, Origin::Ui).await.is_err());
+    assert_eq!(fake.sets(), 2);
+    assert_eq!(h.config.vars["expected_uuid"], UUID);
+    assert_eq!(h.config.vars["manual_uuid"], UUID);
+    h.stop().await;
+}
+
+#[tokio::test]
+async fn manual_command_diagnostics_close_failed_or_ambiguous_phases_without_retry() {
+    for (fault, phase, outcome, sets) in [
+        (
+            Fault::WrongModel,
+            "command_preflight",
+            "invalid_response",
+            0,
+        ),
+        (Fault::BadAckSignature, "command_ack", "invalid_response", 1),
+        (Fault::ReadTimeout, "command_readback", "timeout", 1),
+        (Fault::SetTimeout, "command_ack", "timeout", 1),
+    ] {
+        let fake = Fake::start().await;
+        let h = Harness::manual(&fake).await;
+        fake.fault(fault);
+        assert!(h.human(true, Origin::Ui).await.is_err());
+        assert_eq!(h.value(), Value::Null);
+        assert_eq!(fake.sets(), sets);
+        assert_eq!(h.step(phase)["status"], outcome, "{fault:?}");
+        if phase == "command_readback" {
+            assert_eq!(h.step("command_ack")["status"], "ok");
+        }
+        let summary = serde_json::to_string(&h.hub.snapshot().diagnostics).unwrap();
+        assert!(!summary.contains("pending"));
+        for sensitive in [KEY, UUID, "127.0.0.1"] {
+            assert!(!summary.contains(sensitive));
+        }
+        h.stop().await;
+    }
+}
+
+#[test]
+fn manual_builtin_is_a_scoped_variant_not_a_way_to_trust_external_lan_files() {
+    let text = crate::builtin("meross-mss310-manual").unwrap();
+    let p = Profile::parse(text).unwrap();
+    assert!(p.compile(Source::File).is_err());
+    let profile = Profile::parse(text)
+        .unwrap()
+        .compile(Source::Builtin)
+        .unwrap();
+    assert_eq!(profile.meta.id, "meross-mss310");
+    assert_eq!(profile.writes.len(), 1);
+    let mut target = Target {
+        host: "192.168.1.20".into(),
+        port: 80,
+        tls: false,
+        vars: std::collections::BTreeMap::from([("manual_uuid".into(), UUID.into())]),
+    };
+    assert!(expected(&target, Some(KEY), &profile).is_ok());
+    target.vars.insert("expected_uuid".into(), OTHER.into());
+    assert!(expected(&target, Some(KEY), &profile).is_err());
+    target.vars.remove("expected_uuid");
+    for host in ["8.8.8.8", "169.254.169.254", "example.invalid"] {
+        target.host = host.into();
+        assert!(expected(&target, Some(KEY), &profile).is_err());
+    }
 }

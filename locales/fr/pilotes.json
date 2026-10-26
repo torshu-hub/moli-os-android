@@ -546,5 +546,6 @@
   "pilotes.profile.meross_refused": "Commande Meross refusée avant envoi (cible, capacité, clé ou délai).",
   "pilotes.profile.meross_unknown": "Issue de l’envoi Meross inconnue ; aucun renvoi automatique.",
   "pilotes.profile.meross_unconfirmed": "SETACK Meross reçu, état demandé non confirmé par relecture.",
-  "pilotes.profile.meross_transport": "Meross SET ToggleX/canal=0 (simulation sur boucle locale uniquement)"
+  "pilotes.profile.meross_transport": "Meross SET ToggleX/canal=0 (simulation sur boucle locale uniquement)",
+  "pilotes.profile.meross_manual_transport": "Meross SET ToggleX/canal=0 (cible privée sélectionnée, commandes humaines uniquement)"
 }

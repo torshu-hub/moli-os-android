@@ -546,5 +546,6 @@
   "pilotes.profile.meross_refused": "Meross command refused before sending (target, capability, key or deadline).",
   "pilotes.profile.meross_unknown": "Meross send outcome unknown; no automatic resend.",
   "pilotes.profile.meross_unconfirmed": "Meross SETACK received; requested state not confirmed by readback.",
-  "pilotes.profile.meross_transport": "Meross SET ToggleX/channel=0 (loopback simulation only)"
+  "pilotes.profile.meross_transport": "Meross SET ToggleX/channel=0 (loopback simulation only)",
+  "pilotes.profile.meross_manual_transport": "Meross SET ToggleX/channel=0 (selected private target, human commands only)"
 }

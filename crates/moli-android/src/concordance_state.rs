@@ -216,6 +216,41 @@ fn profile_info(
 
 /// Project only fields the existing Android forms understand. Failure leaves
 /// the effective Moli configuration authoritative; edit mode becomes read-only.
+fn manual_preference(request: &Value, options: &Value, entry: &mut Value) {
+    let manual = options["profile"] == "meross-mss310-manual";
+    let had_manual = request["equipment"]["meross"]
+        .as_array()
+        .is_some_and(|rows| {
+            rows.iter()
+                .any(|r| r["id"] == entry["id"] && r.get("manual_control").is_some())
+        });
+    if manual || had_manual {
+        entry["manual_control"] = json!(manual);
+    }
+    if let Some(uuid) = options.get("vars").and_then(|v| v.get("manual_uuid")) {
+        entry["manual_uuid"] = uuid.clone();
+    }
+}
+
+fn meross_preference(request: &Value, id: &str, row: &Value) -> Result<Value> {
+    let options = &row["options"];
+    if row["kind"] != "profile"
+        || !matches!(
+            options["profile"].as_str(),
+            Some("meross-mss310" | "meross-mss310-manual")
+        )
+        || options["discovery"] != false
+    {
+        return Err("configuration_conflict");
+    }
+    let mut entry = json!({"id":id.trim_start_matches("android-meross-"),"name":options["name"],"host":options["host"],"port":options["port"],"enabled":enabled(row)});
+    manual_preference(request, options, &mut entry);
+    if let Some(uuid) = options.get("vars").and_then(|v| v.get("expected_uuid")) {
+        entry["uuid"] = uuid.clone();
+    }
+    Ok(entry)
+}
+
 pub fn preferences(request: &Value, rows: &Rows, proposed: &Rows) -> Result<(Value, Value, Value)> {
     let mut selected = request["selected"].clone();
     if !selected.is_object() || selected.get("retained").is_some_and(|r| !r.is_object()) {
@@ -273,20 +308,10 @@ pub fn preferences(request: &Value, rows: &Rows, proposed: &Rows) -> Result<(Val
             }
             "android-tablet" => (),
             _ if id.starts_with("android-meross-") => {
-                if row["kind"] != "profile"
-                    || options["profile"] != "meross-mss310"
-                    || options["discovery"] != false
-                {
-                    return Err("configuration_conflict");
-                }
-                let mut entry = json!({"id":id.trim_start_matches("android-meross-"),"name":options["name"],"host":options["host"],"port":options["port"],"enabled":enabled(row)});
-                if let Some(uuid) = options.get("vars").and_then(|v| v.get("expected_uuid")) {
-                    entry["uuid"] = uuid.clone();
-                }
                 equipment["meross"]
                     .as_array_mut()
                     .ok_or("configuration_conflict")?
-                    .push(entry);
+                    .push(meross_preference(request, id, row)?);
             }
             _ => return Err("configuration_conflict"),
         }

@@ -974,6 +974,64 @@ max_age_seconds = 300
     }
 
     #[test]
+    fn manual_meross_opt_in_and_revocation_preserve_four_bindings_netatmo_and_metadata() {
+        let mut s = forms();
+        s["equipment"]["meross"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("uuid");
+        s["home_proposal"]["android"]["meross"] = s["equipment"]["meross"].clone();
+        let first = run(&s).unwrap();
+        form_again(&mut s, &first);
+        let mut config = parse(s["config"].as_str().unwrap()).unwrap();
+        let netatmo = json!({"id":"energy-test","kind":"netatmo","enabled":false,"options":{"home_id":"synthetic-home","poll_seconds":120,"max_age_seconds":300}});
+        config["driver"]
+            .as_array_mut()
+            .unwrap()
+            .push(netatmo.clone());
+        s["config"] = json!(toml::to_string(&config).unwrap());
+        let original = s["equipment"].clone();
+        s["equipment"]["meross"][0]["manual_control"] = json!(true);
+        s["equipment"]["meross"][0]["manual_uuid"] = json!("00000000000000000000000000000065");
+        s["home_proposal"]["android"]["meross"] = s["equipment"]["meross"].clone();
+        let selected = run(&s).unwrap();
+        let c = parse(selected["config"].as_str().unwrap()).unwrap();
+        let rows = c["driver"].as_array().unwrap();
+        let target = rows
+            .iter()
+            .find(|r| r["id"] == "android-meross-00000000000000000000000000000001")
+            .unwrap();
+        assert_eq!(target["options"]["profile"], "meross-mss310-manual");
+        assert!(target["options"]["vars"].get("expected_uuid").is_none());
+        assert_eq!(
+            rows.iter().find(|r| r["id"] == "energy-test").unwrap(),
+            &netatmo
+        );
+        for i in 1..4 {
+            assert_eq!(selected["equipment"]["meross"][i], original["meross"][i]);
+        }
+        assert_eq!(selected["home"]["rooms"], first["home"]["rooms"]);
+        form_again(&mut s, &selected);
+        assert_eq!(run(&s).unwrap(), selected);
+        s["equipment"]["meross"][0]["manual_control"] = json!(false);
+        s["home_proposal"]["android"]["meross"] = s["equipment"]["meross"].clone();
+        let revoked = run(&s).unwrap();
+        form_again(&mut s, &revoked);
+        assert_eq!(run(&s).unwrap(), revoked);
+        assert!(
+            !revoked["config"]
+                .as_str()
+                .unwrap()
+                .contains("meross-mss310-manual")
+        );
+        assert!(revoked["equipment"]["meross"][0].get("uuid").is_none());
+        assert_eq!(
+            revoked["equipment"]["meross"][0]["manual_uuid"],
+            selected["equipment"]["meross"][0]["manual_uuid"]
+        );
+    }
+
+    #[test]
     fn ambiguity_missing_selection_invalid_input_and_duplicate_uuid_never_generate_replacements() {
         let mut s = fixture();
         s["config"] = json!(crate::profiles::configuration(&s.to_string()).unwrap());

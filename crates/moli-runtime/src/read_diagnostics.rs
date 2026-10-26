@@ -12,6 +12,10 @@ pub enum ReadStage {
     Homestatus,
     Parsing,
     Publication,
+    CommandPreflight,
+    CommandSend,
+    CommandAck,
+    CommandReadback,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize)]

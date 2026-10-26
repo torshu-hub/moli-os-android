@@ -1,6 +1,6 @@
 [integration]
 id = "meross-mss310"
-name = "Prise Meross MSS310 (lecture seule)"
+name = "Prise Meross MSS310"
 brands = ["Meross"]
 models = ["MSS310"]
 transport = "http"

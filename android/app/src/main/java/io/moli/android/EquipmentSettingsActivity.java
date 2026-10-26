@@ -183,6 +183,6 @@ public final class EquipmentSettingsActivity extends Activity {
 
     }
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("mode",mode);}
-    @Override public void onStop() { handler.removeCallbacks(refresh); meross.clearKeys(); super.onStop(); }
+    @Override public void onStop() { handler.removeCallbacks(refresh); if(meross.controlDialog!=null)meross.controlDialog.dismiss(); meross.clearKeys(); super.onStop(); }
     @Override public void onDestroy() { handler.removeCallbacks(refresh); io.shutdown(); super.onDestroy(); }
 }

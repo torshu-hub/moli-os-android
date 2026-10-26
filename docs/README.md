@@ -61,7 +61,8 @@ téléphones passent sans Access, avec leur propre jeton.
 | [netatmo-energy.md](components/netatmo-energy.md) | Netatmo Energy portable en lecture seule, fraîcheur et prérequis OAuth |
 | [pilotes.md](components/pilotes.md) | trait `Driver`, chaque pilote natif, `moli-net` |
 | [profils.md](components/profils.md) | moteur de profils déclaratifs, format TOML, ajouter un appareil sans code |
-| [meross-set-simulation.md](components/meross-set-simulation.md) | SET ToggleX déclaré, strictement simulé sur boucle locale, avec garde et confirmation |
+| [meross-set-simulation.md](components/meross-set-simulation.md) | Lot SET ToggleX simulé sur boucle locale, avec garde et confirmation |
+| [meross-manual-beta.md](components/meross-manual-beta.md) | MSS310 : une prise autorisée manuellement, relecture, diagnostics et essai S5e |
 | [historique-energie.md](components/historique-energie.md) | historique SQLite, SQL pour agents, énergie (kWh, €, Tempo), import HA |
 | [automatismes.md](components/automatismes.md) | modèle de graphe, validation humaine, moteur, éditeur, import HA |
 | [moli.md](components/moli.md) | l'assistant : conversation, outils, garde, création d'automatismes, filtres |

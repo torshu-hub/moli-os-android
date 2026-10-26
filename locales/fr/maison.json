@@ -264,5 +264,17 @@
   "maison.receipt.stale": "Anciennes",
   "maison.receipt.unavailable": "Indisponibles",
   "maison.receipt.checking": "À confirmer",
-  "maison.receipt.help": "Aide sur la réception"
+  "maison.receipt.help": "Aide sur la réception",
+  "maison.meross_manual.title": "Commandes manuelles — {name}",
+  "maison.meross_manual.limit": "Vos réglages dans Meross, dont la limite de 30 minutes si configurée, restent inchangés. Aucun minuteur Moli.",
+  "maison.meross_manual.target": "Identité de la prise autorisée",
+  "maison.meross_manual.on": "Allumer",
+  "maison.meross_manual.off": "Éteindre",
+  "maison.meross_manual.pending": "Vérification de la cible, commande et relecture en cours…",
+  "maison.meross_manual.confirmed": "État confirmé par une relecture locale.",
+  "maison.meross_manual.held": "Validation humaine en attente.",
+  "maison.meross_manual.unknown": "État non confirmé. Vérifiez la prise ; aucun renvoi automatique.",
+  "maison.meross_manual.unavailable": "Commande indisponible : vérifiez le moteur, la cible et sa connexion.",
+  "maison.meross_manual.readonly_help": "Pour retirer les commandes, arrêtez le moteur, décochez cette prise dans Mes appareils, enregistrez puis redémarrez. Cela n’éteint pas la prise.",
+  "maison.meross_manual.settings": "Mes appareils"
 }

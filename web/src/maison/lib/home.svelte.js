@@ -298,15 +298,18 @@ const headers = { 'content-type': 'application/json', 'x-moli-origin': 'ui' };
 
 /** Sends an order. Held by the guard (protected room, quiet hours): asks
  *  « c'est moi » through the PIN sheet, then approves it. */
-export async function act(point, val, label) {
+export async function act(point, val, label, options = {}) {
   hub.pending[point] = val;
+  const controller=options.timeout?new AbortController():null;
+  const deadline=controller?setTimeout(()=>controller.abort(),options.timeout):null;
   try {
     const res = await fetch('/api/command', {
       method: 'POST',
       headers,
+      ...(controller?{signal:controller.signal}:{}),
       body: JSON.stringify({ point, value: val }),
     });
-    const body = await res.json().catch(() => ({}));
+    const body = await res.json().catch((err) => { if(controller?.signal.aborted)throw err;return {}; });
     if (res.status === 202) {
       delete hub.pending[point];
       home.held = { id: body.pending, point, reason: body.reason, label };
@@ -321,7 +324,7 @@ export async function act(point, val, label) {
     delete hub.pending[point];
     note(t('commun.echec', { label: label ?? t('commun.commande'), error: humanError(err.message) }), 'error');
     return 'error';
-  }
+  } finally {if(deadline!==null)clearTimeout(deadline);}
 }
 
 // ---- ambiances -----------------------------------------------------------------

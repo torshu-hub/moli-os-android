@@ -23,5 +23,28 @@ Linux recovery remains possible through standard engine data; no Pi work is incl
 ## SET simulation
 
 See [the simulation notes](../../docs/components/meross-set-simulation.md).
-The shipped profile and installed plugs remain read-only; the synthetic
-loopback variant does not authorize any physical command.
+The canonical profile remains read-only; the external synthetic loopback variant
+does not authorize physical commands.
+
+
+## Manual opt-in beta
+
+Existing installations stay read-only. On Android, stop the engine, choose one
+non-critical plug in My devices, confirm its name/address/UUID, enable manual
+controls, Save and Start. A fresh identity already seen by the local reader may
+be proposed if the legacy settings have no UUID; no old association is replaced.
+Only the selected plug gets Turn on / Turn off, through Moli's existing guard.
+Success requires a signed readback after SETACK; a timeout never resends a SET.
+Stop, uncheck, Save and Start to revoke controls. This does not turn a plug off.
+Do not test the Finder/boiler without separate owner approval.
+
+Linux can opt into `meross-mss310-manual` with `vars.manual_uuid`, an explicit
+private IPv4 destination, `discovery=false` and the existing encrypted key. Any
+existing `expected_uuid` must match. No additional Linux deployment is included.
+The built-in variant reuses this package; external secret-bearing LAN profiles
+remain blocked by the original trust/host rules and the SET loopback constraint.
+
+The owner performs the physical test personally. Keep Meross's existing 30-minute
+limit if configured; no timer, countdown, routine or schedule is written by Moli.
+No guarantee of offline timer operation is made. Complete procedure, diagnostics
+and limitations: [manual beta](../../docs/components/meross-manual-beta.md).

@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use moli_core::{Device, DeviceId, DriverStatus, InstanceId, PointId, Value};
+use moli_core::{Device, DeviceId, DriverStatus, InstanceId, Origin, PointId, Value};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -33,6 +33,8 @@ pub trait Driver: Send + Sync + 'static {
 /// (state confirmation arrives later as a regular state update).
 #[derive(Debug)]
 pub struct CommandRequest {
+    /// Validated surface origin, preserved through routing and guard approval.
+    pub origin: Origin,
     pub point: PointId,
     pub device: Arc<Device>,
     pub key: Arc<str>,

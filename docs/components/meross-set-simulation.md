@@ -1,8 +1,10 @@
 # Meross SET signé — simulation uniquement
 
-Le lot conserve le profil MSS310 livré **en lecture seule**, l’APK code29,
-Netatmo et toutes les configurations. Aucun SET réel, bouton Android/web,
-automatisme, Finder, compte cloud, nouveau moteur ou pilote natif n’est ajouté.
+Ce document décrit le lot de simulation `99f1a0c`, validé séparément. Son
+profil externe reste limité à la boucle locale. L’étape suivante, désormais
+autorisée, est documentée dans [la bêta manuelle](meross-manual-beta.md) :
+variante intégrée à activation explicite, sans automatisme ni commande par Codex.
+Les garanties et preuves ci-dessous restent celles de la simulation.
 
 ## Écart minimal par rapport à Moli amont
 
@@ -105,4 +107,5 @@ Pas de contribution, issue ou PR vers l’amont autorisée par cette simulation.
 
 Vérification ciblée : `cargo test -p moli-profile meross_set --locked`, puis
 contrôles génériques requis par le changement de profil (`scripts/check.sh`).
-Pas d’APK signée : aucune fonction nouvelle n’est activée sur la tablette.
+Le lot de simulation seul ne produisait pas d’APK. La livraison manuelle suivante
+est décrite dans [meross-manual-beta.md](meross-manual-beta.md).

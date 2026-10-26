@@ -1,0 +1,9 @@
+# Explicit opt-in built-in variant, appended to the original read-only profile.
+# No countdown/timer/routine operation is supported. Human UI origins only.
+[[write]]
+point = "on"
+path = "/config"
+transport = "meross"
+namespace = "Appliance.Control.ToggleX"
+channel = 0
+refresh = "all"

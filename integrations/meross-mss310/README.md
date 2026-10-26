@@ -1,13 +1,19 @@
-# Meross MSS310 — local, read only
+# Meross MSS310 — local, read-only by default
 
-The shipped profile remains read-only. A separate, entirely synthetic
-[ToggleX simulation](../../docs/components/meross-set-simulation.md) exercises
-the original declarative driver and hub against loopback HTTP only. It is not
-registered in the built-in catalogue and enables no physical switching or UI.
+The canonical profile remains read-only. An explicit, separately selected built-in
+variant `meross-mss310-manual` appends `manual-write.toml` to the same profile;
+it supports one channel-0 ToggleX command through the original hub, with strict
+identity/ability/ACK checks and readback. Android allows one locally confirmed
+non-critical target at a time; existing installations remain read-only by default.
+See [manual beta and trial procedure](../../docs/components/meross-manual-beta.md).
+The [simulation](../../docs/components/meross-set-simulation.md) stays loopback-only
+for external profiles. No native driver, new package format or cloud login.
 
-Built-in Rust profile with a narrow response adapter, reusing `moli-profile`'s signed
-Meross GET transport, typed points, supervisor and existing history. No SET, cloud,
-account login, automatic discovery or switching. Distinct from EM06/ElectricityX.
+The narrow Rust response adapter reuses `moli-profile`'s signed Meross transport,
+typed points, supervisor, encrypted vault and history. No automatic heating,
+Timer/Countdown/routine operations, or cloud key retrieval. Distinct from
+EM06/ElectricityX. Existing Meross settings remain untouched; offline countdown
+behavior is not qualified.
 
 Protocol references (knowledge only; no upstream code copied):
 - [meross_lan at bafedb4](https://github.com/krahabb/meross_lan/tree/bafedb4f8563153f9e3494292073551bb28f5f9a),
