@@ -3,13 +3,14 @@
 
 import { hub, connect, login, decide, refreshSession, refreshSnapshot } from '../../lib/hub.svelte.js';
 import { t, locale } from '../../lib/i18n.svelte.js';
-import { watchUiErrors } from './ui-diagnostics.js';
+import { readJson, watchUiErrors } from './ui-diagnostics.js';
 
 export { hub };
 
 export const home = $state({
   /** @type {any} layout from /api/home ({} = automatic) */
   config: null,
+  platform: null,
   snapshotHealthy: false,
   /** an order the guard held, waiting for « c'est moi » */
   held: null,
@@ -53,7 +54,12 @@ export async function start() {
   } catch {
     home.config = {};
   }
-  if (home.config?.android) {
+  if (home.config?.android) home.platform='android';
+  else {
+    try { home.platform=(await readJson('/api/system',{timeout:3000,valid:s=>['android','other'].includes(s?.platform)})).platform; }
+    catch { home.platform='other'; }
+  }
+  if (home.platform==='android') {
     let busy = false;
     const read = async () => {
       if (busy || document.hidden) return;

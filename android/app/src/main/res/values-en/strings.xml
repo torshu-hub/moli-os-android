@@ -126,7 +126,7 @@
     <string name="home_invalid">Check name and coordinates; up to 32 rooms, 60 characters each.</string>
     <string name="home_failed">Settings may be incomplete: check them before starting and retry.</string>
     <string name="home_tools">Diagnostic tools</string>
-    <string name="equipment_title">Add equipment / view reads</string>
+    <string name="equipment_title">My devices</string>
     <string name="equipment_help">Use the same Wi-Fi, outside an isolated guest network. Printer and gateway stay read-only: no printing or changes to their settings. MSS310 controls require explicit permission below.</string>
     <string name="equipment_stop_first">The engine is running or changing state. Stop it here to change permissions.</string>
     <string name="equipment_stopped">Engine stopped: configure, save, then start reading.</string>
@@ -392,4 +392,7 @@
     <string name="meross_manual_confirm_title">Choose the plug for the manual test</string>
     <string name="meross_manual_confirm">Plug: %1$s\nAddress: %2$s\nUUID: %3$s\n\nI confirm I chose a non-critical plug. I will trigger ON then OFF myself. Finder/boiler requires separate approval. Routines and the Meross limit will not be changed.</string>
     <string name="meross_manual_confirm_action">Authorize this plug</string>
+    <string name="my_devices">My devices</string>
+    <string name="meross_devices">Meross plugs</string>
+    <string name="meross_connection_details">Connection details</string>
 </resources>

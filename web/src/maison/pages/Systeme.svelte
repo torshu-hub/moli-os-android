@@ -105,7 +105,10 @@
   // (systeme.pilotes.<kind>.nom / .desc); a kind not listed shows as it is.
   const KINDS = ['z2m', 'hue', 'tuya', 'reolink', 'sonos', 'helpers', 'philips', 'frigate', 'bambu', 'tapo', 'igd', 'presence', 'telegram', 'phones', 'profile'];
   const kindWord = (kind, part) => (KINDS.includes(kind) ? t(`systeme.pilotes.${kind}.${part}`) : null);
-  const driverName = (d) => (d.kind === 'profile' ? d.instance.charAt(0).toUpperCase() + d.instance.slice(1) : (kindWord(d.kind, 'nom') ?? d.kind));
+  const driverName = (d) => {
+    const devices=Object.values(hub.devices).filter(x=>x.instance===d.instance);
+    return devices.length===1?(devices[0].label?.name||devices[0].native_name):(kindWord(d.kind,'nom')??d.kind);
+  };
 
   // Bricks: their icon here, their description in the catalog (systeme.briques.<id>.desc).
   const BRICKS = { guard: 'shield', history: 'history', energy: 'bolt', automations: 'robot', assistant: 'sparkles', cameras: 'cctv' };
@@ -166,6 +169,8 @@
   {#if error}<p role="status" data-system-error>{t('systeme.diagnostic.'+error)}</p><button data-system-retry disabled={busy} onclick={load}>{t('systeme.diagnostic.retry')}</button>{/if}
 
   <svelte:boundary onerror={()=>{renderFailed=true;reportUi(UI_TOPIC.system,UI_STATE.render);}}>
+
+  {#if sys?.platform==='android'||home.platform==='android'||home.config?.android}<a class="devices-link" href="#/appareils">{t('maison.equipment.title')} · {t('maison.android.settings')}</a>{/if}
 
   <IntegrationInventory rows={sys?.integrations} platform={sys?.platform} />
 
@@ -294,7 +299,8 @@
         <button class="x" onclick={() => (chosen = null)} aria-label={t('commun.fermer')}><Icon name="close" size={18} /></button>
         {#if chosen.kind === 'driver'}
           {@const d = chosen.item}
-          <h3>{driverName(d)} <small class="muted">({d.instance})</small></h3>
+          <h3>{driverName(d)}</h3><details><summary>{t('maison.equipment.details')}</summary><code>{d.instance}</code></details>
+          {#if sys.platform==='android'&&d.instance.startsWith('android-meross-')}<a href="#/appareils">{t('maison.equipment.title')}</a>{/if}
           <p>{kindWord(d.kind, 'desc') ?? t('systeme.pilotes.defaut')}</p>
           <p class="muted">{d.status?.reason ? t('systeme.page.publie_raison', { points: d.points, devices: d.devices, status: statusText(d.status), reason: d.status.reason }) : t('systeme.page.publie', { points: d.points, devices: d.devices, status: statusText(d.status) })}</p>
           <p class="how">{t('systeme.page.entre_sort')}</p>
@@ -485,6 +491,7 @@
   }
 
   .col {
+    min-width:0;
     display: grid;
     gap: 8px;
     align-content: center;
@@ -523,6 +530,9 @@
     display: grid;
     min-width: 0;
   }
+
+  .devices-link{display:inline-flex;align-items:center;min-height:48px;overflow-wrap:anywhere;}
+  .node b,.node small,.explain{overflow-wrap:anywhere;}
 
   .node b {
     font-weight: 700;
@@ -685,7 +695,7 @@
 
   @media (max-width: 1100px) {
     .map {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(2,minmax(0,1fr));
       gap: 24px;
     }
 

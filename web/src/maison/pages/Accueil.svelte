@@ -177,7 +177,8 @@
     {/each}
   </section>
 
-  {#if cfg.android}<AndroidSources /><AndroidEquipment />{/if}
+  {#if cfg.android}<AndroidSources />{/if}
+  {#if cfg.android||home.platform==='android'}<AndroidEquipment />{/if}
   {#if cfg.android || hub.drivers.some(d=>d.kind==='netatmo') || hub.diagnostics.some(d=>d.kind==='netatmo')}<NetatmoOverview />{/if}
   {#if !cfg.android || cfg.favorites}
   <div class="grid">

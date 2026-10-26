@@ -126,7 +126,7 @@
     <string name="home_invalid">Vérifiez le nom et les coordonnées ; 32 pièces maximum, 60 caractères par pièce.</string>
     <string name="home_failed">Enregistrement incomplet : vérifiez les réglages avant de démarrer, puis réessayez.</string>
     <string name="home_tools">Outils de diagnostic</string>
-    <string name="equipment_title">Ajouter un équipement / voir les lectures</string>
+    <string name="equipment_title">Mes appareils</string>
     <string name="equipment_help">Même Wi-Fi que l’équipement, hors réseau invité isolé. Imprimante et box restent en lecture seule : aucune impression ni modification de leurs réglages. Les commandes MSS310 nécessitent une autorisation explicite ci-dessous.</string>
     <string name="equipment_stop_first">Le moteur fonctionne ou change d’état. Arrêtez-le ici pour modifier les autorisations.</string>
     <string name="equipment_stopped">Moteur arrêté : configurez, enregistrez puis démarrez pour lire.</string>
@@ -392,4 +392,7 @@
     <string name="meross_manual_confirm_title">Choisir la prise pour l’essai manuel</string>
     <string name="meross_manual_confirm">Prise : %1$s\nAdresse : %2$s\nUUID : %3$s\n\nJe confirme avoir choisi une prise non critique. Je déclencherai moi-même ON puis OFF. Finder/chaudière nécessite un accord séparé. Les routines et la limite Meross ne seront pas modifiées.</string>
     <string name="meross_manual_confirm_action">Autoriser cette prise</string>
+    <string name="my_devices">Mes appareils</string>
+    <string name="meross_devices">Prises Meross</string>
+    <string name="meross_connection_details">Détails de connexion</string>
 </resources>

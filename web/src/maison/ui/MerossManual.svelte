@@ -20,17 +20,13 @@
   $effect(()=>{if(result==='held'&&!home.held){result=null;reportUi(UI_TOPIC.merossCommand,UI_STATE.empty);}});
 </script>
 <section data-meross-manual data-meross-result={result||'idle'}>
-  <p><strong>{t('maison.meross_manual.title',{name:name||data?.native_name||''})}</strong></p>
-  <p class="muted">{t('maison.meross_manual.limit')}</p>
-  <details><summary>{t('maison.meross_manual.target')}</summary><p>{uuid||'—'}</p></details>
   <div class="actions">
     <button data-meross-on disabled={!available||busy||result==='held'} onclick={()=>send(true)}>{t('maison.meross_manual.on')}</button>
     <button data-meross-off disabled={!available||busy||result==='held'} onclick={()=>send(false)}>{t('maison.meross_manual.off')}</button>
   </div>
   {#if result}<p role="status">{t('maison.meross_manual.'+result)}</p>{/if}
   {#if !available}<p role="status">{t('maison.meross_manual.unavailable')}</p>{/if}
-  <p class="muted">{t('maison.meross_manual.readonly_help')}</p>
-  <a href="/android/equipment">{t('maison.meross_manual.settings')}</a>
+  <details><summary>{t('maison.meross_manual.target')}</summary><p>{uuid||'—'}</p><p>{t('maison.meross_manual.limit')}</p><p>{t('maison.meross_manual.readonly_help')}</p></details>
 </section>
 <style>
   .actions{display:flex;flex-wrap:wrap;gap:12px;}button,a,summary{min-height:44px;}button{min-width:96px;}p{overflow-wrap:anywhere;}.muted{color:var(--muted);}a{display:inline-flex;align-items:center;}

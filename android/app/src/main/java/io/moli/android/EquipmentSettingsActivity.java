@@ -46,6 +46,8 @@ public final class EquipmentSettingsActivity extends Activity {
         LinearLayout body=TrialUi.page(this);
         TrialUi.title(this,body,R.string.equipment_title);
         chooser=TrialUi.card(this,body);
+        button(chooser,R.string.meross_devices,()->focus("meross"));
+        button(chooser,R.string.netatmo_title,()->startActivity(new Intent(this,NetatmoOAuthActivity.class)));
         button(chooser,R.string.equipment_add_printer,()->focus("ipp"));
         button(chooser,R.string.equipment_add_gateway,()->focus("igd"));
         button(chooser,R.string.account_title,()->startActivity(new Intent(this,MerossAccountActivity.class)));
@@ -69,7 +71,7 @@ public final class EquipmentSettingsActivity extends Activity {
             if (EngineHost.state() != EngineHost.State.STOPPED || busy || !ready || revision != savedRevision) return;
             getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted",true).apply();
             startForegroundService(new Intent(this, MoliService.class));
-            startActivity(new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+            startActivity(new Intent(this, MainActivity.class).putExtra("equipment",true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
             finish();
         }); start.setEnabled(false);
         reading=text(body,R.string.equipment_no_reads);
@@ -88,6 +90,7 @@ public final class EquipmentSettingsActivity extends Activity {
         for (EditText field : new EditText[]{host,port,path,location}) field.addTextChangedListener(changed);
         printer.setOnCheckedChangeListener((button,checked) -> edited());
         gateway.setOnCheckedChangeListener((button,checked) -> edited());
+        if("meross".equals(getIntent().getStringExtra("section")))focus("meross");
         if(saved!=null && saved.getString("mode")!=null && !saved.getString("mode").isEmpty())focus(saved.getString("mode"));
         io.execute(() -> {
             try {

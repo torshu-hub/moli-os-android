@@ -83,16 +83,20 @@ final class MerossForm {
             id=input.optString("id",UUID.randomUUID().toString().replace("-","")); uuid=input.optString("uuid","");
             manualUuid=input.optString("manual_uuid",uuid.isEmpty()?EquipmentMonitor.identity(id):uuid);hadManualIdentity=input.has("manual_uuid");
             body.setOrientation(LinearLayout.VERTICAL); body.setPadding(0,16,0,16);
-            if(!uuid.isEmpty()) {TextView bound=new TextView(activity);bound.setText(activity.getString(R.string.account_uuid_bound,uuid));body.addView(bound);}
-            read.setText(R.string.meross_read); read.setChecked(input.optBoolean("enabled")); body.addView(read);
             name=field(body,R.string.meross_name,false); name.setText(input.optString("name",""));
-            host=field(body,R.string.equipment_host,false); host.setText(input.optString("host",""));
-            port=field(body,R.string.equipment_port,false); port.setInputType(InputType.TYPE_CLASS_NUMBER); port.setText(input.optString("port","80"));
-            key=field(body,R.string.meross_key,true); key.setHint(R.string.meross_key_hint);
+            read.setText(R.string.meross_read); read.setChecked(input.optBoolean("enabled")); body.addView(read);
+            LinearLayout connection=new LinearLayout(activity);connection.setOrientation(LinearLayout.VERTICAL);connection.setVisibility(View.GONE);
+            host=field(connection,R.string.equipment_host,false);host.setText(input.optString("host",""));
+            port=field(connection,R.string.equipment_port,false);port.setInputType(InputType.TYPE_CLASS_NUMBER);port.setText(input.optString("port","80"));
+            key=field(connection,R.string.meross_key,true);key.setHint(R.string.meross_key_hint);
+            if(!uuid.isEmpty()){TextView bound=new TextView(activity);bound.setText(activity.getString(R.string.account_uuid_bound,uuid));connection.addView(bound);}
             control.setText(R.string.meross_manual_enable);control.setSaveEnabled(false);control.setChecked(input.optBoolean("manual_control",false));body.addView(control);
             text(body,R.string.meross_manual_help);
             if(!manualUuid.matches("[a-fA-F0-9]{32}"))text(body,R.string.meross_manual_identity_required);
-            remove.setText(R.string.meross_remove); body.addView(remove);
+            Button details=new Button(activity);details.setText(R.string.meross_connection_details);body.addView(details);
+            details.setOnClickListener(v->connection.setVisibility(connection.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
+            body.addView(connection);
+            remove.setText(R.string.meross_remove); connection.addView(remove);
             TextWatcher watcher=new TextWatcher() {
                 public void beforeTextChanged(CharSequence s,int a,int c,int after) {}
                 public void onTextChanged(CharSequence s,int a,int b,int c) { edited(); }

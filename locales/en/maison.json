@@ -227,7 +227,7 @@
   "maison.android.no_rooms": "No rooms configured.",
   "maison.android.rooms_help": "Rooms prepared for future equipment. No hardware integration enabled here.",
   "maison.android.open_rooms": "Open rooms and equipment",
-  "maison.equipment.title": "Read-only equipment",
+  "maison.equipment.title": "My devices",
   "maison.equipment.help": "IPP: printer status and reported ink levels every 30 s. IGD: gateway Internet status every 10 s. These two devices remain read-only.",
   "maison.equipment.empty": "Add a printer or gateway through Configure. Local devices are only queried after your approval.",
   "maison.equipment.printer": "IPP printer",
@@ -276,5 +276,6 @@
   "maison.meross_manual.unknown": "State unconfirmed. Check the plug; no automatic retry.",
   "maison.meross_manual.unavailable": "Controls unavailable: check the engine, target and connection.",
   "maison.meross_manual.readonly_help": "To remove controls, stop the engine, uncheck this plug in My devices, save and restart. This does not turn the plug off.",
-  "maison.meross_manual.settings": "My devices"
+  "maison.meross_manual.settings": "My devices",
+  "maison.equipment.readonly": "Read only"
 }

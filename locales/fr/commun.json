@@ -224,5 +224,6 @@
   "commun.code.saisis_one": "{count} chiffre saisi",
   "commun.code.saisis_other": "{count} chiffres saisis",
   "commun.code.effacer": "Effacer",
-  "commun.code.nouveau_choisir": "Choisir un nouveau code"
+  "commun.code.nouveau_choisir": "Choisir un nouveau code",
+  "commun.nav.scroll": "Autres pages : faire défiler horizontalement en portrait"
 }

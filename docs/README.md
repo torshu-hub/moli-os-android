@@ -63,6 +63,7 @@ téléphones passent sans Access, avec leur propre jeton.
 | [profils.md](components/profils.md) | moteur de profils déclaratifs, format TOML, ajouter un appareil sans code |
 | [meross-set-simulation.md](components/meross-set-simulation.md) | Lot SET ToggleX simulé sur boucle locale, avec garde et confirmation |
 | [meross-manual-beta.md](components/meross-manual-beta.md) | MSS310 : une prise autorisée manuellement, relecture, diagnostics et essai S5e |
+| [netatmo-meross-observation.md](components/netatmo-meross-observation.md) | Prochain incrément : cadrage de l’observation à blanc, sans automatisme actif |
 | [historique-energie.md](components/historique-energie.md) | historique SQLite, SQL pour agents, énergie (kWh, €, Tempo), import HA |
 | [automatismes.md](components/automatismes.md) | modèle de graphe, validation humaine, moteur, éditeur, import HA |
 | [moli.md](components/moli.md) | l'assistant : conversation, outils, garde, création d'automatismes, filtres |

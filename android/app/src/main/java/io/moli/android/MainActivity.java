@@ -21,6 +21,7 @@ public final class MainActivity extends Activity {
     private android.view.View home;
     private LinearLayout dashboard;
     private boolean viewing;
+    private String dashboardRoute="";
     private ReportExport report;
     private long startRequestedUntil;
     private volatile String loaded;
@@ -86,15 +87,20 @@ public final class MainActivity extends Activity {
         TrialUi.text(this,front,R.string.preview_home_help);
         LinearLayout actions=TrialUi.card(this,front);
         TrialUi.button(this,actions,R.string.preview_devices,true,this::showDevices);
+        TrialUi.button(this,actions,R.string.my_devices,false,this::manageEquipment);
         TrialUi.button(this,actions,R.string.preview_search,false,()->{if(ensureKeys())startActivity(new Intent(this,SearchHomeActivity.class));});
         report=new ReportExport(this);
         TrialUi.button(this,actions,R.string.report_export,false,report::choose);
         TrialUi.text(this,front,R.string.preview_report_auto);
         TrialUi.button(this,front,R.string.preview_settings,false,()->startActivity(new Intent(this,PreviewSettingsActivity.class)));
         dashboard=new LinearLayout(this);dashboard.setOrientation(LinearLayout.VERTICAL);root.addView(dashboard,new LinearLayout.LayoutParams(-1,0,1));dashboard.setVisibility(View.GONE);
-        Button homeButton=TrialUi.button(this,dashboard,R.string.preview_home_title,false,this::showHome);
-        homeButton.setTextSize(14);homeButton.setMinHeight(TrialUi.dp(this,48));homeButton.setMinimumHeight(TrialUi.dp(this,48));
-        LinearLayout.LayoutParams homeParams=(LinearLayout.LayoutParams)homeButton.getLayoutParams();homeParams.setMargins(0,0,0,0);
+        LinearLayout pageActions=new LinearLayout(this);dashboard.addView(pageActions);
+        Button homeButton=TrialUi.button(this,pageActions,R.string.preview_home_title,false,this::showHome);
+        Button equipmentButton=TrialUi.button(this,pageActions,R.string.my_devices,false,this::manageEquipment);
+        for(Button button:new Button[]{homeButton,equipmentButton}){
+            button.setTextSize(14);button.setMinHeight(TrialUi.dp(this,48));button.setMinimumHeight(TrialUi.dp(this,48));
+            LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1);lp.setMargins(0,0,0,0);button.setLayoutParams(lp);
+        }
         dashboardStatus=TrialUi.text(this,dashboard,R.string.starting);
         web = new WebView(this);
         web.getSettings().setJavaScriptEnabled(true);
@@ -124,7 +130,13 @@ public final class MainActivity extends Activity {
                 if(request.isForMainFrame()) dashboardFailed();
             }
             @Override public void doUpdateVisitedHistory(WebView view, String url, boolean reload) {
-                if(viewing)resetExitBack();
+                if(viewing){
+                    resetExitBack();
+                    if(loaded!=null&&url.startsWith(loaded+"/")){
+                        String fragment=Uri.parse(url).getFragment();
+                        dashboardRoute="/appareils".equals(fragment)?"appareils":"/systeme".equals(fragment)?"systeme":"";
+                    }
+                }
             }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
@@ -132,8 +144,10 @@ public final class MainActivity extends Activity {
                 if(request.isForMainFrame()&&origin!=null&&EngineHost.state()==EngineHost.State.RUNNING&&origin.equals(EngineHost.origin())&&(origin+"/android/netatmo").equals(uri.toString())){
                     startActivity(new Intent(MainActivity.this,NetatmoOAuthActivity.class));return true;
                 }
-                if (request.isForMainFrame() && origin != null && EngineHost.state() == EngineHost.State.RUNNING && origin.equals(EngineHost.origin()) && (origin+"/android/equipment").equals(uri.toString())) {
-                    startActivity(new Intent(MainActivity.this,EquipmentSettingsActivity.class)); return true;
+                if (request.isForMainFrame() && origin != null && EngineHost.state() == EngineHost.State.RUNNING && origin.equals(EngineHost.origin()) && ((origin+"/android/equipment").equals(uri.toString())||(origin+"/android/equipment?section=meross").equals(uri.toString()))) {
+                    Intent equipment=new Intent(MainActivity.this,EquipmentSettingsActivity.class);
+                    if("meross".equals(uri.getQueryParameter("section")))equipment.putExtra("section","meross");
+                    startActivity(equipment); return true;
                 }
                 if (request.isForMainFrame() && origin != null && EngineHost.state() == EngineHost.State.RUNNING && origin.equals(EngineHost.origin()) && (origin+"/android/settings").equals(uri.toString())) {
                     startActivity(new Intent(MainActivity.this,HomeSettingsActivity.class)); return true;
@@ -154,7 +168,9 @@ public final class MainActivity extends Activity {
         dashboard.addView(web,new LinearLayout.LayoutParams(-1,0,1));
         if (Build.VERSION.SDK_INT >= 33) unregisterBack = ModernBack.register(this);
         if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
-        if(saved==null && getIntent().getBooleanExtra("devices",false))showDevices();
+        if(saved!=null)dashboardRoute=saved.getString("dashboardRoute","");
+        if(saved==null && getIntent().getBooleanExtra("equipment",false))showEquipmentPage();
+        else if(saved==null && getIntent().getBooleanExtra("devices",false))showDevices();
         if(saved!=null && saved.getBoolean("viewing")){viewing=true;home.setVisibility(View.GONE);dashboard.setVisibility(View.VISIBLE);}
         handler.post(refresh);
         if (EngineHost.state() == EngineHost.State.RUNNING || EngineHost.state() == EngineHost.State.STARTING ||
@@ -169,16 +185,23 @@ public final class MainActivity extends Activity {
         if(ProtectedKey.exists(this))return true;
         try{ProtectedKey.createPreview(this);return true;}catch(Exception failure){status.setText(R.string.key_unavailable);return false;}
     }
-    void showDevices(){
+    void showDevices(){showDashboard("");}
+    void showEquipmentPage(){showDashboard("appareils");}
+    private void manageEquipment(){
+        if(EngineHost.state()==EngineHost.State.RUNNING)showEquipmentPage();
+        else if(ensureKeys())startActivity(new Intent(this,EquipmentSettingsActivity.class));
+    }
+    private void showDashboard(String route){
         if(!ensureKeys())return;
+        dashboardRoute=route;
         viewing=true;home.setVisibility(View.GONE);dashboard.setVisibility(View.VISIBLE);web.setVisibility(View.VISIBLE);
         if(EngineHost.state()==EngineHost.State.STOPPED)prepare();
-        else if(loaded!=null)web.loadUrl(loaded+"/#/");
+        else if(loaded!=null)web.loadUrl(loaded+"/#/"+dashboardRoute);
     }
     void showHome(){viewing=false;dashboard.setVisibility(View.GONE);home.setVisibility(View.VISIBLE);web.setVisibility(View.GONE);resetExitBack();}
-    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putBoolean("viewing",viewing);}
+    @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putBoolean("viewing",viewing);out.putString("dashboardRoute",dashboardRoute);}
     @Override protected void onActivityResult(int request,int result,Intent intent){super.onActivityResult(request,result,intent);report.result(request,result,intent);}
-    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);if(intent.getBooleanExtra("devices",false))showDevices();}
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);if(intent.getBooleanExtra("equipment",false))showEquipmentPage();else if(intent.getBooleanExtra("devices",false))showDevices();}
     private void startServer() {
         startRequestedUntil=SystemClock.elapsedRealtime()+5000;
         getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", true).apply();
@@ -210,7 +233,7 @@ public final class MainActivity extends Activity {
             loaded=origin;loadedLease=generation;pageFailed=false;
             // A hash-only navigation can retain an HTTP error document (or old SSE).
             // Use a new, non-secret document URL after every authenticated session.
-            web.loadUrl(origin+"/?view="+generation+"_"+request+"#/");web.setVisibility(viewing?View.VISIBLE:View.GONE);
+            web.loadUrl(origin+"/?view="+generation+"_"+request+"#/"+dashboardRoute);web.setVisibility(viewing?View.VISIBLE:View.GONE);
         });
     }
     // Return to the dashboard root, rather than traversing WebView history (which

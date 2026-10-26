@@ -96,14 +96,17 @@ public final class MerossReadTest {
                 home.onActivity(MainActivity::showDevices);
                     until(()->"true".equals(js(home,"document.querySelectorAll('[data-equipment=meross]').length===4 && document.querySelectorAll('[data-equipment=meross][data-equipment-status=fresh]').length===3")));
                     assertEquals("true",js(home,"(()=>{const cards=[...document.querySelectorAll('[data-equipment=meross][data-equipment-status=fresh]')];return cards.every(c=>c.querySelectorAll('[data-equipment-received]').length===1 && !c.querySelector('details').open && c.querySelector('details dl') && !c.querySelector(':scope > dl small'))})()"));
+                    DevicesNavigationFixture.running(home);
                     TouchRegression.verifyDevices(home);home.onActivity(MainActivity::showDevices);
                     long lease=EngineHost.currentLease();four.available=false;
                     until(()->"true".equals(js(home,"document.querySelectorAll('[data-equipment=meross][data-equipment-status=fresh]').length===2")));
                     assertEquals(lease,EngineHost.currentLease());assertNotNull(device(1));
                 }
+                EquipmentMonitor.publish(app,EquipmentStore.read(app),get("/api/devices"),null);
                 app.startService(new Intent(app,MoliService.class).setAction(MoliService.STOP));until(()->EngineHost.state()==EngineHost.State.STOPPED);
                 String preserved=EquipmentStore.read(app).toString(),master=ProtectedKey.open(app).getString("master");
-                try(ActivityScenario<MainActivity> settings=ActivityScenario.launch(MainActivity.class)) {TouchRegression.maintenance(settings);}
+                try(ActivityScenario<MainActivity> settings=ActivityScenario.launch(MainActivity.class)) {
+                    DevicesNavigationFixture.stopped(settings,app);TouchRegression.maintenance(settings);}
                 assertEquals(preserved,EquipmentStore.read(app).toString());assertEquals(master,ProtectedKey.open(app).getString("master"));
                 four.available=true;
                 app.startForegroundService(new Intent(app,MoliService.class));until(()->EngineHost.state()==EngineHost.State.RUNNING);

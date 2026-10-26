@@ -67,14 +67,51 @@ L’UUID proposé pour une ancienne ligne sans association provient uniquement d
 snapshot local authentifié, frais, en ligne, avec modèle MSS310 et identité unique ;
 il reste en mémoire au plus 65 s et nécessite encore la confirmation dans l’écran.
 
-## Essai sur S5e — réalisé par le propriétaire
+## Accès simplifié — code31
+
+Le propriétaire a confirmé physiquement Allumer/Éteindre sur une prise de test
+avec code30. Ce lot conserve ce chemin de commande et ne demande pas de refaire
+cet essai. Le rapport analysé trace un SET confirmé ; plusieurs succès UI ne
+prouvent pas plusieurs SET distincts.
+
+- À l'ouverture Android, **Mes appareils** est visible sans passer par Paramètres
+  ou Configuration experte. Moteur arrêté, il ouvre les réglages : choisir
+  **Prises Meross**. Moteur en marche, il ouvre les fiches des appareils.
+- Dans le tableau de bord, **Mes appareils** reste disponible dans l'en-tête natif
+  et la navigation Maison. Les fiches montrent le nom, la disponibilité, l'état
+  et la puissance récents. **Configurer** est présent sur chaque prise, même sans
+  autorisation manuelle. Il ouvre directement les réglages Meross.
+- Dans les réglages, le nom et les cases de lecture/autorisation apparaissent
+  avant les **Détails de connexion** (adresse, clé, UUID). Arrêter le moteur pour
+  modifier, confirmer la seule prise choisie, **Enregistrer**, puis **Démarrer
+  et afficher les données**. Le démarrage revient à Mes appareils. Les clés
+  vides conservent leur valeur chiffrée ; aucune association n'est recréée.
+- En portrait, conserver la barre horizontale : **Système** et **Mes appareils**
+  restent fixes ; la double flèche signale le défilement des autres destinations.
+  Système garde sa cartographie originale et propose aussi Mes appareils.
+- Même sans `home.config.android`, l'application Android conserve son bouton
+  natif. Le tableau de bord détecte la plateforme par l'API Système existante
+  et projette les MSS310 déjà publiées, avec leurs capacités réelles. Zéro appareil
+  laisse un lien Configurer. Cela ne crée ni configuration ni autorisation.
+
+Pour vérifier code31 : installer par-dessus code30, sans effacer les données,
+puis retrouver les quatre noms et la prise déjà autorisée, les fiches et Configurer,
+Système en portrait/paysage et le retour après rotation. Aucune nouvelle commande
+ON/OFF ni nouvelle connexion Netatmo n'est nécessaire pour cet essai ergonomique.
+La validation tablette de cette présentation reste à faire par le propriétaire.
+
+## Essai matériel initial — procédure conservée
+
+Cette procédure concernait code30, désormais validée sur une prise de test.
+Elle reste une référence pour un futur choix volontaire d'une autre prise,
+pas une demande de répétition.
 
 1. Arrêter Moli et installer la bêta **par-dessus**, sans désinstaller ni effacer
    les données. Ne pas ressaisir les clés, relancer OAuth ou réappairer les prises.
 2. Choisir une **prise non critique**, hors Finder/chaudière. Vérifier dans Meross
    que ses réglages et la limite de 30 minutes, si configurée, sont toujours présents.
    Moli ne lit, ne modifie, ne supprime ni ne recrée ces réglages.
-3. Dans Mes appareils → MSS310, moteur arrêté, cocher « commandes manuelles »
+3. Dans Mes appareils → Prises Meross, moteur arrêté, cocher « commandes manuelles »
    pour cette seule prise. Vérifier nom/adresse/UUID, confirmer, enregistrer,
    redémarrer. Si l’identité n’est pas encore connue : démarrer les lectures,
    attendre un relevé frais, ouvrir Mes appareils pendant que Moli tourne, puis
