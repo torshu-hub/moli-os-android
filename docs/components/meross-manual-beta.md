@@ -35,6 +35,13 @@ n’est ajoutée ni qualifiée ici.
 Chaque clic passe par le hub et sa garde habituelle. Le pilote vérifie l’origine,
 l’UUID choisi et publié, le modèle MSS310, `System.All` et `System.Ability`, puis
 émet au besoin un unique SET `Appliance.Control.ToggleX`, canal 0, valeur 0/1.
+Le SET utilise `{"togglex":{"channel":0,"onoff":0}}` (ou 1), un objet et non
+le tableau utilisé dans le digest de `System.All`. Référence de protocole :
+[`MLToggleX` / `MEDictChannelMixin` au commit bafedb4](https://github.com/krahabb/meross_lan/blob/bafedb4f8563153f9e3494292073551bb28f5f9a/custom_components/meross_lan/helpers/entity.py#L373),
+utilisé par [le switch ToggleX](https://github.com/krahabb/meross_lan/blob/bafedb4f8563153f9e3494292073551bb28f5f9a/custom_components/meross_lan/switch.py#L130).
+La simulation initiale employait un tableau ; les deux serveurs factices vérifient
+maintenant strictement le format objet attendu pour cette voie. Aucun essai
+successif d’autres formats sur le matériel, ni reprise automatique, n’est ajouté.
 L’ACK est lié au message, au namespace, à l’UUID, à la version, à l’horodatage et
 à la signature. Une **nouvelle lecture signée** doit confirmer l’état demandé
 avant le succès API et le message « État confirmé ». Une demande déjà satisfaite

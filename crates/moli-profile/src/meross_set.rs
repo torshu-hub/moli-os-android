@@ -414,7 +414,7 @@ impl Session<'_> {
             uuid,
             "SET",
             TOGGLE,
-            &json!({"togglex":[{"channel":0,"onoff":u8::from(wanted)}]}),
+            &json!({"togglex":{"channel":0,"onoff":u8::from(wanted)}}),
         )
         .await?;
         finish(ctx, self.profile, Stage::CommandSend, Outcome::Ok, *since);

@@ -142,9 +142,9 @@ public final class MerossReadTest {
             else {
                 if(method.equals("SET")){
                     if(!file.equals("set"))throw new IOException("Wrong SET namespace");
-                    JSONObject payload=request.getJSONObject("payload");JSONArray toggles=payload.getJSONArray("togglex");
-                    if(payload.length()!=1||toggles.length()!=1||toggles.getJSONObject(0).length()!=2||toggles.getJSONObject(0).getInt("channel")!=0)throw new IOException("Unexpected write");
-                    int value=toggles.getJSONObject(0).getInt("onoff");if(value<0||value>1)throw new IOException("Wrong value");on=value==1;sets++;response=new JSONObject().put("payload",new JSONObject());
+                    JSONObject payload=request.getJSONObject("payload"),toggle=payload.getJSONObject("togglex");
+                    if(payload.length()!=1||toggle.length()!=2||toggle.getInt("channel")!=0)throw new IOException("Unexpected write");
+                    int value=toggle.getInt("onoff");if(value<0||value>1)throw new IOException("Wrong value");on=value==1;sets++;response=new JSONObject().put("payload",new JSONObject());
                 }else{
                     reads++;
                     if(file.equals("ability"))response=new JSONObject().put("payload",new JSONObject().put("ability",new JSONObject().put("Appliance.Control.ToggleX",new JSONObject())));

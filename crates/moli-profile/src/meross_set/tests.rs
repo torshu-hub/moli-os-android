@@ -138,10 +138,13 @@ async fn serve(mut socket: tokio::net::TcpStream, state: Arc<State>) {
     }
     if method == "SET" {
         assert_eq!(namespace, TOGGLE);
-        let toggles = request["payload"]["togglex"].as_array().unwrap();
-        assert_eq!(toggles.len(), 1);
-        assert_eq!(toggles[0]["channel"], 0);
-        let wanted = toggles[0]["onoff"].as_u64().unwrap();
+        // Protocol oracle: MLToggleX uses a dict SET payload, whereas the
+        // System.All digest is a list (meross_lan bafedb4, MEDictChannelMixin).
+        assert_eq!(request["payload"].as_object().unwrap().len(), 1);
+        let toggle = request["payload"]["togglex"].as_object().unwrap();
+        assert_eq!(toggle.len(), 2);
+        assert_eq!(toggle["channel"], 0);
+        let wanted = toggle["onoff"].as_u64().unwrap();
         assert!(wanted <= 1);
         state.sets.fetch_add(1, Ordering::SeqCst);
         state.on.store(wanted == 1, Ordering::SeqCst);
