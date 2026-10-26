@@ -13,6 +13,7 @@
 //! new address, journaled and remembered (`data/addresses.json`).
 
 pub mod meross_cloud;
+mod meross_set;
 mod mss310;
 mod profile;
 mod trust;
@@ -702,6 +703,15 @@ async fn fetch(
 /// A signed Meross local-API `GET` message:
 /// `sign = md5(messageId ‖ key ‖ timestamp)`.
 fn meross_message(namespace: &str, payload: &serde_json::Value, key: &str) -> serde_json::Value {
+    meross_message_method("GET", namespace, payload, key)
+}
+
+fn meross_message_method(
+    method: &str,
+    namespace: &str,
+    payload: &serde_json::Value,
+    key: &str,
+) -> serde_json::Value {
     use md5::{Digest as _, Md5};
     static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let now = std::time::SystemTime::now()
@@ -714,14 +724,12 @@ fn meross_message(namespace: &str, payload: &serde_json::Value, key: &str) -> se
     );
     let message_id = hex(&Md5::digest(unique.as_bytes()));
     let timestamp = now.as_secs();
-    let sign = hex(&Md5::digest(
-        format!("{message_id}{key}{timestamp}").as_bytes(),
-    ));
+    let sign = meross_signature(&message_id, key, timestamp);
     serde_json::json!({
         "header": {
             "from": "/appliance/moli/subscribe",
             "messageId": message_id,
-            "method": "GET",
+            "method": method,
             "namespace": namespace,
             "payloadVersion": 1,
             "sign": sign,
@@ -729,6 +737,13 @@ fn meross_message(namespace: &str, payload: &serde_json::Value, key: &str) -> se
         },
         "payload": payload,
     })
+}
+
+fn meross_signature(message_id: &str, key: &str, timestamp: u64) -> String {
+    use md5::{Digest as _, Md5};
+    hex(&Md5::digest(
+        format!("{message_id}{key}{timestamp}").as_bytes(),
+    ))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -883,6 +898,17 @@ impl<'a> Session<'a> {
                 Err(e)
             }
         };
+        if profile
+            .writes
+            .iter()
+            .any(|w| w.meross && w.refresh == Some(i))
+        {
+            // A simulated writable target is available only after its strict
+            // identity read succeeds; ordinary profile retry policy is unchanged.
+            self.offline = result.is_err();
+            ctx.set_availability(device, !self.offline);
+            return result;
+        }
         // Offline only when nothing answers any more.
         let all_failing = self.failures.iter().all(|f| *f >= OFFLINE_AFTER);
         if all_failing != self.offline {
@@ -900,6 +926,10 @@ impl<'a> Session<'a> {
             command.reply(Err(moli_i18n::tr!("pilotes.profile.lecture_seule")));
             return;
         };
+        if write.meross {
+            self.meross_command(ctx, device, write, command).await;
+            return;
+        }
         let deadline = Instant::from_std(command.deadline);
         let outcome =
             tokio::time::timeout_at(deadline, self.write(ctx, device, write, &command.value))

@@ -563,3 +563,13 @@ cité) et compte les points rejoués. `src/main.rs` : chaque `kind` de `KINDS` e
 par `build_driver`, un autre est inconnu ; le vrai catalogue passe sans erreur et décrit
 chaque pilote natif et chaque profil intégré.
 Aucun test ne touche le réseau.
+
+## Écriture Meross en simulation
+
+Une extension bornée de `[[write]]` accepte `transport = "meross"`,
+`namespace = "Appliance.Control.ToggleX"`, `channel = 0` et un `refresh` signé
+`System.All`. Elle exige une identité UUID configurée et publiée, la capacité
+annoncée et une relecture de confirmation avant succès. Les GET ordinaires
+conservent leur comportement. **Cette extension n'accepte que les hôtes
+littéraux de boucle locale**, à la compilation et à l'exécution ; aucun profil
+embarqué ne l'active. Voir [contrat, écarts amont, tests et limites](meross-set-simulation.md).

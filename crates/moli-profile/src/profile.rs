@@ -45,6 +45,13 @@ pub struct Write {
     /// of that request's latest answer (`{a.x|b.y}`: the first present; the
     /// path may hold `{value}`, as in `{control.dt{value}}`).
     pub path: String,
+    /// Signed Meross writes are an explicit, simulation-only transport.
+    #[serde(default)]
+    pub transport: Transport,
+    #[serde(default)]
+    pub namespace: Option<String>,
+    #[serde(default)]
+    pub channel: Option<u8>,
     /// Commanded value (as text) → text sent.
     #[serde(default)]
     pub map: BTreeMap<String, String>,
@@ -235,6 +242,7 @@ pub struct CompiledWrite {
     /// The template as declared: shown to humans, named in errors (never the
     /// filled-in path, which may hold a secret).
     pub path: String,
+    pub meross: bool,
     pieces: Vec<Piece>,
     map: BTreeMap<String, String>,
     decimals: Option<u32>,
@@ -391,8 +399,12 @@ impl Profile {
             if writes.iter().any(|known| *known.key == *w.point) {
                 return Err(fail(format!("two [[write]] for point {:?}", w.point)));
             }
-            let write = compile_write(w, &point.spec, &answers, secrets, &mut vars)
-                .map_err(|e| fail(format!("write {:?}: {e}", w.point)))?;
+            let write = if w.transport == Transport::Meross {
+                compile_meross_write(w, point, &answers, &self.profile, &mut vars)
+            } else {
+                compile_write(w, &point.spec, &answers, secrets, &mut vars)
+            }
+            .map_err(|e| fail(format!("write {:?}: {e}", w.point)))?;
             point.spec.access.write = true;
             writes.push(write);
         }
@@ -766,6 +778,9 @@ fn compile_write(
     secrets: Secrets,
     vars: &mut BTreeSet<String>,
 ) -> Result<CompiledWrite, String> {
+    if w.namespace.is_some() || w.channel.is_some() {
+        return Err("namespace/channel require transport meross".into());
+    }
     let pieces = write_template(&w.path)?;
     if !pieces.contains(&Piece::Value) {
         return Err("path must send {value}".into());
@@ -816,12 +831,71 @@ fn compile_write(
     Ok(CompiledWrite {
         key: spec.key.clone(),
         path: w.path.clone(),
+        meross: false,
         pieces,
         map: w.map.clone(),
         decimals: w.decimals,
         expect: w.expect.clone(),
         reads,
         refresh,
+    })
+}
+
+fn compile_meross_write(
+    w: &Write,
+    point: &CompiledPoint,
+    answers: &Answers,
+    meta: &Meta,
+    vars: &mut BTreeSet<String>,
+) -> Result<CompiledWrite, String> {
+    if !meta
+        .host
+        .as_deref()
+        .is_some_and(super::meross_set::loopback)
+        || meta.https
+        || meta.secret.is_none()
+    {
+        return Err("Meross SET simulation requires a literal loopback host, HTTP and a declared vault secret".into());
+    }
+    if w.path != "/config"
+        || w.namespace.as_deref() != Some("Appliance.Control.ToggleX")
+        || w.channel != Some(0)
+        || !matches!(point.spec.kind, Kind::Binary)
+        || !w.map.is_empty()
+        || w.expect.is_some()
+        || w.decimals.is_some()
+    {
+        return Err("Meross SET only supports ToggleX channel 0, a binary point, no templates/map/expect/decimals".into());
+    }
+    let refresh = w
+        .refresh
+        .as_deref()
+        .and_then(|r| answers.index(r))
+        .ok_or("Meross SET requires its System.All refresh")?;
+    let request = &answers.0[refresh];
+    if request.path != w.path
+        || request.format != Format::Json
+        || !request.headers.is_empty()
+        || !matches!(&request.call, Call::Meross{namespace,payload} if namespace=="Appliance.System.All" && payload.as_object().is_some_and(serde_json::Map::is_empty))
+        || meta.identity.as_deref()
+            != Some(format!("{}.payload.all.system.hardware.uuid", request.id).as_str())
+        || point.request != request.id
+        || point.path.join(".") != "payload.all.digest.togglex.[channel=0].onoff"
+        || !point.map.is_empty()
+    {
+        return Err("Meross SET requires direct System.All UUID identity and unmapped channel-0 onoff confirmation".into());
+    }
+    vars.insert("expected_uuid".into());
+    Ok(CompiledWrite {
+        key: point.spec.key.clone(),
+        path: w.path.clone(),
+        meross: true,
+        pieces: Vec::new(),
+        map: BTreeMap::new(),
+        decimals: None,
+        expect: None,
+        reads: Vec::new(),
+        refresh: Some(refresh),
     })
 }
 
@@ -944,6 +1018,9 @@ impl CompiledWrite {
         answers: &HashMap<String, Answer>,
         name: impl Fn(&str) -> Option<String>,
     ) -> Result<String, String> {
+        if self.meross {
+            return Err(moli_i18n::tr!("pilotes.profile.meross_refused"));
+        }
         let value = self.value_text(value)?;
         let mut out = String::new();
         for piece in &self.pieces {

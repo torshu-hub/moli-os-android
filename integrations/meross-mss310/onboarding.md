@@ -19,3 +19,9 @@ messages are signed with the existing protocol; HTTP itself is not encrypted.
 Linux: built-in `meross-mss310`, host/port/name options and `discovery=false` for an exact
 destination. Set `<instance>/key` through the existing secret tool, never TOML. Future
 Linux recovery remains possible through standard engine data; no Pi work is included.
+
+## SET simulation
+
+See [the simulation notes](../../docs/components/meross-set-simulation.md).
+The shipped profile and installed plugs remain read-only; the synthetic
+loopback variant does not authorize any physical command.

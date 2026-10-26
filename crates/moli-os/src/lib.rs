@@ -833,7 +833,12 @@ fn print_profile(compiled: &moli_profile::Compiled, file: Option<&moli_profile::
     }
     println!("  writes (each one is a command: guard and journal apply):");
     for w in &compiled.writes {
-        println!("  write   {:<20} GET {}", w.key, w.path);
+        let transport = if w.meross {
+            moli_i18n::tr!("pilotes.profile.meross_transport")
+        } else {
+            "GET".to_owned()
+        };
+        println!("  write   {:<20} {transport} {}", w.key, w.path);
         if let Some(i) = w.refresh {
             println!("          then reads {}", compiled.requests[i].id);
         }

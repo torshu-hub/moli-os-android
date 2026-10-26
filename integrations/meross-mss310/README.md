@@ -1,5 +1,10 @@
 # Meross MSS310 — local, read only
 
+The shipped profile remains read-only. A separate, entirely synthetic
+[ToggleX simulation](../../docs/components/meross-set-simulation.md) exercises
+the original declarative driver and hub against loopback HTTP only. It is not
+registered in the built-in catalogue and enables no physical switching or UI.
+
 Built-in Rust profile with a narrow response adapter, reusing `moli-profile`'s signed
 Meross GET transport, typed points, supervisor and existing history. No SET, cloud,
 account login, automatic discovery or switching. Distinct from EM06/ElectricityX.

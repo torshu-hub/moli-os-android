@@ -9,6 +9,16 @@ pub(super) async fn fetch(
     secret: Option<&str>,
     compiled: &Compiled,
 ) -> anyhow::Result<Answer> {
+    if compiled.writes.iter().any(|w| {
+        w.meross
+            && w.refresh
+                .is_some_and(|i| compiled.requests[i].id == request.id)
+    }) {
+        return super::meross_set::read(target, secret, compiled)
+            .await
+            .map(Answer::Json)
+            .map_err(anyhow::Error::msg);
+    }
     if compiled.meta.id == "meross-mss310"
         && compiled.source == super::Source::Builtin
         && request.id != "all"

@@ -542,5 +542,9 @@
   "pilotes.netatmo.details": "Détails de la lecture",
   "pilotes.netatmo.connection_details": "Détails de la connexion",
   "pilotes.netatmo.frequency": "Fréquence configurée",
-  "pilotes.netatmo.frequency_seconds": "Toutes les {count} s"
+  "pilotes.netatmo.frequency_seconds": "Toutes les {count} s",
+  "pilotes.profile.meross_refused": "Commande Meross refusée avant envoi (cible, capacité, clé ou délai).",
+  "pilotes.profile.meross_unknown": "Issue de l’envoi Meross inconnue ; aucun renvoi automatique.",
+  "pilotes.profile.meross_unconfirmed": "SETACK Meross reçu, état demandé non confirmé par relecture.",
+  "pilotes.profile.meross_transport": "Meross SET ToggleX/canal=0 (simulation sur boucle locale uniquement)"
 }
