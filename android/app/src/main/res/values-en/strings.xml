@@ -127,7 +127,7 @@
     <string name="home_failed">Settings may be incomplete: check them before starting and retry.</string>
     <string name="home_tools">Diagnostic tools</string>
     <string name="equipment_title">Add equipment / view reads</string>
-    <string name="equipment_help">Local reads only: join the same network as the device, without guest isolation. No document upload, printing, cancellation, commands or setting changes.</string>
+    <string name="equipment_help">Use the same Wi-Fi, outside an isolated guest network. Printer and gateway stay read-only: no printing or changes to their settings. MSS310 controls require explicit permission below.</string>
     <string name="equipment_stop_first">The engine is running or changing state. Stop it here to change permissions.</string>
     <string name="equipment_stopped">Engine stopped: configure, save, then start reading.</string>
     <string name="equipment_printer">Allow reads from this IPP printer (every 30 seconds)</string>
@@ -145,8 +145,8 @@
     <string name="equipment_unsaved">Save changes before starting.</string>
     <string name="equipment_invalid">Invalid address: private IPv4 (10…, 172.16 to 31…, 192.168…), port 1–65535 and an IPP path listed above, without query parameters or credentials. Gateway: full http:// URL ending in .xml.</string>
     <string name="equipment_initialize">Start once from the main screen to initialize the app. If already initialized, check the backup and saved configuration.</string>
-    <string name="meross_title">Meross MSS310 plugs — read only</string>
-    <string name="meross_help">Add each plug with its name and local address. Approve its reads and save before starting. No ON/OFF commands. Keys are encrypted in the Moli vault; no cloud account is used.</string>
+    <string name="meross_title">Meross MSS310 plugs — optional manual controls</string>
+    <string name="meross_help">Read-only by default. One row per MSS310, with the local key in the encrypted vault. ON/OFF controls require your confirmation for one non-critical plug below. Previously stored keys are preserved.</string>
     <string name="meross_add">Add an MSS310</string>
     <string name="meross_read">Allow reading this plug</string>
     <string name="meross_name">Plug name</string>

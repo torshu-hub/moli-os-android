@@ -127,7 +127,7 @@
     <string name="home_failed">Enregistrement incomplet : vérifiez les réglages avant de démarrer, puis réessayez.</string>
     <string name="home_tools">Outils de diagnostic</string>
     <string name="equipment_title">Ajouter un équipement / voir les lectures</string>
-    <string name="equipment_help">Lecture locale uniquement : même Wi-Fi que l’équipement, hors réseau invité isolé. Aucun document envoyé, aucune impression, annulation, commande ou modification des réglages.</string>
+    <string name="equipment_help">Même Wi-Fi que l’équipement, hors réseau invité isolé. Imprimante et box restent en lecture seule : aucune impression ni modification de leurs réglages. Les commandes MSS310 nécessitent une autorisation explicite ci-dessous.</string>
     <string name="equipment_stop_first">Le moteur fonctionne ou change d’état. Arrêtez-le ici pour modifier les autorisations.</string>
     <string name="equipment_stopped">Moteur arrêté : configurez, enregistrez puis démarrez pour lire.</string>
     <string name="equipment_printer">Autoriser la lecture de cette imprimante IPP (toutes les 30 secondes)</string>
@@ -145,8 +145,8 @@
     <string name="equipment_unsaved">Modifications à enregistrer avant de démarrer.</string>
     <string name="equipment_invalid">Adresse invalide : IPv4 privée (10…, 172.16 à 31…, 192.168…), port de 1 à 65535, chemin IPP indiqué ci-dessus, sans paramètres ni identifiants. Pour la box : URL http:// complète terminée par .xml.</string>
     <string name="equipment_initialize">Démarrez une première fois depuis l’écran principal pour initialiser l’application. Si elle est déjà initialisée, vérifiez votre sauvegarde et la configuration enregistrée.</string>
-    <string name="meross_title">Prises Meross MSS310 — lecture seule</string>
-    <string name="meross_help">Mode local avancé : une ligne par MSS310, clé locale au coffre chiffré. Vous pouvez aussi utiliser le compte facultatif ci-dessus pour récupérer l’inventaire et associer un UUID. Aucune commande ON/OFF.</string>
+    <string name="meross_title">Prises Meross MSS310 — commandes manuelles en option</string>
+    <string name="meross_help">Lecture seule par défaut. Une ligne par MSS310, clé locale au coffre chiffré. Les commandes ON/OFF exigent votre confirmation pour une seule prise non critique ci-dessous. Les clés déjà enregistrées sont conservées.</string>
     <string name="meross_add">Ajouter une MSS310</string>
     <string name="meross_read">Autoriser la lecture de cette prise</string>
     <string name="meross_name">Nom de la prise</string>

@@ -228,7 +228,7 @@
   "maison.android.rooms_help": "Rooms prepared for future equipment. No hardware integration enabled here.",
   "maison.android.open_rooms": "Open rooms and equipment",
   "maison.equipment.title": "Read-only equipment",
-  "maison.equipment.help": "IPP: printer status and reported ink levels every 30 s. IGD: gateway Internet status every 10 s. No device controls.",
+  "maison.equipment.help": "IPP: printer status and reported ink levels every 30 s. IGD: gateway Internet status every 10 s. These two devices remain read-only.",
   "maison.equipment.empty": "Add a printer or gateway through Configure. Local devices are only queried after your approval.",
   "maison.equipment.printer": "IPP printer",
   "maison.equipment.gateway": "IGD Internet gateway",

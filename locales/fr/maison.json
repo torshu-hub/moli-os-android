@@ -228,7 +228,7 @@
   "maison.android.rooms_help": "Pièces préparées pour vos futurs équipements. Aucune intégration matérielle activée ici.",
   "maison.android.open_rooms": "Ouvrir les pièces et équipements",
   "maison.equipment.title": "Équipements en lecture seule",
-  "maison.equipment.help": "IPP : état et niveaux d’encre communiqués par l’imprimante, toutes les 30 s. IGD : état Internet de la box, toutes les 10 s. Aucun bouton de commande.",
+  "maison.equipment.help": "IPP : état et niveaux d’encre communiqués par l’imprimante, toutes les 30 s. IGD : état Internet de la box, toutes les 10 s. Ces deux équipements restent en lecture seule.",
   "maison.equipment.empty": "Ajoutez votre imprimante ou une box depuis Configurer. Aucun équipement local n’est interrogé sans votre autorisation.",
   "maison.equipment.printer": "Imprimante IPP",
   "maison.equipment.gateway": "Box Internet IGD",
