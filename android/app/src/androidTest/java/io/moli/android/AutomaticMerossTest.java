@@ -32,7 +32,7 @@ public final class AutomaticMerossTest {
         File dir=new File(app.getFilesDir(),"trial-screenshots");assertTrue(dir.isDirectory()||dir.mkdir());
         try(FileOutputStream out=new FileOutputStream(new File(dir,name+".png"))){assertTrue(b.compress(Bitmap.CompressFormat.PNG,100,out));}finally{b.recycle();}
     }
-    private static int visibleOldControls(View v,Context a){int n=0;if(v.isShown()&&v instanceof TextView){String t=((TextView)v).getText().toString();for(int key:new int[]{R.string.home_tools,R.string.journal_title,R.string.equipment_title})if(t.equals(a.getString(key)))n++;}if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)n+=visibleOldControls(((ViewGroup)v).getChildAt(i),a);return n;}
+    private static int visibleOldControls(View v,Context a){int n=0;if(v.isShown()&&v instanceof TextView){String t=((TextView)v).getText().toString();for(int key:new int[]{R.string.home_tools,R.string.journal_title})if(t.equals(a.getString(key)))n++;}if(v instanceof ViewGroup)for(int i=0;i<((ViewGroup)v).getChildCount();i++)n+=visibleOldControls(((ViewGroup)v).getChildAt(i),a);return n;}
     @Test public void freshPreviewAutomaticSixteenCandidatesMultipleConsentReadAndReport()throws Exception{
         assertTrue(android.os.Build.FINGERPRINT.contains("generic")||android.os.Build.MODEL.contains("sdk"));
         Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(EngineHost.State.STOPPED,EngineHost.state());assertFalse("First class in a fresh emulator",ProtectedKey.exists(app));
@@ -47,7 +47,11 @@ public final class AutomaticMerossTest {
         app.getSharedPreferences("host",Context.MODE_PRIVATE).edit().putBoolean("wanted",false).commit();
         try(ActivityScenario<MainActivity> home=ActivityScenario.launch(MainActivity.class)){
             capture(app,"01-accueil");
-            home.onActivity(a->{assertEquals("fr",a.getResources().getConfiguration().getLocales().get(0).getLanguage());assertFalse(ProtectedKey.exists(a));assertEquals(0,visibleOldControls(a.getWindow().getDecorView(),a));assertNotNull(MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(R.string.preview_search)));});
+            home.onActivity(a->{assertEquals("fr",a.getResources().getConfiguration().getLocales().get(0).getLanguage());assertFalse(ProtectedKey.exists(a));assertEquals(0,visibleOldControls(a.getWindow().getDecorView(),a));
+                // My devices is intentionally visible now; its title also names
+                // EquipmentSettingsActivity and is no longer a legacy control.
+                Button devices=MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(R.string.my_devices));assertNotNull(devices);assertTrue(devices.isShown());assertTrue(devices.isEnabled());
+                assertNotNull(MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(R.string.preview_search)));});
             // The first voluntary search creates a random Keystore bootstrap, without asking for a PIN.
             home.onActivity(a->MerossAccountTest.button(a.getWindow().getDecorView(),a.getString(R.string.preview_search)).performClick());
             MerossAccountTest.until(()->ProtectedKey.exists(app));JSONObject keys=ProtectedKey.open(app);assertEquals(2,keys.getInt("format"));assertEquals(64,keys.getString("pin").length());assertNotEquals(keys.getString("master"),keys.getString("pin"));assertTrue(TrialLog.active());

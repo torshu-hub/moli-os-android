@@ -17,16 +17,18 @@ préparation d'un scénario ne doit jamais retirer ce verrou.
 
 Choisir explicitement une source Netatmo et une cible Meross déjà associées,
 sans les renommer ni modifier leurs habilitations. Lire exclusivement la demande
-booléenne de chauffe déclarée par Netatmo ; ne pas la déduire des températures.
+de chauffe déclarée déjà publiée : `declared_demand` vaut `on`, `off` ou
+`unknown` ; le champ source `boiler_status`, lorsqu’il est présent, est booléen.
+Ne pas déduire une demande des températures.
 Évaluer à blanc sur un snapshot cohérent du hub. La trace décrit une intention,
 jamais une commande confirmée ni un état physique. Aucun graphe activé, aucune
 relance de commande, aucun minuteur Finder/Meross ou régulation concurrente.
 
 | Entrée observée | Résultat à tester | Effet matériel |
 |---|---|---|
-| Booléen frais vrai | Intention simulée ON | Aucun |
-| Booléen frais faux | Intention simulée OFF | Aucun |
-| Champ absent, null ou type inattendu | INCONNU, aucune intention | Aucun |
+| Demande déclarée fraîche `on` | Intention simulée ON | Aucun |
+| Demande déclarée fraîche `off` | Intention simulée OFF | Aucun |
+| Demande `unknown`, absente, null ou de type inattendu | INCONNU, aucune intention | Aucun |
 | Source hors ligne, pilote arrêté ou horodatage absent/futur/périmé | DONNÉES_PÉRIMÉES, aucune intention | Aucun |
 | Même état frais répété | Pas de répétition excessive du diagnostic | Aucun |
 | Reprise après inconnu/périmé, changement de source ou redémarrage | Nouvelle observation justifiée, aucun rattrapage d'ordre | Aucun |
