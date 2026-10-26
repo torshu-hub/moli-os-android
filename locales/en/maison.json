@@ -277,5 +277,7 @@
   "maison.meross_manual.unavailable": "Controls unavailable: check the engine, target and connection.",
   "maison.meross_manual.readonly_help": "To remove controls, stop the engine, uncheck this plug in My devices, save and restart. This does not turn the plug off.",
   "maison.meross_manual.settings": "My devices",
-  "maison.equipment.readonly": "Read only"
+  "maison.equipment.readonly": "Read only",
+  "maison.meross_manual.critical": "Heating / critical use — manual commands only",
+  "maison.meross_manual.critical_unknown": "Check equipment use in Configure"
 }

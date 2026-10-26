@@ -25,3 +25,14 @@ test('primary state and power require current samples; false and zero remain rea
  assert.equal(freshEquipmentSample({value:true,ts:1000},{online:false},driver,true,2000),false);
  assert.equal(freshEquipmentSample({value:true,ts:1000},device,driver,false,2000),false);
 });
+
+test('zero, one, two and four manual controls stay independent with a separate critical-use label',()=>{
+ for(const count of [0,1,2,4]){
+  const rows=Object.values(devices).map((d,n)=>({id:d.instance.slice(15),name:d.native_name,enabled:true,manual_control:n<count,critical_load:n===3}));
+  const cards=merossCards({meross:rows},devices);
+  assert.equal(cards.length,4);assert.equal(cards.filter(c=>c.manual).length,count);
+  assert.equal(cards[3].critical,true);assert.ok(cards.every(c=>c.criticalKnown));
+  assert.deepEqual(cards.map(c=>c.instance),Object.values(devices).map(d=>d.instance));
+ }
+ assert.ok(merossCards({},devices).every(c=>!c.criticalKnown));
+});

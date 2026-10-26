@@ -2,8 +2,9 @@
 
 Le profil canonique `meross-mss310` reste en lecture seule. Les installations
 existantes et leurs quatre prises ne deviennent pas commandables à la mise à jour.
-Une seule prise peut être autorisée dans Mes appareils Android, après confirmation
-locale du nom, de l’adresse et de l’UUID. Aucun compte cloud ou nouvel appairage.
+Chaque prise peut être autorisée indépendamment dans Mes appareils Android, après
+confirmation locale du nom, de l’adresse et de l’UUID. Une prise déclarée critique
+nécessite aussi un accord explicite sur son effet physique, lié au même UUID. Aucun compte cloud ou nouvel appairage.
 Netatmo code29 (lecture, cadence 120 s, âge et renouvellement) reste inchangé ;
 son endurance n’est pas requalifiée par ce lot. Aucun automatisme Netatmo/Finder.
 
@@ -12,7 +13,7 @@ son endurance n’est pas requalifiée par ce lot. Aucun automatisme Netatmo/Fin
 | Mécanisme original | Extension et motif | Impact amont |
 |---|---|---|
 | Paquet MSS310 et profil déclaratif | Variante connue `meross-mss310-manual`, profil canonique + `manual-write.toml` | Même `meta.id`, catalogue, fixtures et codec ; aucun nouveau paquet, pilote natif ou format parallèle |
-| Configuration Android + concordance + coffre Moli | `manual_control` absent/faux par défaut, une sélection maximum ; `manual_uuid` distinct de l’association existante | Adaptateur Android uniquement ; ni clé ni `uuid`/`expected_uuid` existants remplacés |
+| Configuration Android + concordance + coffre Moli | `manual_control` absent/faux par défaut, consentement indépendant par prise ; `manual_uuid` distinct de l’association existante | Adaptateur Android uniquement ; ni clé ni `uuid`/`expected_uuid` existants remplacés |
 | `hub.command`, garde, journal et échéance | `CommandRequest.origin` transmis au pilote ; variante manuelle limitée aux origines `Ui`/`Household` | Petit ajout générique au contrat runtime ; les autres pilotes gardent leur comportement |
 | Diagnostics typés déjà présents | Quatre étapes de commande additives, réduites dans le rapport d’essai existant | Aucun nouveau journal/export ou texte fournisseur ; compteurs, durées, erreurs fermées et historiques conservés |
 | Écran Mes appareils et tableau de bord existants | Confirmation native, ON/OFF explicites via `/api/command`, état relu et disponibilité | UI FR/EN, aucun chemin réseau parallèle, aucun état ON/OFF optimiste dans la tuile |
@@ -26,8 +27,8 @@ catalogue continue de décrire le profil canonique en lecture seule.
 
 Linux peut réutiliser la même variante et le même moteur Rust avec `host`,
 `port`, `discovery=false`, `vars.manual_uuid` et le secret `<instance>/key` du
-coffre. Si `expected_uuid` existe déjà, il doit correspondre. La sélection unique
-est une règle de l’adaptateur Android ; aucune procédure de déploiement Linux
+coffre. Si `expected_uuid` existe déjà, il doit correspondre. La classification critique et sa confirmation
+sont des métadonnées de l’adaptateur Android ; aucune procédure de déploiement Linux
 n’est ajoutée ni qualifiée ici.
 
 ## Ce que confirme une commande
@@ -67,6 +68,44 @@ L’UUID proposé pour une ancienne ligne sans association provient uniquement d
 snapshot local authentifié, frais, en ligne, avec modèle MSS310 et identité unique ;
 il reste en mémoire au plus 65 s et nécessite encore la confirmation dans l’écran.
 
+## Multi-prises — code32
+
+Les autorisations ne sont plus exclusives. Depuis **Mes appareils → Configurer**,
+moteur arrêté, autoriser les prises souhaitées une par une, puis **Enregistrer**
+et **Démarrer et afficher les données**. Une autorisation conservée depuis code31
+reste valide ; les autres prises restent en lecture seule tant qu'elles ne sont
+pas explicitement autorisées. Cocher une prise ne change jamais les autres.
+Chaque fiche conserve ses propres Allumer/Éteindre, disponibilité et relecture.
+Retirer une autorisation ne modifie pas l'état électrique ni les autres prises.
+
+Si une prise alimente le chauffage, un relais Finder ou un autre usage critique,
+cocher **Cette prise alimente le chauffage ou un équipement critique**. Modifier
+cette classification retire l'autorisation manuelle de cette seule ligne jusqu'à
+une nouvelle confirmation. L'habilitation nécessite ensuite deux validations :
+identité nom/adresse/UUID, puis **Je comprends l'effet physique**. Annuler la
+seconde laisse la prise sans commande. Le choix et l'accord lié à l'UUID sont
+conservés ; une incohérence est refusée, jamais corrigée en accord implicite.
+La fiche affiche **Chauffage / usage critique — commandes manuelles uniquement**.
+La classification est déclarée par l'utilisateur ; Moli ne la devine pas d'un nom.
+Si la projection Android manque, les réglages natifs restent accessibles et la
+fiche signale que l'usage doit être vérifié dans Configurer.
+
+Les étapes du rapport Meross agrègent désormais toutes les instances observées,
+sans afficher leurs identifiants. Les compteurs restent cumulatifs : une relecture
+réussie ne prouve pas un nouveau SET, ni un effet physique. L'arrivée d'une instance
+ou une nouvelle lecture du même snapshot ne doit pas recompter les anciennes.
+
+Qualification synthétique : 0/1/2/4 autorisations, conservation des associations
+et permissions après sauvegarde/recréation/redémarrage et changement d'adresse
+(réconciliation Rust), refus d'identité incohérente et d'accord critique manquant,
+commandes réservées à la cible, refus des autres origines, absence de retry après
+ACK inconnu. Les serveurs factices seuls reçoivent les essais de commandes.
+Ne pas refaire le protocole réel ON/OFF acquis sur code30/31 pour qualifier ce lot.
+
+Cette bêta ne contient aucun observateur Netatmo→Meross actif. La qualification
+portable du graphe à blanc et le reste à relier sont décrits dans
+[netatmo-meross-observation.md](netatmo-meross-observation.md).
+
 ## Accès simplifié — code31
 
 Le propriétaire a confirmé physiquement Allumer/Éteindre sur une prise de test
@@ -83,7 +122,7 @@ prouvent pas plusieurs SET distincts.
   autorisation manuelle. Il ouvre directement les réglages Meross.
 - Dans les réglages, le nom et les cases de lecture/autorisation apparaissent
   avant les **Détails de connexion** (adresse, clé, UUID). Arrêter le moteur pour
-  modifier, confirmer la seule prise choisie, **Enregistrer**, puis **Démarrer
+  modifier, confirmer chaque prise choisie, **Enregistrer**, puis **Démarrer
   et afficher les données**. Le démarrage revient à Mes appareils. Les clés
   vides conservent leur valeur chiffrée ; aucune association n'est recréée.
 - En portrait, conserver la barre horizontale : **Système** et **Mes appareils**
@@ -128,8 +167,9 @@ pas une demande de répétition.
    pas une prise déjà allumée** : vérifier OFF avant le retrait. Les autres prises,
    leurs clés, l’historique et Netatmo sont conservés.
 
-Aucun essai réel n’est exécuté par Codex. Finder/chaudière exige un second accord
-spécifique et un essai surveillé ; la bêta n’installe aucune régulation concurrente.
+Aucun essai réel n’est exécuté par Codex. Une habilitation manuelle d’usage critique exige la confirmation supplémentaire
+décrite pour code32 ; les essais physiques restent ceux du propriétaire et
+aucune autorisation d’automatisation Finder/chaudière n’en découle ; la bêta n’installe aucune régulation concurrente.
 
 ## Limites de qualification
 

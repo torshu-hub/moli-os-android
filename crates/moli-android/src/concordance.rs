@@ -1032,6 +1032,46 @@ max_age_seconds = 300
     }
 
     #[test]
+    fn four_manual_permissions_and_critical_metadata_survive_reconciliation_and_address_changes() {
+        let mut s = forms();
+        let first = run(&s).unwrap();
+        form_again(&mut s, &first);
+        for n in 0..4 {
+            let uuid = s["equipment"]["meross"][n]["uuid"].clone();
+            s["equipment"]["meross"][n]["manual_control"] = json!(true);
+            s["equipment"]["meross"][n]["manual_uuid"] = uuid.clone();
+            s["equipment"]["meross"][n]["critical_load"] = json!(n == 3);
+            s["equipment"]["meross"][n]["critical_ack_uuid"] =
+                if n == 3 { uuid } else { Value::Null };
+        }
+        s["home_proposal"]["android"]["meross"] = s["equipment"]["meross"].clone();
+        let selected = run(&s).unwrap();
+        form_again(&mut s, &selected);
+        assert_eq!(run(&s).unwrap(), selected);
+        s["equipment"]["meross"][0]["host"] = json!("192.168.1.90");
+        s["home_proposal"]["android"]["meross"] = s["equipment"]["meross"].clone();
+        let moved = run(&s).unwrap();
+        for n in 0..4 {
+            assert_eq!(
+                moved["equipment"]["meross"][n]["uuid"],
+                selected["equipment"]["meross"][n]["uuid"]
+            );
+            assert_eq!(moved["equipment"]["meross"][n]["manual_control"], true);
+        }
+        assert_eq!(
+            moved["equipment"]["meross"][3]["critical_ack_uuid"],
+            selected["equipment"]["meross"][3]["critical_ack_uuid"]
+        );
+        s["equipment"]["meross"][1]["manual_control"] = json!(false);
+        s["home_proposal"]["android"]["meross"] = s["equipment"]["meross"].clone();
+        let revoked = run(&s).unwrap();
+        assert_eq!(revoked["equipment"]["meross"][0]["manual_control"], true);
+        assert_eq!(revoked["equipment"]["meross"][1]["manual_control"], false);
+        assert_eq!(revoked["equipment"]["meross"][2]["manual_control"], true);
+        assert_eq!(revoked["equipment"]["meross"][3]["manual_control"], true);
+    }
+
+    #[test]
     fn ambiguity_missing_selection_invalid_input_and_duplicate_uuid_never_generate_replacements() {
         let mut s = fixture();
         s["config"] = json!(crate::profiles::configuration(&s.to_string()).unwrap());

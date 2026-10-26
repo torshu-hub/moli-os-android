@@ -100,8 +100,8 @@ fn meross(entries: &Value) -> Result<Value, &'static str> {
     let mut ids = std::collections::HashSet::new();
     let mut uuids = std::collections::HashSet::new();
     let mut addresses = std::collections::HashSet::new();
+    let mut bindings = std::collections::HashSet::new();
     let mut checked = vec![];
-    let mut manual_count = 0;
     for entry in entries {
         let id = entry["id"]
             .as_str()
@@ -134,21 +134,40 @@ fn meross(entries: &Value) -> Result<Value, &'static str> {
         }
         if let Some(manual) = entry.get("manual_control") {
             let manual = manual.as_bool().ok_or("meross_settings")?;
-            if manual {
-                if !entry
+            if manual
+                && !entry
                     .get("manual_uuid")
                     .or_else(|| entry.get("uuid"))
                     .and_then(Value::as_str)
                     .is_some_and(|s| s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit()))
-                {
-                    return Err("meross_settings");
-                }
-                manual_count += 1;
-                if manual_count > 1 {
+            {
+                return Err("meross_settings");
+            }
+            checked.last_mut().ok_or("meross_settings")?["manual_control"] = json!(manual);
+        }
+        if let Some(critical) = entry.get("critical_load") {
+            let critical = critical.as_bool().ok_or("meross_settings")?;
+            checked.last_mut().ok_or("meross_settings")?["critical_load"] = json!(critical);
+            if critical && entry["manual_control"] == true {
+                let identity = entry.get("manual_uuid").or_else(|| entry.get("uuid"));
+                if !entry["critical_ack_uuid"].as_str().is_some_and(|ack| {
+                    identity
+                        .and_then(Value::as_str)
+                        .is_some_and(|id| id.eq_ignore_ascii_case(ack))
+                }) {
                     return Err("meross_settings");
                 }
             }
-            checked.last_mut().ok_or("meross_settings")?["manual_control"] = json!(manual);
+        }
+        if let Some(ack) = entry.get("critical_ack_uuid") {
+            if !ack.is_null()
+                && !ack
+                    .as_str()
+                    .is_some_and(|s| s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+            {
+                return Err("meross_settings");
+            }
+            checked.last_mut().ok_or("meross_settings")?["critical_ack_uuid"] = ack.clone();
         }
         if let Some(uuid) = entry.get("manual_uuid") {
             let uuid = uuid
@@ -162,6 +181,14 @@ fn meross(entries: &Value) -> Result<Value, &'static str> {
                 return Err("meross_settings");
             }
             checked.last_mut().ok_or("meross_settings")?["manual_uuid"] = json!(uuid);
+        }
+        if let Some(identity) = entry
+            .get("manual_uuid")
+            .or_else(|| entry.get("uuid"))
+            .and_then(Value::as_str)
+            && !bindings.insert(identity.to_ascii_lowercase())
+        {
+            return Err("meross_duplicate");
         }
     }
     Ok(json!(checked))
@@ -378,7 +405,7 @@ mod meross_tests {
 mod manual_tests {
     use super::*;
     #[test]
-    fn manual_control_is_explicit_single_bound_and_does_not_replace_legacy_identity() {
+    fn manual_controls_are_independent_bound_and_do_not_replace_legacy_identity() {
         let uuid = "00000000000000000000000000000001";
         let mut input =
             json!({"meross":[{"id":uuid,"name":"Fixture","host":"192.168.1.20","enabled":true}]});
@@ -405,14 +432,71 @@ mod manual_tests {
         second["manual_uuid"] = second["uuid"].clone();
         second["host"] = json!("192.168.1.21");
         input["meross"].as_array_mut().unwrap().push(second);
-        assert!(validate(&input).is_err());
+        assert!(validate(&input).is_ok());
         input["meross"][1]["manual_control"] = json!(false);
         assert!(validate(&input).is_ok());
+        let second = input["meross"][1].clone();
+        input["meross"][1].as_object_mut().unwrap().remove("uuid");
+        input["meross"][1]["manual_uuid"] = json!(uuid);
+        assert_eq!(validate(&input), Err("meross_duplicate"));
+        input["meross"][1] = second;
         input["meross"][0]["manual_control"] = json!("true");
         assert!(validate(&input).is_err());
         input["meross"][0]["manual_control"] = json!(true);
         input["meross"][0]["enabled"] = json!(false);
         assert!(validate(&input).is_ok());
         assert_eq!(drivers(&input).unwrap()[0]["enabled"], false);
+    }
+    #[test]
+    fn zero_one_two_and_four_permissions_preserve_each_identity_and_critical_acknowledgement() {
+        for selected in [0, 1, 2, 4] {
+            let mut input = json!({"meross": []});
+            for n in 0..4 {
+                let uuid = format!("{:032x}", n + 1);
+                input["meross"].as_array_mut().unwrap().push(json!({
+                    "id": uuid, "uuid": uuid, "manual_uuid": uuid,
+                    "name": format!("Fixture {}", n + 1), "host": format!("192.168.1.{}", 20 + n),
+                    "enabled": true, "manual_control": n < selected,
+                    "critical_load": n == 3, "critical_ack_uuid": if n == 3 { json!(uuid) } else { Value::Null }
+                }));
+            }
+            let original = validate(&input).unwrap();
+            let ds = drivers(&input).unwrap();
+            assert_eq!(ds.len(), 4);
+            for (n, driver) in ds.iter().enumerate() {
+                assert_eq!(
+                    driver["options"]["profile"],
+                    if n < selected {
+                        "meross-mss310-manual"
+                    } else {
+                        "meross-mss310"
+                    }
+                );
+                assert_eq!(
+                    driver["options"]["vars"]["expected_uuid"],
+                    input["meross"][n]["uuid"]
+                );
+            }
+            input["meross"][0]["host"] = json!("192.168.1.90");
+            let moved = validate(&input).unwrap();
+            assert_eq!(
+                moved["meross"][0]["manual_control"],
+                original["meross"][0]["manual_control"]
+            );
+            assert_eq!(moved["meross"][0]["uuid"], original["meross"][0]["uuid"]);
+            assert_eq!(moved["meross"][1], original["meross"][1]);
+            assert_eq!(validate(&moved).unwrap(), moved);
+            input["meross"][0]["manual_uuid"] = json!("invalid");
+            assert!(validate(&input).is_err());
+        }
+        let uuid = "00000000000000000000000000000001";
+        let mut critical = json!({"meross":[{"id":uuid,"uuid":uuid,"manual_uuid":uuid,"name":"Critical fixture","host":"192.168.1.20","enabled":true,"critical_load":true,"manual_control":true}]});
+        assert!(validate(&critical).is_err());
+        critical["meross"][0]["critical_ack_uuid"] = json!("00000000000000000000000000000002");
+        assert!(validate(&critical).is_err());
+        critical["meross"][0]["critical_ack_uuid"] = json!(uuid);
+        assert!(validate(&critical).is_ok());
+        critical["meross"][0]["critical_load"] = json!("true");
+        assert!(validate(&critical).is_err());
     }
 }

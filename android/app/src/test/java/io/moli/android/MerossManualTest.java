@@ -27,4 +27,25 @@ public final class MerossManualTest {
   device.put("online",true);EquipmentMonitor.rememberIdentities(cfg,snapshot,now);assertEquals(uuid,EquipmentMonitor.identity(id));
   EquipmentMonitor.rememberIdentities(new JSONObject(),snapshot,now);assertEquals("",EquipmentMonitor.identity(id));
  }
+ private static JSONObject row(long epoch,int attempts,String status,long at)throws Exception {
+  return new JSONObject().put("kind","meross").put("counter_epoch",epoch).put("driver_started",true).put("target_selected",true)
+   .put("private_id","private-target").put("stages",new JSONObject().put("command_ack",new JSONObject().put("status",status).put("attempts",attempts)
+    .put("successes",status.equals("ok")?attempts:attempts-1).put("failures",status.equals("timeout")?1:0).put("last_attempt_at",at).put("last_success_at",at-1)
+    .put("last_error_at",status.equals("timeout")?at:0).put("last_error","timeout").put("errors",new JSONObject().put("timeout",status.equals("timeout")?1:0))));
+ }
+ @Test public void allInstancesContributeWithoutDoubleCountingLateArrivalReorderingOrRestart()throws Exception {
+  long now=System.currentTimeMillis();JSONObject one=row(1000,2,"ok",now-3),two=row(1001,1,"timeout",now-2),three=row(1002,1,"ok",now-1),four=row(1003,1,"ok",now);
+  TrialDiagnostics d=TrialDiagnostics.empty();
+  JSONArray[] snapshots={new JSONArray().put(one),new JSONArray().put(one).put(two).put(three).put(four),new JSONArray().put(four).put(two).put(three).put(one)};
+  for(JSONArray rows:snapshots){MerossDiagnostics.Summary summary=MerossDiagnostics.aggregate(rows);MerossDiagnostics.Step ack=summary.stages[2];
+   d.observe(now,Topic.MEROSS_ACK,ack.state,ack.reason,summary.rows,summary.active,summary.generation,ack.attempts,ack.successes,ack.failures,ack.attemptAt,ack.successAt,ack.errorAt);
+   d.detail(Topic.MEROSS_ACK,summary.generation,ack.lastError,ack.duration,ack.interruptions,ack.errors);
+  }
+  assertEquals(5,d.entries.get(Topic.MEROSS_ACK).attempts);assertEquals(4,d.entries.get(Topic.MEROSS_ACK).successes);assertEquals(1,d.entries.get(Topic.MEROSS_ACK).failures);
+  assertEquals(1L,(long)d.entries.get(Topic.MEROSS_ACK).errors.get(Reason.TIMEOUT));assertEquals(4,d.entries.get(Topic.MEROSS_ACK).b);
+  MerossDiagnostics.Summary next=MerossDiagnostics.aggregate(new JSONArray().put(row(2000,1,"ok",now+1)));MerossDiagnostics.Step ack=next.stages[2];
+  d.observe(now+1,Topic.MEROSS_ACK,ack.state,ack.reason,1,1,next.generation,ack.attempts,ack.successes,ack.failures,ack.attemptAt,ack.successAt,ack.errorAt);
+  assertEquals(6,d.entries.get(Topic.MEROSS_ACK).attempts);assertFalse(TrialDiagnostics.parse(d.json()).text(now).contains("private-target"));
+ }
+
 }

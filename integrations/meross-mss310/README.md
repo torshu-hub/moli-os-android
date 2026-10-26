@@ -3,8 +3,9 @@
 The canonical profile remains read-only. An explicit, separately selected built-in
 variant `meross-mss310-manual` appends `manual-write.toml` to the same profile;
 it supports one channel-0 ToggleX command through the original hub, with strict
-identity/ability/ACK checks and readback. Android allows one locally confirmed
-non-critical target at a time; existing installations remain read-only by default.
+identity/ability/ACK checks and readback. Android uses independent local authorization for each plug. Critical-use
+equipment also requires explicit acknowledgement of its physical effect. Existing
+installations remain read-only unless already authorized.
 See [manual beta and trial procedure](../../docs/components/meross-manual-beta.md).
 The [simulation](../../docs/components/meross-set-simulation.md) stays loopback-only
 for external profiles. No native driver, new package format or cloud login.

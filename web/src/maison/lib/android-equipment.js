@@ -7,7 +7,7 @@ export function merossCards(config,devices) {
     manual_control:d.points?.some(p=>p.key==='on'&&p.access?.write),manual_uuid:d.id?.slice(d.instance.length+1)}));
  return rows.filter(e=>e.enabled).map(e=>{
   const instance='android-meross-'+e.id,data=published.find(d=>d.instance===instance);
-  return {kind:'meross',instance,name:data?.label?.name||e.name||data?.native_name,manual:e.manual_control===true,
+  return {kind:'meross',instance,name:data?.label?.name||e.name||data?.native_name,manual:e.manual_control===true,critical:e.critical_load===true,criticalKnown:Array.isArray(config?.meross),
    uuid:e.manual_uuid||e.uuid,data,key:'reported_model',age:65000};
  });
 }

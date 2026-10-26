@@ -71,6 +71,7 @@
           </details>
         {/if}
         {#if card.kind === 'meross'}
+          {#if card.critical}<p class="critical-use">{t('maison.meross_manual.critical')}</p>{:else if !card.criticalKnown}<p class="muted">{t('maison.meross_manual.critical_unknown')}</p>{/if}
           <a class="configure" href="/android/equipment?section=meross" data-configure-meross>{t('maison.android.settings')}</a>
           {#if card.manual}<MerossManual data={card.data} uuid={card.uuid} name={card.name} fresh={observed.state==='fresh'}/>{:else}<p class="muted">{t('maison.equipment.readonly')}</p>{/if}
         {/if}
@@ -80,6 +81,7 @@
   </div>
 </section>
 <style>
+ .critical-use{font-weight:650;}
  .equipment-head {display:flex;align-items:flex-start;gap:12px;}
  .equipment-head h3 {flex:1;min-width:0;margin:0;overflow-wrap:anywhere;}
  .equipment-head > div {flex:0 1 6rem;min-width:0;}

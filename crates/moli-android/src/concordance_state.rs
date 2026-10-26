@@ -230,6 +230,18 @@ fn manual_preference(request: &Value, options: &Value, entry: &mut Value) {
     if let Some(uuid) = options.get("vars").and_then(|v| v.get("manual_uuid")) {
         entry["manual_uuid"] = uuid.clone();
     }
+    // Physical-use classification belongs to the existing stable equipment row,
+    // not to its address or to the executable profile. Never infer an acknowledgement.
+    if let Some(previous) = request["equipment"]["meross"]
+        .as_array()
+        .and_then(|rows| rows.iter().find(|row| row["id"] == entry["id"]))
+    {
+        for field in ["critical_load", "critical_ack_uuid"] {
+            if let Some(value) = previous.get(field) {
+                entry[field] = value.clone();
+            }
+        }
+    }
 }
 
 fn meross_preference(request: &Value, id: &str, row: &Value) -> Result<Value> {

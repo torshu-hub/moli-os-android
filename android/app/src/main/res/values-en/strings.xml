@@ -146,7 +146,7 @@
     <string name="equipment_invalid">Invalid address: private IPv4 (10…, 172.16 to 31…, 192.168…), port 1–65535 and an IPP path listed above, without query parameters or credentials. Gateway: full http:// URL ending in .xml.</string>
     <string name="equipment_initialize">Start once from the main screen to initialize the app. If already initialized, check the backup and saved configuration.</string>
     <string name="meross_title">Meross MSS310 plugs — optional manual controls</string>
-    <string name="meross_help">Read-only by default. One row per MSS310, with the local key in the encrypted vault. ON/OFF controls require your confirmation for one non-critical plug below. Previously stored keys are preserved.</string>
+    <string name="meross_help">Read only by default. Each MSS310 keeps its independent manual authorization and encrypted vault key. Existing keys are preserved.</string>
     <string name="meross_add">Add an MSS310</string>
     <string name="meross_read">Allow reading this plug</string>
     <string name="meross_name">Plug name</string>
@@ -386,13 +386,17 @@
     <string name="netatmo_quota">Netatmo requires a pause. Wait before retrying; no further read is started.</string>
     <string name="netatmo_tokens_rejected">Netatmo reply rejected: incomplete tokens, excessive permissions or unverifiable data. Use a personal application limited to read_thermostat.</string>
     <string name="netatmo_network">Netatmo is unreachable or the network reply is invalid. Check Internet access and retry.</string>
-    <string name="meross_manual_enable">Allow a manual ON/OFF test on this plug</string>
-    <string name="meross_manual_help">Off by default. One non-critical plug chosen by you. No Netatmo/Finder automation. The 30-minute limit, if configured in Meross, stays unchanged; operation without Internet is not guaranteed. Returning to read-only does not turn the plug off.</string>
+    <string name="meross_manual_enable">Allow manual ON/OFF commands on this plug</string>
+    <string name="meross_manual_help">Independent authorization per plug, off by default. No Netatmo/Finder automation. Meross settings and the 30-minute limit stay unchanged; operation without Internet is not guaranteed. Removing authorization does not turn the plug off.</string>
     <string name="meross_manual_identity_required">A bound or recently observed UUID identity is required. Start reading, wait for a fresh reading, then stop the engine and reopen this screen.</string>
-    <string name="meross_manual_confirm_title">Choose the plug for the manual test</string>
-    <string name="meross_manual_confirm">Plug: %1$s\nAddress: %2$s\nUUID: %3$s\n\nI confirm I chose a non-critical plug. I will trigger ON then OFF myself. Finder/boiler requires separate approval. Routines and the Meross limit will not be changed.</string>
+    <string name="meross_manual_confirm_title">Authorize this plug manually</string>
+    <string name="meross_manual_confirm">Plug: %1$s\nAddress: %2$s\nUUID: %3$s\n\nI confirm this plug’s identity. Each Turn on or Turn off command will be voluntary. Other authorizations, routines and the Meross limit will not be changed.</string>
     <string name="meross_manual_confirm_action">Authorize this plug</string>
     <string name="my_devices">My devices</string>
     <string name="meross_devices">Meross plugs</string>
     <string name="meross_connection_details">Connection details</string>
+    <string name="meross_critical_load">This plug powers heating or critical equipment</string>
+    <string name="meross_critical_title">Confirm the physical effect</string>
+    <string name="meross_critical_confirm">Equipment: %1$s\n\nTurning this plug on or off can affect heating, a Finder relay or other critical equipment. I confirm I understand this physical effect and want to authorize manual commands on this plug only. No automation or test command will run.</string>
+    <string name="meross_critical_action">I understand the physical effect</string>
 </resources>

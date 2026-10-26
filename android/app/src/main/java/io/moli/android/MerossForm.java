@@ -45,7 +45,7 @@ final class MerossForm {
     JSONArray settings() throws Exception {
         JSONArray result=new JSONArray();
         for(Row r:entries) { JSONObject entry=new JSONObject().put("id",r.id).put("name",r.name.getText().toString().trim())
-                .put("host",r.host.getText().toString().trim()).put("port",Integer.parseInt(r.port.getText().toString().trim())).put("enabled",r.read.isChecked()).put("manual_control",r.control.isChecked()); if(!r.uuid.isEmpty())entry.put("uuid",r.uuid);if(r.control.isChecked()||r.hadManualIdentity)entry.put("manual_uuid",r.manualUuid); result.put(entry); }
+                .put("host",r.host.getText().toString().trim()).put("port",Integer.parseInt(r.port.getText().toString().trim())).put("enabled",r.read.isChecked()).put("manual_control",r.control.isChecked()).put("critical_load",r.critical.isChecked()).put("critical_ack_uuid",r.criticalAck.isEmpty()?JSONObject.NULL:r.criticalAck); if(!r.uuid.isEmpty())entry.put("uuid",r.uuid);if(r.control.isChecked()||r.hadManualIdentity)entry.put("manual_uuid",r.manualUuid); result.put(entry); }
         return result;
     }
     JSONArray keys() throws Exception {
@@ -56,7 +56,7 @@ final class MerossForm {
     void clearKeys() { boolean before=loading; loading=true; for(Row r:entries) r.key.setText(""); loading=before; }
     void setEnabled(boolean value) {
         enabled=value; add.setEnabled(value && entries.size()<8);
-        for(Row r:entries) for(View v:new View[]{r.name,r.host,r.port,r.key,r.read,r.remove}) v.setEnabled(value);
+        for(Row r:entries) for(View v:new View[]{r.name,r.host,r.port,r.key,r.read,r.critical,r.remove}) v.setEnabled(value);
         for(Row r:entries)r.control.setEnabled(value&&r.read.isChecked()&&r.manualUuid.matches("[a-fA-F0-9]{32}"));
     }
     private void edited() { if(!loading) changed.run(); }
@@ -80,6 +80,8 @@ final class MerossForm {
         final LinearLayout body=new LinearLayout(activity);
         final CheckBox read=new CheckBox(activity);
         final CheckBox control=new CheckBox(activity);
+        final CheckBox critical=new CheckBox(activity);
+        String criticalAck;
         final EditText name,host,port,key;
         final Button remove=new Button(activity);
         Row(JSONObject input) {
@@ -93,6 +95,8 @@ final class MerossForm {
             port=field(connection,R.string.equipment_port,false);port.setInputType(InputType.TYPE_CLASS_NUMBER);port.setText(input.optString("port","80"));
             key=field(connection,R.string.meross_key,true);key.setHint(R.string.meross_key_hint);
             if(!uuid.isEmpty()){TextView bound=new TextView(activity);bound.setText(activity.getString(R.string.account_uuid_bound,uuid));connection.addView(bound);}
+            criticalAck=input.optString("critical_ack_uuid","");if("null".equals(criticalAck))criticalAck="";
+            critical.setText(R.string.meross_critical_load);critical.setSaveEnabled(false);critical.setChecked(input.optBoolean("critical_load",false));body.addView(critical);
             control.setText(R.string.meross_manual_enable);control.setSaveEnabled(false);control.setChecked(input.optBoolean("manual_control",false));body.addView(control);
             text(body,R.string.meross_manual_help);
             if(!manualUuid.matches("[a-fA-F0-9]{32}"))text(body,R.string.meross_manual_identity_required);
@@ -107,6 +111,7 @@ final class MerossForm {
             };
             for(EditText f:new EditText[]{name,host,port,key}) f.addTextChangedListener(watcher);
             read.setOnCheckedChangeListener((v,c) -> {if(!c)control.setChecked(false);setEnabled(enabled);edited();});
+            critical.setOnCheckedChangeListener((v,c)->{if(!loading){criticalAck="";control.setChecked(false);edited();}});
             control.setOnCheckedChangeListener((v,c)->{
                 if(loading)return;
                 if(!c){edited();return;}
@@ -115,10 +120,20 @@ final class MerossForm {
                     .setMessage(activity.getString(R.string.meross_manual_confirm,name.getText().toString(),host.getText().toString(),manualUuid))
                     .setNegativeButton(android.R.string.cancel,null)
                     .setPositiveButton(R.string.meross_manual_confirm_action,(d,w)->{
-                        loading=true;for(Row other:entries)other.control.setChecked(other==this);loading=false;edited();
+                        if(critical.isChecked()) {
+                            controlDialog=new android.app.AlertDialog.Builder(activity).setTitle(R.string.meross_critical_title)
+                                .setMessage(activity.getString(R.string.meross_critical_confirm,name.getText().toString()))
+                                .setNegativeButton(android.R.string.cancel,null)
+                                .setPositiveButton(R.string.meross_critical_action,(dialog,which)->authorize()).show();
+                        } else authorize();
                     }).show();
             });
             remove.setOnClickListener(v -> { key.setText(""); entries.remove(this); rows.removeView(body); edited(); setEnabled(enabled); });
+        }
+        private void authorize(){
+            if(!enabled || !read.isChecked() || EngineHost.state()!=EngineHost.State.STOPPED)return;
+            criticalAck=critical.isChecked()?manualUuid:"";
+            loading=true;control.setChecked(true);loading=false;edited();
         }
     }
 }

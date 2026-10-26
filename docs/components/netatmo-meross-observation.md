@@ -1,7 +1,8 @@
 # Prochain incrément : observer Netatmo → Meross sans agir
 
-Cadrage seulement : code31 ne crée aucun automatisme ni observateur actif.
-La priorité est de livrer les accès simplifiés aux commandes manuelles validées.
+Code32 livre d’abord les autorisations Meross indépendantes. Aucun observateur
+ni automatisme de chauffage n’est créé sur la tablette. Le cadrage code31 est
+complété par un prototype de qualification Rust, sans nouvelle API ou moteur.
 
 ## Réutilisation Moli
 
@@ -48,3 +49,32 @@ l'export d'essai restent ceux de Moli, sans seconde collecte parallèle.
 La limite de 30 minutes configurée dans Meross est conservée, mais son autonomie
 hors Internet n'est pas qualifiée. Aucune automatisation chaudière/Finder ni
 commande physique n'est autorisée par ce cadrage.
+
+## Qualification portable ajoutée avec code32
+
+`crates/moli-automation/tests/netatmo_meross_observation.rs` construit un graphe
+avec les nœuds officiels Manual / If / Set et appelle `run_now(..., dry=true, ...)`.
+Il sélectionne explicitement des appareils synthétiques et leur modèle dans un
+snapshot du hub. Un brouillon désactivé est créé uniquement en mémoire du test ;
+aucun graphe n'est installé dans une instance utilisateur. Les comparaisons de
+fraîcheur portent sur la collecte, avec une limite de 300 s propre à la fixture.
+
+Matrice qualifiée, avec cible autorisée **et** cible en lecture seule : demande
+textuelle on/off/unknown, null/type incorrect, collecte ancienne/future/absente,
+source hors ligne, cible absente, répétition de l'essai. Seules on/off connues et
+fraîches produisent un pas `Simulated`. Zéro commande reçue par le pilote espion,
+zéro `Action::Command` dans le journal et aucune demande d'approbation. Les
+permissions manuelles ne sont ni requises ni modifiées pour la simulation.
+
+Un détail de l'amont est maintenant testé : les comparaisons générales de Moli
+assimilent volontairement OFF à false. L'admission d'une observation Netatmo doit
+donc vérifier le **type texte et l'enum déclaré**, sans accepter un booléen publié
+par erreur sous ce point. Ne pas changer la sémantique générale des automatismes.
+
+**Prochain lot déjà borné :** parcours de sélection source/cible et observation
+serveur, distinct des habilitations manuelles ; admission stricte et fraîcheur
+configurée par le pilote (pas les 300 s de la fixture), cohérence avant/après
+l'exécution à blanc, gestion INCONNU/PÉRIMÉ/coupure/reprise et réduction des
+répétitions dans le rapport existant. Le prototype ne fournit pas encore ces
+sélecteurs, une persistance utilisateur, un observateur ou des diagnostics de
+transition sur la S5e. Ne pas confondre sa qualification avec une liaison active.

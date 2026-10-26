@@ -277,5 +277,7 @@
   "maison.meross_manual.unavailable": "Commande indisponible : vérifiez le moteur, la cible et sa connexion.",
   "maison.meross_manual.readonly_help": "Pour retirer les commandes, arrêtez le moteur, décochez cette prise dans Mes appareils, enregistrez puis redémarrez. Cela n’éteint pas la prise.",
   "maison.meross_manual.settings": "Mes appareils",
-  "maison.equipment.readonly": "Lecture seule"
+  "maison.equipment.readonly": "Lecture seule",
+  "maison.meross_manual.critical": "Chauffage / usage critique — commandes manuelles uniquement",
+  "maison.meross_manual.critical_unknown": "Usage à vérifier dans Configurer"
 }

@@ -29,14 +29,19 @@ does not authorize physical commands.
 
 ## Manual opt-in beta
 
-Existing installations stay read-only. On Android, stop the engine, choose one
-non-critical plug in My devices, confirm its name/address/UUID, enable manual
+Existing installations stay read-only. On Android, stop the engine and choose each desired
+plug in My devices independently. Confirm its name/address/UUID, enable manual
 controls, Save and Start. A fresh identity already seen by the local reader may
 be proposed if the legacy settings have no UUID; no old association is replaced.
 Only the selected plug gets Turn on / Turn off, through Moli's existing guard.
 Success requires a signed readback after SETACK; a timeout never resends a SET.
 Stop, uncheck, Save and Start to revoke controls. This does not turn a plug off.
 Do not test the Finder/boiler without separate owner approval.
+
+For a heating or critical load, declare that use in Configure and separately
+acknowledge its physical effect after confirming identity. Cancelling leaves the
+plug unauthorized; enabling or revoking one plug leaves the others unchanged.
+No automated command or timer change is enabled by this consent.
 
 Linux can opt into `meross-mss310-manual` with `vars.manual_uuid`, an explicit
 private IPv4 destination, `discovery=false` and the existing encrypted key. Any
