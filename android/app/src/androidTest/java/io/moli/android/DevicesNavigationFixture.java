@@ -19,7 +19,17 @@ final class DevicesNavigationFixture {
         }
         return null;
     }
+    private static void ready(ActivityScenario<MainActivity> ui)throws Exception {
+        // Activity.finish/rotation returns before the resumed window is drawn.
+        // Keep the visibility assertion; wait for its actual UI precondition.
+        TouchRegression.until(()->{
+            AtomicReference<Boolean> shown=new AtomicReference<>(false);
+            ui.onActivity(a->shown.set(a.hasWindowFocus()&&visibleButton(a.getWindow().getDecorView(),a.getString(R.string.my_devices))!=null));
+            return shown.get();
+        });
+    }
     private static void devices(ActivityScenario<MainActivity> ui)throws Exception {
+        ready(ui);
         ui.onActivity(a->{Button b=visibleButton(a.getWindow().getDecorView(),a.getString(R.string.my_devices));assertNotNull("Visible My devices entry",b);b.performClick();});
         TouchRegression.until(()->"true".equals(TouchRegression.js(ui,"location.hash==='#/appareils' && document.querySelectorAll('[data-equipment=meross]').length===4")));
     }
@@ -56,6 +66,7 @@ final class DevicesNavigationFixture {
     }
     static void stopped(ActivityScenario<MainActivity> ui,Context app)throws Exception {
         String preserved=EquipmentStore.read(app).toString();
+        ready(ui);
         ui.onActivity(a->{Button b=visibleButton(a.getWindow().getDecorView(),a.getString(R.string.my_devices));assertNotNull(b);b.performClick();});
         TouchRegression.screen(EquipmentSettingsActivity.class);
         TouchRegression.childButton(R.string.meross_devices);
