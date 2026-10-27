@@ -803,3 +803,22 @@ Restent ouverts (non urgents) :
 - le commentaire de `crates/moli-api/src/lib.rs` ne liste ni `/api/system`, ni
   `/api/home`, `/api/bench`, `/api/history`, `/api/devices/{id}/snapshot` ; la plupart des
   handlers de `rest.rs` et `automations.rs` n'ont pas de commentaire de documentation.
+
+### Observation Netatmo → Meross sans commande
+
+`GET/PUT /api/observations/netatmo-meross` conserve une sélection locale distincte
+des permissions manuelles ; `POST /api/observations/netatmo-meross/observe`
+exécute uniquement un brouillon éphémère à blanc dans le moteur officiel.
+Révision et génération serveur empêchent la reprise d'une ancienne sélection.
+Aucun paramètre ne peut activer une commande ou approuver ce brouillon.
+Voir [contrat, fraîcheur et persistance](netatmo-meross-observation.md).
+
+L'essai séparé `/api/observations/netatmo-meross/trial/prepare` prépare un scénario
+original manuel désactivé pour la sélection courante (`revision`, `epoch`).
+`…/trial/execute` exige la session humaine originale, la même révision/époque et
+`fingerprint`, plus les cinq confirmations explicites `vessel_pressure`,
+`relay_enclosure`, `thermostat_input`, `loss_behavior`, `supervised` à `true`.
+Préparation à usage unique, durée ≤60 s ; aucune cible/valeur/dry arbitraire acceptée.
+`…/trial/cancel` révoque immédiatement l'autorité en mémoire, sans envoyer OFF.
+Ces routes ne créent aucun suivi automatique ; voir le contrat et les limites
+matérielles dans [netatmo-meross-observation.md](netatmo-meross-observation.md).

@@ -82,8 +82,8 @@ final class TrialLog {
         try{work.run();}finally{diagnosticDepth--;if(diagnosticDepth==0){save();diagnosticSaved=System.currentTimeMillis();}}
     }
     static void ui(Context c,int topic,int state,int a,int b){
-        if(topic<1||topic>6||state<1||state>9||a<0||a>4096||b<0||b>4096)return;
-        TrialDiagnostics.Topic key=switch(topic){case 1->TrialDiagnostics.Topic.UI_DEVICES;case 2->TrialDiagnostics.Topic.UI_SYSTEM;case 3->TrialDiagnostics.Topic.NETATMO_TILE;case 4->TrialDiagnostics.Topic.UI_SCRIPT;case 6->TrialDiagnostics.Topic.UI_MEROSS_COMMAND;default->TrialDiagnostics.Topic.UI_ASSISTANT;};
+        if(topic<1||topic>8||state<1||state>9||a<0||a>4096||b<0||b>4096)return;
+        TrialDiagnostics.Topic key=switch(topic){case 1->TrialDiagnostics.Topic.UI_DEVICES;case 2->TrialDiagnostics.Topic.UI_SYSTEM;case 3->TrialDiagnostics.Topic.NETATMO_TILE;case 4->TrialDiagnostics.Topic.UI_SCRIPT;case 6->TrialDiagnostics.Topic.UI_MEROSS_COMMAND;case 7->TrialDiagnostics.Topic.UI_OBSERVATION;case 8->TrialDiagnostics.Topic.UI_HEATING_TRIAL;default->TrialDiagnostics.Topic.UI_ASSISTANT;};
         TrialDiagnostics.State value=switch(state){case 1->TrialDiagnostics.State.PENDING;case 2->TrialDiagnostics.State.OK;case 8->TrialDiagnostics.State.ABSENT;case 9->TrialDiagnostics.State.STALE;default->TrialDiagnostics.State.FAILED;};
         TrialDiagnostics.Reason reason=switch(state){case 3->TrialDiagnostics.Reason.HTTP;case 4->TrialDiagnostics.Reason.TIMEOUT;case 5->TrialDiagnostics.Reason.INVALID_RESPONSE;case 6->TrialDiagnostics.Reason.RENDER;case 7->TrialDiagnostics.Reason.TRANSPORT;default->TrialDiagnostics.Reason.NONE;};
         diagnostic(c,key,value,reason,a,b,-1,0,0,0,0,0,0);

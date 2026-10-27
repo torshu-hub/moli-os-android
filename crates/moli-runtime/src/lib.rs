@@ -16,6 +16,7 @@ mod journal_log;
 mod labels;
 pub mod media;
 mod read_diagnostics;
+mod scope;
 mod secrets;
 mod state_cache;
 mod stats;
@@ -32,6 +33,7 @@ pub use read_diagnostics::{
     ReadDiagnostics, ReadEvent, ReadOutcome, ReadPolling, ReadStage, ReadStep, ReadSummary,
     ReadTrigger,
 };
+pub use scope::CommandPermit;
 pub use secrets::{MasterKey, forget_secret, has_secret, read_secret, set_secret};
 pub use stats::Stats;
 pub use supervisor::spawn_driver;

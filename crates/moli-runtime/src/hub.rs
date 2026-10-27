@@ -502,6 +502,30 @@ impl Hub {
         origin: Origin,
         actor: Option<String>,
     ) -> Result<(), CommandError> {
+        self.command_authorized(point, value, origin, actor, None)
+            .await
+    }
+
+    /// Same guard, validation, deadline and journal, with volatile authority.
+    pub async fn command_scoped(
+        &self,
+        point: &PointId,
+        value: Value,
+        actor: Option<String>,
+        authority: crate::CommandPermit,
+    ) -> Result<(), CommandError> {
+        self.command_authorized(point, value, Origin::Automation, actor, Some(authority))
+            .await
+    }
+
+    async fn command_authorized(
+        &self,
+        point: &PointId,
+        value: Value,
+        origin: Origin,
+        actor: Option<String>,
+        authority: Option<crate::CommandPermit>,
+    ) -> Result<(), CommandError> {
         let started = Instant::now();
         // Absurd inputs are refused before anything, and journaled without
         // their bulk (the journal is not a place to store what an agent sent).
@@ -522,15 +546,24 @@ impl Hub {
             );
             return Err(error);
         }
-        let result = match self.prepare(point, &value) {
-            Err(e) => Err(e),
-            Ok(prepared) => match self.verdict(point, origin) {
-                Verdict::Allow => self.send(prepared, origin).await,
-                Verdict::Approval(reason) => {
-                    let id = self.hold(point, &value, origin, actor.clone(), &reason);
-                    Err(CommandError::NeedsApproval { id, reason })
-                }
-            },
+        let result = if authority.as_ref().is_some_and(|a| !a.allows(point, &value)) {
+            Err(CommandError::Driver(
+                "scoped authority expired or revoked".into(),
+            ))
+        } else {
+            match self.prepare(point, &value) {
+                Err(e) => Err(e),
+                Ok(prepared) => match self.verdict(point, origin) {
+                    Verdict::Allow => self.send(prepared, origin, authority.clone()).await,
+                    Verdict::Approval(_) if authority.is_some() => {
+                        Err(CommandError::Driver("scoped order cannot be queued".into()))
+                    }
+                    Verdict::Approval(reason) => {
+                        let id = self.hold(point, &value, origin, actor.clone(), &reason);
+                        Err(CommandError::NeedsApproval { id, reason })
+                    }
+                },
+            }
         };
         let outcome =
             match &result {
@@ -796,7 +829,7 @@ impl Hub {
         }
         let (decision, outcome, result) = if approve {
             let sent = match self.prepare(&request.point, &request.value) {
-                Ok(prepared) => self.send(prepared, origin).await,
+                Ok(prepared) => self.send(prepared, origin, None).await,
                 Err(e) => Err(e),
             };
             match sent {
@@ -1160,7 +1193,12 @@ impl Hub {
     }
 
     /// Hands a prepared order to its driver and waits for the answer.
-    async fn send(&self, prepared: Prepared, origin: Origin) -> Result<(), CommandError> {
+    async fn send(
+        &self,
+        prepared: Prepared,
+        origin: Origin,
+        authority: Option<crate::CommandPermit>,
+    ) -> Result<(), CommandError> {
         let Prepared {
             point,
             device,
@@ -1172,6 +1210,7 @@ impl Hub {
         commands
             .try_send(CommandRequest {
                 origin,
+                authority,
                 point,
                 device,
                 key,

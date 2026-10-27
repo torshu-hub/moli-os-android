@@ -1,0 +1,5 @@
+<resources>
+    <item name="heating_pin" type="id"/>
+    <item name="heating_prepare" type="id"/>
+    <item name="heating_apply" type="id"/>
+</resources>

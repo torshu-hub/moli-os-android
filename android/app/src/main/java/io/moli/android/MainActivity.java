@@ -113,7 +113,7 @@ public final class MainActivity extends Activity {
                 String origin=loaded;
                 if(origin!=null&&origin.equals(EngineHost.origin())&&EngineHost.state()==EngineHost.State.RUNNING){
                     String text=message.message();
-                    if(text!=null&&text.matches("MOLI_DIAG [1-6] [1-9] [0-9]{1,4} [0-9]{1,4}")){
+                    if(text!=null&&text.matches("MOLI_DIAG [1-8] [1-9] [0-9]{1,4} [0-9]{1,4}")){
                         String[] parts=text.split(" ");TrialLog.ui(MainActivity.this,Integer.parseInt(parts[1]),Integer.parseInt(parts[2]),Integer.parseInt(parts[3]),Integer.parseInt(parts[4]));
                     }else if(message.messageLevel()==ConsoleMessage.MessageLevel.ERROR)TrialLog.ui(MainActivity.this,4,6,0,0);
                 }
@@ -141,6 +141,9 @@ public final class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String origin = loaded;
+                if(request.isForMainFrame()&&origin!=null&&EngineHost.state()==EngineHost.State.RUNNING&&origin.equals(EngineHost.origin())&&(origin+"/android/heating-trial").equals(uri.toString())){
+                    startActivity(new Intent(MainActivity.this,HeatingTrialActivity.class));return true;
+                }
                 if(request.isForMainFrame()&&origin!=null&&EngineHost.state()==EngineHost.State.RUNNING&&origin.equals(EngineHost.origin())&&(origin+"/android/netatmo").equals(uri.toString())){
                     startActivity(new Intent(MainActivity.this,NetatmoOAuthActivity.class));return true;
                 }

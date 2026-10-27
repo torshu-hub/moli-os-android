@@ -732,3 +732,90 @@ fn manual_builtin_is_a_scoped_variant_not_a_way_to_trust_external_lan_files() {
         assert!(expected(&target, Some(KEY), &profile).is_err());
     }
 }
+
+#[tokio::test]
+async fn scoped_automation_keeps_signed_set_ack_readback_and_revocation_never_opens_other_origins()
+{
+    let fake = Fake::start().await;
+    let mut h = Harness::manual(&fake).await;
+    let point = Harness::point();
+    let value = Value::Bool(true);
+    assert!(h.human(true, Origin::Automation).await.is_err());
+    assert_eq!(fake.sets(), 0);
+    let permit = moli_runtime::CommandPermit::new(
+        point.clone(),
+        value.clone(),
+        Duration::from_secs(3),
+        || true,
+    );
+    h.hub
+        .command_scoped(
+            &point,
+            value.clone(),
+            Some("synthetic supervised trial".into()),
+            permit.clone(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(fake.sets(), 1);
+    assert_eq!(h.value(), value);
+    assert_eq!(h.step("command_readback")["status"], "ok");
+    permit.revoke();
+    assert!(
+        h.hub
+            .command_scoped(&point, value.clone(), None, permit)
+            .await
+            .is_err()
+    );
+    assert_eq!(fake.sets(), 1);
+    let wrong = moli_runtime::CommandPermit::new(
+        PointId::from("different:plug/on"),
+        Value::Bool(false),
+        Duration::from_secs(3),
+        || true,
+    );
+    assert!(
+        h.hub
+            .command_scoped(&point, Value::Bool(false), None, wrong)
+            .await
+            .is_err()
+    );
+    assert_eq!(fake.sets(), 1);
+    h.restart().await;
+    assert!(h.human(false, Origin::Automation).await.is_err());
+    assert_eq!(fake.sets(), 1);
+    h.stop().await;
+}
+#[tokio::test]
+async fn revoked_live_admission_during_meross_preflight_prevents_set_without_retry() {
+    let fake = Fake::start().await;
+    let h = Harness::manual(&fake).await;
+    fake.fault(Fault::SlowAbility);
+    let valid = Arc::new(AtomicBool::new(true));
+    let admission = valid.clone();
+    let permit = moli_runtime::CommandPermit::new(
+        Harness::point(),
+        Value::Bool(true),
+        Duration::from_secs(3),
+        move || admission.load(Ordering::SeqCst),
+    );
+    let hub = h.hub.clone();
+    let before = fake.state.calls.load(Ordering::SeqCst);
+    let pending = tokio::spawn(async move {
+        hub.command_scoped(&Harness::point(), Value::Bool(true), None, permit)
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while fake.state.calls.load(Ordering::SeqCst) < before + 2 {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap();
+    valid.store(false, Ordering::SeqCst);
+    assert!(pending.await.unwrap().is_err());
+    assert_eq!(fake.sets(), 0);
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    assert_eq!(fake.sets(), 0);
+    h.stop().await;
+}

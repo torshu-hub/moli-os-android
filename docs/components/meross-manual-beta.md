@@ -6,7 +6,10 @@ Chaque prise peut être autorisée indépendamment dans Mes appareils Android, a
 confirmation locale du nom, de l’adresse et de l’UUID. Une prise déclarée critique
 nécessite aussi un accord explicite sur son effet physique, lié au même UUID. Aucun compte cloud ou nouvel appairage.
 Netatmo code29 (lecture, cadence 120 s, âge et renouvellement) reste inchangé ;
-son endurance n’est pas requalifiée par ce lot. Aucun automatisme Netatmo/Finder.
+son endurance n’est pas requalifiée par ce lot. Aucun suivi automatique Netatmo/Finder.
+Code33 ajoute un [essai réel ponctuel séparé](netatmo-meross-observation.md),
+avec prérequis matériels, approbation humaine exacte et autorité éphémère ;
+les permissions manuelles seules ne l’autorisent pas.
 
 ## Écart minimal après la simulation 99f1a0c
 
@@ -14,7 +17,7 @@ son endurance n’est pas requalifiée par ce lot. Aucun automatisme Netatmo/Fin
 |---|---|---|
 | Paquet MSS310 et profil déclaratif | Variante connue `meross-mss310-manual`, profil canonique + `manual-write.toml` | Même `meta.id`, catalogue, fixtures et codec ; aucun nouveau paquet, pilote natif ou format parallèle |
 | Configuration Android + concordance + coffre Moli | `manual_control` absent/faux par défaut, consentement indépendant par prise ; `manual_uuid` distinct de l’association existante | Adaptateur Android uniquement ; ni clé ni `uuid`/`expected_uuid` existants remplacés |
-| `hub.command`, garde, journal et échéance | `CommandRequest.origin` transmis au pilote ; variante manuelle limitée aux origines `Ui`/`Household` | Petit ajout générique au contrat runtime ; les autres pilotes gardent leur comportement |
+| `hub.command`, garde, journal et échéance | `CommandRequest.origin` transmis au pilote ; variante manuelle limitée aux origines `Ui`/`Household`, sauf autorité supervisée ponctuelle code33 | Petit ajout générique au contrat runtime ; les autres pilotes gardent leur comportement |
 | Diagnostics typés déjà présents | Quatre étapes de commande additives, réduites dans le rapport d’essai existant | Aucun nouveau journal/export ou texte fournisseur ; compteurs, durées, erreurs fermées et historiques conservés |
 | Écran Mes appareils et tableau de bord existants | Confirmation native, ON/OFF explicites via `/api/command`, état relu et disponibilité | UI FR/EN, aucun chemin réseau parallèle, aucun état ON/OFF optimiste dans la tuile |
 
@@ -102,8 +105,8 @@ commandes réservées à la cible, refus des autres origines, absence de retry a
 ACK inconnu. Les serveurs factices seuls reçoivent les essais de commandes.
 Ne pas refaire le protocole réel ON/OFF acquis sur code30/31 pour qualifier ce lot.
 
-Cette bêta ne contient aucun observateur Netatmo→Meross actif. La qualification
-portable du graphe à blanc et le reste à relier sont décrits dans
+Code32 ne contenait pas d’observateur sur tablette. Code33 relie l’observation
+et un essai ponctuel sous consentement séparé, décrits dans
 [netatmo-meross-observation.md](netatmo-meross-observation.md).
 
 ## Accès simplifié — code31

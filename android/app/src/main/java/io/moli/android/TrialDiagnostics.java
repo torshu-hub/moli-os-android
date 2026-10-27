@@ -9,7 +9,9 @@ final class TrialDiagnostics {
     enum Topic { NETATMO_CONFIGURATION, NETATMO_AUTHORIZATION, NETATMO_HOME, NETATMO_DRIVER,
         NETATMO_TOKENS, NETATMO_HOMESDATA, NETATMO_HOMESTATUS, NETATMO_PARSING, NETATMO_PUBLICATION,
         NETATMO_DATA, NETATMO_BOILER_FIELD, UI_DEVICES, UI_SYSTEM, NETATMO_TILE, UI_SCRIPT, UI_ASSISTANT, NETATMO_POLLING,
-        MEROSS_MANUAL_SELECTION,MEROSS_PREFLIGHT,MEROSS_SEND,MEROSS_ACK,MEROSS_READBACK,UI_MEROSS_COMMAND,MEROSS_IDENTITY }
+        MEROSS_MANUAL_SELECTION,MEROSS_PREFLIGHT,MEROSS_SEND,MEROSS_ACK,MEROSS_READBACK,UI_MEROSS_COMMAND,MEROSS_IDENTITY,UI_OBSERVATION,UI_HEATING_TRIAL }
+    enum HeatingTrialState { UNOBSERVED, PREPARED, RUNNING, READBACK_CONFIRMED, UNCONFIRMED, REVOKED }
+    enum ObservationReason { NONE, UNCONFIGURED, STORAGE, SELECTION_CHANGED, RESTARTED, SOURCE_MISSING, TARGET_MISSING, IDENTITY, SOURCE_OFFLINE, TARGET_OFFLINE, DRIVER_STOPPED, SOURCE_UNPUBLISHED, INVALID_DEMAND, UNKNOWN_DEMAND, MISSING_DATE, FUTURE_DATE, SOURCE_STALE, TARGET_STALE, COHERENCE, ENGINE, LOADING, DISCONNECTED, PENDING_SELECTION, HIDDEN, TRANSPORT, EXPIRED }
     enum State { UNOBSERVED, ABSENT, DISABLED, PENDING, STORED, OK, FAILED, STALE, CANCELLED }
     enum Reason { NONE, TRANSPORT, AUTHORIZATION, CREDENTIALS, AMBIGUOUS, RATE_LIMIT, STORAGE, INVALID_RESPONSE, PROVIDER, TIMEOUT, RENDER, HTTP, ENGINE_STOPPED, DNS, CONNECT, TLS, HEADERS, BODY, CYCLE_TIMEOUT, CANCELLED }
     static final class Entry {
@@ -146,6 +148,8 @@ final class TrialDiagnostics {
                 .append(" tentatives=").append(e.attempts).append(" succès=").append(e.successes).append(" échecs=").append(e.failures)
                 .append(" dernière_tentative=").append(stamp(e.lastAttempt)).append(" dernier_succès=").append(stamp(e.lastSuccess))
                 .append(" dernière_erreur=").append(stamp(e.lastError)).append(" âge_observation_s=").append(e.lastSeen>0?Math.max(0,(now-e.lastSeen)/1000):-1);
+            if(topic==Topic.UI_HEATING_TRIAL)out.append(" étape_essai=").append(e.a<HeatingTrialState.values().length?HeatingTrialState.values()[(int)e.a].name():"INVALID_CODE");
+            if(topic==Topic.UI_OBSERVATION)out.append(" motif_observation=").append(e.a<ObservationReason.values().length?ObservationReason.values()[(int)e.a].name():"INVALID_CODE").append(" transitions_locales=").append(e.b);
             if(e.lastError>0)out.append(" dernière_cause_erreur=").append(e.lastErrorReason);
             if(e.duration>0)out.append(" durée_dernière_étape_ms=").append(e.duration);
             if(e.interruptions>0)out.append(" interruptions_moteur=").append(e.interruptions);

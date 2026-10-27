@@ -399,4 +399,36 @@
     <string name="meross_critical_title">Confirm the physical effect</string>
     <string name="meross_critical_confirm">Equipment: %1$s\n\nTurning this plug on or off can affect heating, a Finder relay or other critical equipment. I confirm I understand this physical effect and want to authorize manual commands on this plug only. No automation or test command will run.</string>
     <string name="meross_critical_action">I understand the physical effect</string>
+    <string name="heating_trial_name">Supervised Netatmo → Meross trial</string>
+    <string name="heating_real_title">Supervised real trial — one order only</string>
+    <string name="heating_autonomous_blocked">AUTOMATION DISABLED. No continuous automatic control: independent protections and failure behaviour still require qualification.</string>
+    <string name="heating_real_help">Demand is reported by Netatmo through its cloud, not proof of a flame. A trial applies that demand once to the selected plug. Installation and restart never start control.</string>
+    <string name="heating_real_open">Prepare a voluntary real trial</string>
+    <string name="heating_physical_warning">Activation is blocked until every prerequisite is confirmed. Do not confirm an unknown item; have the installation checked by a professional. No work on 230 V terminals is requested.</string>
+    <string name="heating_vessel_pressure">Expansion vessel repaired or confirmed sound, boiler condition and pressure checked.</string>
+    <string name="heating_relay_enclosure">Finder 230 V relay insulation, enclosure and wiring checked.</string>
+    <string name="heating_thermostat_input">Finder contact compatibility with the boiler thermostat input checked.</string>
+    <string name="heating_loss_behavior">Relay and control behaviour on Wi-Fi, tablet and cloud loss checked.</string>
+    <string name="heating_supervised">I am present, understand the physical effect and have a safe manual stop for this one-off trial.</string>
+    <string name="heating_prepare">Prepare one order</string>
+    <string name="heating_apply">Approve this version and apply once</string>
+    <string name="heating_cancel">Revoke / cancel — does not switch the plug off</string>
+    <string name="heating_stop_warning">Stopping Moli, leaving or revoking prevents a new order but does not switch off a plug already ON. An order already sent cannot be recalled. Moli cannot guarantee OFF with no network; check the real state and use your safe manual stop. The Meross 30 min timer is unchanged and is not a qualified independent safety protection. After the trial, manually switch off the selected plug from its card and verify OFF before ending supervision.</string>
+    <string name="heating_expired_trial">Preparation expired or data changed: read the states again before another voluntary trial.</string>
+    <string name="heating_trial_failure">Trial refused or state unconfirmed. Do not repeat clicks; check the plug and report. No automatic retry.</string>
+    <string name="heating_trial_confirmed">Meross state confirmed by a local readback. This does not confirm boiler heating. No automatic follow-up is active.</string>
+    <string name="heating_trial_cancelled">Cancellation requested. An in-flight order may already have been delivered. No OFF is sent; check the real state.</string>
+    <string name="heating_version">Exact version to approve</string>
+    <string name="heating_pin">Confirm with the dashboard code</string>
+    <string name="heating_real_state">Real Meross state (readback)</string>
+    <string name="heating_mode">OBSERVATION — no automatic order</string>
+    <string name="heating_loading">Reading states…</string>
+    <string name="heating_selected">Source: %1$s
+Plug: %2$s
+Current demand: %3$s</string>
+    <string name="heating_pin_optional">Dashboard code, only if you changed it (optional)</string>
+    <string name="heating_unavailable">First select the source and plug in My devices. Both readings must be fresh and the plug manually authorized; this grants no automatic rights.</string>
+    <string name="heating_value_on">ON — heating demand</string>
+    <string name="heating_value_off">OFF — no heating demand</string>
+    <string name="heating_value_unknown">unknown</string>
 </resources>

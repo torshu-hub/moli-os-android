@@ -120,6 +120,7 @@ public final class MerossReadTest {
             }
         }
         MerossManualFixture.verify();
+        ObservationFixture.verify();
     }
     static final class Fixture implements AutoCloseable {
         final int id;final ServerSocket server=new ServerSocket(0,8,InetAddress.getByName("0.0.0.0"));final Thread worker;

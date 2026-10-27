@@ -10,9 +10,12 @@
 mod check;
 mod engine;
 mod model;
+#[cfg(test)]
+mod preview_tests;
 mod run;
 mod store;
 pub mod sun;
+mod supervised;
 
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -142,6 +145,9 @@ struct Inner {
     /// serializes the graph). Forgotten at every write, under the list's
     /// write lock; approving and running always hash afresh.
     fingerprints: Mutex<HashMap<String, String>>,
+    /// Bounded, ephemeral drafts: never listed, persisted, approved or scheduled.
+    previews: Mutex<HashMap<String, Automation>>,
+    scopes: Mutex<HashMap<u64, moli_runtime::CommandPermit>>,
     runs: Mutex<VecDeque<Run>>,
     next_run: AtomicU64,
     live: broadcast::Sender<Live>,
@@ -169,6 +175,14 @@ struct Inner {
     writer: RwLock<Option<Arc<dyn Writer>>>,
     saving: tokio::sync::Mutex<()>,
     cancel: CancellationToken,
+}
+
+const PREVIEW_PREFIX: &str = "!preview-";
+struct PreviewDraft(Automations, String);
+impl Drop for PreviewDraft {
+    fn drop(&mut self) {
+        lock(&self.0.0.previews).remove(&self.1);
+    }
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -242,6 +256,8 @@ impl Automations {
             )),
             list: RwLock::new(list),
             fingerprints: Mutex::default(),
+            previews: Mutex::default(),
+            scopes: Mutex::default(),
             runs: Mutex::new(runs),
             next_run: AtomicU64::new(next),
             live,
@@ -503,6 +519,16 @@ impl Automations {
         fingerprint: &str,
         by: Actor,
     ) -> Result<Automation, AutomationError> {
+        self.approve_as(id, fingerprint, by, true).await
+    }
+
+    async fn approve_as(
+        &self,
+        id: &str,
+        fingerprint: &str,
+        by: Actor,
+        enabled: bool,
+    ) -> Result<Automation, AutomationError> {
         if !by.human {
             return Err(AutomationError::NeedsHuman);
         }
@@ -520,15 +546,18 @@ impl Automations {
                     mode: a.mode,
                     graph: a.graph.clone(),
                 });
-                a.enabled = true;
+                a.enabled = enabled;
                 a.note = None;
             }
         })?;
-        if !a.is_live() {
+        if !a.is_approved() || a.enabled != enabled {
             return Err(AutomationError::Conflict);
         }
         // Timers of the previous version must not fire into this one.
         self.stop_holds(id);
+        if !enabled {
+            self.stop(id);
+        }
         self.persist().await?;
         self.changed(id);
         self.journal(&a, AutomationChange::Approved, by);
@@ -614,7 +643,13 @@ impl Automations {
         fingerprint: Option<&str>,
         by: Actor,
     ) -> Result<Run, AutomationError> {
-        let a = self.get(id).ok_or(AutomationError::Unknown)?;
+        let preview = lock(&self.0.previews).get(id).cloned();
+        if preview.is_some() && !dry {
+            return Err(AutomationError::Invalid("dry-only draft".into()));
+        }
+        let a = preview
+            .or_else(|| self.get(id))
+            .ok_or(AutomationError::Unknown)?;
         if !dry {
             if !by.human {
                 return Err(AutomationError::NeedsHuman);
@@ -656,6 +691,38 @@ impl Automations {
         } else {
             Ok(self.start_run(&a, &start, tr!("moteur.pourquoi.main"), true))
         }
+    }
+
+    /// Run an uninstalled draft through the same dry-run path. It cannot be
+    /// listed, approved, enabled or executed for real, even during this await.
+    pub async fn preview_graph(&self, mut graph: Graph, by: Actor) -> Result<Run, AutomationError> {
+        tidy(&mut graph)?;
+        let id = format!("{PREVIEW_PREFIX}{}", self.next_id());
+        let now = moli_core::now_ms();
+        {
+            let mut previews = lock(&self.0.previews);
+            if previews.len() >= 8 {
+                return Err(AutomationError::Invalid("preview capacity".into()));
+            }
+            previews.insert(
+                id.clone(),
+                Automation {
+                    id: id.clone(),
+                    name: tr!("moteur.pourquoi.essai"),
+                    enabled: false,
+                    mode: Mode::Single,
+                    graph,
+                    author: by.author,
+                    approved: None,
+                    approved_version: None,
+                    note: None,
+                    created: now,
+                    updated: now,
+                },
+            );
+        }
+        let _draft = PreviewDraft(self.clone(), id.clone());
+        self.run_now(&id, true, None, by).await
     }
 
     fn next_id(&self) -> u64 {

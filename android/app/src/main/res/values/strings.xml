@@ -399,4 +399,36 @@
     <string name="meross_critical_title">Confirmer l’effet physique</string>
     <string name="meross_critical_confirm">Équipement : %1$s\n\nAllumer ou Éteindre cette prise peut agir sur le chauffage, le relais Finder ou un autre équipement critique. Je confirme comprendre cet effet physique et vouloir habiliter uniquement les commandes manuelles sur cette prise. Aucune automatisation ni commande de test ne sera exécutée.</string>
     <string name="meross_critical_action">Je comprends l’effet physique</string>
+    <string name="heating_trial_name">Essai supervisé Netatmo → Meross</string>
+    <string name="heating_real_title">Essai réel supervisé — un seul ordre</string>
+    <string name="heating_autonomous_blocked">AUTOMATISME DÉSACTIVÉ. Aucun suivi automatique continu : protections indépendantes et comportement en cas de panne restent à qualifier.</string>
+    <string name="heating_real_help">La demande est celle déclarée par Netatmo au cloud, pas une preuve de flamme. Un essai applique une seule fois cette demande à la prise choisie. Rien ne démarre par installation ou redémarrage.</string>
+    <string name="heating_real_open">Préparer un essai réel volontaire</string>
+    <string name="heating_physical_warning">Activation bloquée tant que tous les prérequis ne sont pas confirmés. Ne confirmez pas un point inconnu ; faites vérifier le matériel par un professionnel. Aucune manipulation de bornes 230 V n’est demandée.</string>
+    <string name="heating_vessel_pressure">Vase d’expansion réparé ou déclaré en état, pression et état de chaudière vérifiés.</string>
+    <string name="heating_relay_enclosure">Isolement, boîtier et câblage du relais Finder 230 V vérifiés.</string>
+    <string name="heating_thermostat_input">Compatibilité du contact Finder avec l’entrée thermostat de la chaudière vérifiée.</string>
+    <string name="heating_loss_behavior">Comportement du relais et de la commande en perte de Wi-Fi, tablette et cloud vérifié.</string>
+    <string name="heating_supervised">Je suis présent, je connais l’effet physique et dispose d’un arrêt manuel sûr pour cet essai ponctuel.</string>
+    <string name="heating_prepare">Préparer l’ordre unique</string>
+    <string name="heating_apply">Approuver cette version et appliquer une fois</string>
+    <string name="heating_cancel">Révoquer / annuler — ne coupe pas la prise</string>
+    <string name="heating_stop_warning">Arrêter Moli, quitter ou révoquer interdit un nouvel ordre mais n’éteint pas une prise déjà ON. Un ordre déjà envoyé ne peut pas être rappelé. Si le réseau est coupé, Moli ne garantit aucun OFF ; vérifiez l’état et utilisez votre arrêt manuel sûr. Le délai Meross 30 min reste inchangé et n’est pas une sécurité indépendante qualifiée. Après l’essai, éteignez volontairement la prise choisie depuis sa fiche et vérifiez OFF avant de cesser la surveillance.</string>
+    <string name="heating_expired_trial">Préparation expirée ou données modifiées : relisez les états avant un nouvel essai volontaire.</string>
+    <string name="heating_trial_failure">Essai refusé ou état non confirmé. Ne répétez pas les clics ; vérifiez la prise et le rapport. Aucune répétition automatique.</string>
+    <string name="heating_trial_confirmed">État Meross confirmé par relecture locale. Cela ne confirme pas la chauffe de la chaudière. Aucun suivi automatique n’est actif.</string>
+    <string name="heating_trial_cancelled">Annulation demandée. Un ordre en cours peut déjà avoir été délivré. Aucun OFF n’est envoyé ; vérifiez l’état réel.</string>
+    <string name="heating_version">Version exacte à approuver</string>
+    <string name="heating_pin">Confirmer avec le code du tableau de bord</string>
+    <string name="heating_real_state">État réel Meross (relecture)</string>
+    <string name="heating_mode">OBSERVATION — sans ordre automatique</string>
+    <string name="heating_loading">Lecture des états…</string>
+    <string name="heating_selected">Source : %1$s
+Prise : %2$s
+Demande actuelle : %3$s</string>
+    <string name="heating_pin_optional">Code du tableau de bord, seulement si vous l’avez modifié (facultatif)</string>
+    <string name="heating_unavailable">Sélectionnez d’abord la source et la prise dans Mes appareils. Les deux lectures doivent être fraîches et la prise habilitée manuellement ; cela n’accorde aucun droit automatique.</string>
+    <string name="heating_value_on">ON — demande de chauffe</string>
+    <string name="heating_value_off">OFF — pas de demande de chauffe</string>
+    <string name="heating_value_unknown">inconnue</string>
 </resources>

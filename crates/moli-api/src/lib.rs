@@ -24,6 +24,7 @@ mod integrations;
 mod limit;
 mod machines;
 mod mcp;
+mod observation;
 mod people;
 mod people_api;
 mod whereabouts;
@@ -307,6 +308,7 @@ pub fn router(hub: Hub, shutdown: CancellationToken, options: &Options) -> Route
         .route("/api/bench", get(rest::bench))
         .route("/api/home", get(rest::home))
         .merge(house_routes(&humans, options))
+        .merge(observation::routes(options))
         .route("/api/system", get(system::system))
         .route("/api/energy", get(rest::energy))
         .route("/api/energy/series", get(rest::energy_series))

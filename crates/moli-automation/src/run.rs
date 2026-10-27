@@ -182,23 +182,29 @@ pub(crate) async fn execute(
         };
     }
     run.ended = Some(moli_core::now_ms());
-    let recent: Vec<Run> = {
-        let mut runs = lock(&autos.0.runs);
-        runs.push_back(run.clone());
-        while runs.len() > store::KEEP_RUNS {
-            runs.pop_front();
-        }
-        runs.iter().cloned().collect()
-    };
-    {
-        let _one = autos.0.runs_writing.lock().await;
-        store::append_run(autos.0.runs_path.as_deref(), &run, recent).await;
-    }
+    remember(autos, &run).await;
     let _ = autos
         .0
         .live
         .send(crate::Live::RunEnded { run: run.clone() });
     run
+}
+
+async fn remember(autos: &Automations, run: &Run) {
+    if !run.automation.starts_with(crate::PREVIEW_PREFIX) {
+        let recent: Vec<Run> = {
+            let mut runs = lock(&autos.0.runs);
+            runs.push_back(run.clone());
+            while runs.len() > store::KEEP_RUNS {
+                runs.pop_front();
+            }
+            runs.iter().cloned().collect()
+        };
+        {
+            let _one = autos.0.runs_writing.lock().await;
+            store::append_run(autos.0.runs_path.as_deref(), run, recent).await;
+        }
+    }
 }
 
 fn log(autos: &Automations, run: &mut Run, node: &str, status: StepStatus, detail: Option<String>) {
@@ -263,7 +269,9 @@ async fn step(
                 (StepStatus::No, None, Some("no"))
             }
         }
-        Step::Set { point, value } => act(autos, a, point, Value::from_json(value), dry).await,
+        Step::Set { point, value } => {
+            act(autos, a, point, Value::from_json(value), dry, run.id).await
+        }
         Step::Toggle { point } => {
             let pid = PointId::from(point.as_str());
             let next = match hub.state(&pid).map(|s| s.value) {
@@ -278,7 +286,7 @@ async fn step(
                     );
                 }
             };
-            act(autos, a, point, next, dry).await
+            act(autos, a, point, next, dry, run.id).await
         }
         Step::Wait { seconds } => {
             if dry {
@@ -388,6 +396,7 @@ async fn act(
     point: &str,
     value: Value,
     dry: bool,
+    run_id: u64,
 ) -> (StepStatus, Option<String>, Option<&'static str>) {
     if dry {
         return (
@@ -397,17 +406,26 @@ async fn act(
         );
     }
     let pid = PointId::from(point);
-    match autos
-        .0
-        .hub
-        .command(
-            &pid,
-            value.clone(),
-            Origin::Automation,
-            Some(a.name.clone()),
-        )
-        .await
-    {
+    let scope = lock(&autos.0.scopes).get(&run_id).cloned();
+    let result = if let Some(scope) = scope {
+        autos
+            .0
+            .hub
+            .command_scoped(&pid, value.clone(), Some(a.name.clone()), scope)
+            .await
+    } else {
+        autos
+            .0
+            .hub
+            .command(
+                &pid,
+                value.clone(),
+                Origin::Automation,
+                Some(a.name.clone()),
+            )
+            .await
+    };
+    match result {
         Ok(()) => (
             StepStatus::Done,
             Some(format!("→ {}", show(&value))),

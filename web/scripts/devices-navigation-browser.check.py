@@ -12,6 +12,7 @@ window.addEventListener('hashchange',()=>route=location.hash.slice(2));
 </script><Maison {route}/>
 ''')
 entry.write_text('''
+import './scripts/fixtures/observation-fixture.js';
 import {mount} from 'svelte';
 import Maison from './.devices-navigation-test.svelte';
 import {home,hub} from './src/maison/lib/home.svelte.js';
@@ -38,9 +39,10 @@ window.fetch=async (url,options={})=>{
 window.EventSource=class {addEventListener(type,fn){if(type==='snapshot')queueMicrotask(()=>fn({data:JSON.stringify(fixture())}));}close(){}};
 window.fixture=async(l,m,s=false,a=1)=>{
  language=l;missing=m;stale=s;authorizations=a;await setLanguage(l);const snap=fixture();home.config=config();home.platform='android';home.snapshotHealthy=true;home.now=Date.now();
- hub.connected=true;hub.observedAt=Date.now();hub.drivers=snap.drivers;hub.devices=Object.fromEntries(snap.devices.map(d=>[d.id,d]));
+ hub.connected=true;hub.observedAt=Date.now();hub.drivers=snap.drivers;hub.devices=Object.fromEntries(snap.devices.map(d=>[d.id,d]));window.fixtureObservation?.('on');
 };
 window.forceLongName=()=>{Object.values(hub.devices)[0].label.name='SyntheticLongDeviceName'.repeat(8);};
+window.installObservationFixture(fixture);
 mount(Maison,{target:document.querySelector('#test')});
 window.ready=()=>home.platform==='android';
 ''')
@@ -92,11 +94,27 @@ try:
   page.evaluate("window.fixture('fr',false,true,4)");page.wait_for_timeout(70)
   assert page.locator('[data-meross-manual]').count()==4
   assert page.locator('[data-meross-on]:not(:disabled)').count()==0
+  for language in ['fr','en']:
+   for width,height in [(720,1100),(1280,800)]:
+    page.set_viewport_size({'width':width,'height':height});page.evaluate('l=>window.fixture(l,false,false,4)',language);page.evaluate("window.fixtureObservation('on')")
+    page.wait_for_selector('[data-observation-source] option[value^="android-netatmo"]',state='attached')
+    page.locator('[data-observation-source]').select_option('android-netatmo-personal:synthetic-thermostat')
+    target=page.locator('[data-observation-target] option').nth(1).get_attribute('value');page.locator('[data-observation-target]').select_option(target)
+    page.locator('[data-observation-save]').click();page.wait_for_function("document.querySelector('[data-observation-intention]')?.textContent==='ON'")
+    assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+    page.evaluate("window.fixtureObservation('off')");page.locator('[data-observation-refresh]').click();page.wait_for_function("document.querySelector('[data-observation-intention]')?.textContent==='OFF'")
+    for mode in ['unknown','null','boolean','old','future','missing','source_offline','target_offline','identity','coherence']:
+     page.evaluate('m=>window.fixtureObservation(m)',mode);page.locator('[data-observation-refresh]').click();page.wait_for_timeout(100)
+     assert page.locator('[data-observation-intention]').inner_text() not in ['ON','OFF'],(language,width,mode)
+    page.evaluate("window.fixtureObservation('on');window.restartObservationFixture()");page.locator('[data-observation-refresh]').click();page.wait_for_function("document.querySelector('[data-observation-intention]')?.textContent==='ON'")
+    page.reload();page.wait_for_function("document.querySelector('[data-observation-intention]')?.textContent==='ON'")
+    assert page.locator('[data-observation-source]').input_value()=='android-netatmo-personal:synthetic-thermostat'
+    assert page.evaluate('window.observationFixtureState.commands')==0
   assert not errors,errors
   page.set_viewport_size({'width':720,'height':1000});page.evaluate("window.fixture('fr',true)");page.wait_for_timeout(70)
   if os.environ.get('MOLI_NAV_SCREENSHOT'):page.screenshot(path=os.environ['MOLI_NAV_SCREENSHOT'],full_page=False)
   browser.close()
- print('PASS FR/EN 360/720/800/1280: missing/present home projection, four named plugs, no implicit control, stale masking, persistent System/My devices, scrolling rail, graph layout, zero writes; 0/1/2/4 independent controls with critical-use labels.')
+ print('PASS FR/EN 360/720/800/1280: missing/present home projection, four named plugs, no implicit control, stale masking, persistent System/My devices, scrolling rail, graph layout, zero writes; 0/1/2/4 independent controls with critical-use labels; explicit Netatmo/Meross observation selection, invalid/stale/offline/restart masking, persistent choice, strict zero-command observation.')
 finally:
  server.terminate();server.wait(timeout=10)
  for file in [html,entry,component]:file.unlink(missing_ok=True)

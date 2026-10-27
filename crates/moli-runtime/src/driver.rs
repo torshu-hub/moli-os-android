@@ -35,6 +35,7 @@ pub trait Driver: Send + Sync + 'static {
 pub struct CommandRequest {
     /// Validated surface origin, preserved through routing and guard approval.
     pub origin: Origin,
+    pub(crate) authority: Option<crate::CommandPermit>,
     pub point: PointId,
     pub device: Arc<Device>,
     pub key: Arc<str>,
@@ -50,7 +51,22 @@ impl CommandRequest {
     /// Nobody waits for the answer any more: the hub timed out or gave up.
     #[must_use]
     pub fn abandoned(&self) -> bool {
-        self.reply.is_closed() || Instant::now() >= self.deadline
+        self.reply.is_closed()
+            || Instant::now() >= self.deadline
+            || self
+                .authority
+                .as_ref()
+                .is_some_and(|a| !a.allows(&self.point, &self.value))
+    }
+
+    /// A live, exact, non-serializable grant accompanying this automation run.
+    #[must_use]
+    pub fn automation_authorized(&self) -> bool {
+        self.origin == Origin::Automation
+            && self
+                .authority
+                .as_ref()
+                .is_some_and(|a| a.allows(&self.point, &self.value))
     }
 
     /// Reports the outcome. Dropping the request without replying is

@@ -364,6 +364,7 @@ impl Session<'_> {
                 command.origin,
                 moli_core::Origin::Ui | moli_core::Origin::Household
             )
+            && !command.automation_authorized()
         {
             return Err("Meross manual mode requires a human surface".into());
         }
@@ -408,6 +409,9 @@ impl Session<'_> {
         progress(state, Progress::Sending);
         stage(ctx, self.profile, Stage::CommandSend, Outcome::Pending);
         stage(ctx, self.profile, Stage::CommandAck, Outcome::Pending);
+        if command.abandoned() {
+            return Err("Meross expired".into());
+        }
         rpc(
             self.target,
             key,
