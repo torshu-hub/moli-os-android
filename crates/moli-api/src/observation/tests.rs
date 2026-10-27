@@ -694,6 +694,19 @@ async fn http_cookie(
         }),
     )
 }
+async fn assert_daily_locked_http(address: std::net::SocketAddr, path: &str, saved: &JsonValue) {
+    let daily_path = format!("{path}/daily");
+    let (status, daily) = http(address, "GET", &daily_path, JsonValue::Null).await;
+    assert_eq!(status, 200);
+    assert_eq!(daily["state"], "disabled");
+    assert_eq!(daily["activation_available"], false);
+    // No wire flag can turn preparation into approval, execution or arming.
+    for flag in ["enabled", "activate", "dry", "approved"] {
+        let mut body = json!({"revision":1,"epoch":saved["epoch"]});
+        body[flag] = json!(true);
+        assert_eq!(http(address, "POST", &daily_path, body).await.0, 422);
+    }
+}
 #[tokio::test]
 async fn http_surface_has_no_real_execution_flag_and_keeps_other_configuration_untouched() {
     let temp = Temp::new();
@@ -769,6 +782,7 @@ async fn http_surface_has_no_real_execution_flag_and_keeps_other_configuration_u
         .0,
         422
     );
+    assert_daily_locked_http(address, path, &saved).await;
     for name in OTHER_FILES {
         assert_eq!(
             std::fs::read(temp.0.join(name)).unwrap(),
@@ -798,3 +812,5 @@ async fn http_surface_has_no_real_execution_flag_and_keeps_other_configuration_u
 }
 
 mod supervised;
+
+mod daily;

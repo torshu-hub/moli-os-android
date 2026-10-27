@@ -7,7 +7,11 @@
 //! creates, explains and writes messages; it never decides at run time.
 //! See `docs/AUTOMATIONS.md`.
 
+mod admission;
 mod check;
+pub use admission::DraftAdmission;
+#[cfg(test)]
+mod daily_tests;
 mod engine;
 mod model;
 #[cfg(test)]
@@ -16,6 +20,14 @@ mod run;
 mod store;
 pub mod sun;
 mod supervised;
+
+/// Reserved node marking the daily heating candidate. This release cannot
+/// authorize it, including through generic REST/MCP approval or restored files.
+pub const DAILY_HEATING_LOCK: &str = "moli_daily_heating_locked_v1";
+
+fn heating_locked(graph: &Graph) -> bool {
+    graph.nodes.iter().any(|node| node.id == DAILY_HEATING_LOCK)
+}
 
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -148,6 +160,7 @@ struct Inner {
     /// Bounded, ephemeral drafts: never listed, persisted, approved or scheduled.
     previews: Mutex<HashMap<String, Automation>>,
     scopes: Mutex<HashMap<u64, moli_runtime::CommandPermit>>,
+    admissions: Mutex<HashMap<String, admission::Admission>>,
     runs: Mutex<VecDeque<Run>>,
     next_run: AtomicU64,
     live: broadcast::Sender<Live>,
@@ -241,7 +254,14 @@ impl Automations {
         let tz = jiff::tz::TimeZone::get(&config.timezone)?;
         let path = data_dir.map(|d| d.join("automations.json"));
         let runs_path = data_dir.map(|d| d.join("automation-runs.jsonl"));
-        let list = store::load(path.as_deref()).await?;
+        let mut list = store::load(path.as_deref()).await?;
+        for a in &mut list {
+            if heating_locked(&a.graph) {
+                a.enabled = false;
+                a.approved = None;
+                a.approved_version = None;
+            }
+        }
         let runs = store::load_runs(runs_path.as_deref()).await;
         let next = runs.iter().map(|r| r.id).max().unwrap_or(0) + 1;
         let (live, _) = broadcast::channel(256);
@@ -258,6 +278,7 @@ impl Automations {
             fingerprints: Mutex::default(),
             previews: Mutex::default(),
             scopes: Mutex::default(),
+            admissions: Mutex::default(),
             runs: Mutex::new(runs),
             next_run: AtomicU64::new(next),
             live,
@@ -533,6 +554,11 @@ impl Automations {
             return Err(AutomationError::NeedsHuman);
         }
         let current = self.get(id).ok_or(AutomationError::Unknown)?;
+        if heating_locked(&current.graph) {
+            return Err(AutomationError::Invalid(tr!(
+                "moteur.refus.chauffage_verrouille"
+            )));
+        }
         if current.fingerprint() != fingerprint {
             return Err(AutomationError::Conflict);
         }
@@ -624,6 +650,7 @@ impl Automations {
                 .position(|a| a.id == id)
                 .ok_or(AutomationError::Unknown)?;
             lock(&self.0.fingerprints).remove(id);
+            lock(&self.0.admissions).remove(id);
             list.remove(i)
         };
         self.refresh_live();

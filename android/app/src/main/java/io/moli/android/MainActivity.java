@@ -113,7 +113,7 @@ public final class MainActivity extends Activity {
                 String origin=loaded;
                 if(origin!=null&&origin.equals(EngineHost.origin())&&EngineHost.state()==EngineHost.State.RUNNING){
                     String text=message.message();
-                    if(text!=null&&text.matches("MOLI_DIAG [1-8] [1-9] [0-9]{1,4} [0-9]{1,4}")){
+                    if(text!=null&&text.matches("MOLI_DIAG [1-9] [1-9] [0-9]{1,4} [0-9]{1,4}")){
                         String[] parts=text.split(" ");TrialLog.ui(MainActivity.this,Integer.parseInt(parts[1]),Integer.parseInt(parts[2]),Integer.parseInt(parts[3]),Integer.parseInt(parts[4]));
                     }else if(message.messageLevel()==ConsoleMessage.MessageLevel.ERROR)TrialLog.ui(MainActivity.this,4,6,0,0);
                 }

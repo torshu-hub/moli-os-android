@@ -350,5 +350,12 @@
   "maison.observation.version": "Version exacte à approuver",
   "maison.observation.pin": "Confirmer avec le code du tableau de bord",
   "maison.observation.real_state": "État réel Meross (relecture)",
-  "maison.observation.mode": "OBSERVATION — sans ordre automatique"
+  "maison.observation.mode": "OBSERVATION — sans ordre automatique",
+  "maison.observation.daily_name": "Régulation quotidienne Netatmo → Meross",
+  "maison.observation.daily_disabled": "Désactivé",
+  "maison.observation.daily_ready": "Scénario prêt à examiner",
+  "maison.observation.daily_refused": "Préparation à vérifier",
+  "maison.observation.daily_lock": "Activation réelle indisponible dans cette version. La préparation crée un scénario natif désactivé, consultable et testable à blanc dans les Automatismes.",
+  "maison.observation.daily_prepare": "Préparer le scénario quotidien",
+  "maison.observation.daily_loss": "En cas de perte de réseau ou d’arrêt de Moli, une prise déjà allumée peut rester allumée. Arrêter ou révoquer ne garantit pas son extinction ; conserver l’arrêt OFF manuel avec relecture."
 }

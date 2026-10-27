@@ -466,3 +466,62 @@ fn words(v: &Value) -> String {
         Value::Null => "—".into(),
     }
 }
+
+#[cfg(test)]
+mod daily_clock_tests {
+    use super::*;
+    use crate::{Actor, Author, Config, RunStatus};
+    use moli_runtime::{Hub, HubOptions};
+    use tokio_util::sync::CancellationToken;
+
+    #[tokio::test]
+    async fn native_clock_deduplicates_daily_candidate_and_cannot_cross_release_lock() {
+        let hub = Hub::new(HubOptions::default()).unwrap();
+        let cancel = CancellationToken::new();
+        let (autos, task) = Automations::start(&hub, Config::default(), None, cancel.clone())
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        let a = autos
+            .save(
+                crate::daily_tests::candidate(),
+                Actor {
+                    human: false,
+                    author: Author::Agent,
+                },
+            )
+            .await
+            .unwrap();
+        // Synthetic corrupted in-memory enable, bypassing public approval only
+        // inside this test. Actual SET must still fail before the hub.
+        autos
+            .update(&a.id, |a| {
+                a.enabled = true;
+                a.approved = Some(a.fingerprint());
+            })
+            .unwrap();
+        for _ in 0..5 {
+            on_clock(&autos);
+        }
+        for _ in 0..100 {
+            if !autos.runs(Some(&a.id), 10).is_empty() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        let runs = autos.runs(Some(&a.id), 10);
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, RunStatus::Failed);
+        assert!(
+            hub.journal(20)
+                .iter()
+                .all(|e| !matches!(e.action, moli_core::Action::Command { .. }))
+        );
+        // Resume marks only the current minute: no missed-minute catch-up.
+        mark_this_minute(&autos);
+        on_clock(&autos);
+        assert_eq!(autos.runs(Some(&a.id), 10).len(), 1);
+        cancel.cancel();
+        task.await.unwrap();
+    }
+}

@@ -152,3 +152,52 @@ originale et logout, navigateur FR/EN portrait/paysage, page native bloquée et
 consentements non restaurés, préservation 0/1/4 permissions. Les fixtures de
 WebView sont réservées à l'APK de tests. Tous les essais de Codex sont synthétiques.
 La réception réelle sur S5e et l'état matériel restent à confirmer par le propriétaire.
+
+## Daily native candidate — locked delivery
+
+The daily preparation button creates/reuses one **disabled** `Mode::Single`
+scenario in the existing automation store. It uses `every(minutes=1)` plus
+`when_state(collected_at)`; no additional timer, thermal calculation or provider
+request is introduced. Both triggers traverse native `if`/`stale` conditions,
+check that declared demand agrees with the boolean boiler field, and propose a
+SET only when a fresh boolean plug readback differs. A missing/unknown readback
+never qualifies as OFF. There is no startup trigger, queue, catch-up or retry
+node. Preparing again preserves the scenario ID and fingerprint at unchanged
+selection/freshness contract; restart recovers the draft without arming it.
+
+A volatile, read-only admission predicate is bound to the exact graph fingerprint,
+source/target and selection revision. At the original executor's SET boundary it
+rechecks the existing strict admission: driver and device availability, source
+publication, collection timestamp, field coherence, model and readback freshness.
+Graph edits, selection changes, lost source/target, restart or expired samples
+refuse the intention. No command permit is created by this predicate. Removing
+the marker in an edited generic graph cannot confer Meross automation authority.
+
+**This candidate is not an activable autonomous heating controller.** A reserved
+node `moli_daily_heating_locked_v1` identifies the release interlock: generic
+human approval is refused, restored enable/approval flags are cleared before the
+native scheduler starts, and real SET execution is refused even if an internal
+caller forges an enabled graph. The one-shot code33 authorization remains separate.
+Manual ON/OFF, signed ACK/readback and the original guards are unchanged. Future
+autonomous authority needs a separate qualified release and explicit local
+version/target/physical authorization; neither installing this APK nor preparing
+the draft can supply it. In particular, future network-error/manual-override
+handling must not be implemented by simply deleting this interlock.
+
+The daily state stays **disabled**, with separate readiness **ready/refused**.
+There is no "in service" claim or activation button in this release. Readiness
+means the exact draft and current data can be examined, not physical validation.
+`GET /api/observations/netatmo-meross/daily` reads this state; `POST` with the
+current observation revision/epoch prepares the disabled candidate. Household
+access, bounded bodies and the original Android cookie protect these routes.
+Existing MCP `list_automations`, `get_automation` and `test_automation` can inspect
+and dry-test the candidate in the local authenticated instance. No new MCP server,
+ADB bridge, cloud task or externally exposed tablet port is added.
+
+Loss policy for this delivery is deterministic: **no automatic SET at all**,
+including OFF, restart and restoration. An already-ON plug can remain ON after
+network/service/tablet loss; its physical state is uncertain until fresh readback.
+The UI preserves manual OFF and states this limitation. The original trial report
+adds only `UI_DAILY_HEATING` readiness/transport categories, coalesced using the
+existing logger, without identifiers or sample values. No hardware claim follows
+from a prepared graph or a successful synthetic test.

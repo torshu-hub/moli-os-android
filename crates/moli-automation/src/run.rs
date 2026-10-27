@@ -398,6 +398,14 @@ async fn act(
     dry: bool,
     run_id: u64,
 ) -> (StepStatus, Option<String>, Option<&'static str>) {
+    let pid = PointId::from(point);
+    if (!dry && crate::heating_locked(&a.graph)) || !autos.admits(a, &pid, &value) {
+        return (
+            StepStatus::Failed,
+            Some(tr!("moteur.refus.chauffage_verrouille")),
+            None,
+        );
+    }
     if dry {
         return (
             StepStatus::Simulated,
@@ -405,7 +413,6 @@ async fn act(
             Some("out"),
         );
     }
-    let pid = PointId::from(point);
     let scope = lock(&autos.0.scopes).get(&run_id).cloned();
     let result = if let Some(scope) = scope {
         autos
@@ -529,8 +536,8 @@ pub(crate) fn holds(autos: &Automations, rule: &Rule) -> bool {
                 // Nothing ever arrived: nothing to trust.
                 return true;
             };
-            let age = moli_core::now_ms().saturating_sub(sample.ts);
-            age >= for_s.saturating_mul(1000)
+            let now = moli_core::now_ms();
+            sample.ts == 0 || sample.ts > now || now - sample.ts >= for_s.saturating_mul(1000)
         }
     }
 }

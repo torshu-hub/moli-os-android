@@ -186,5 +186,6 @@
   "moteur.notice.boucle_titre": "Automation turned off",
   "moteur.notice.boucle": "“{nom}” kept starting in a loop, so I stopped it. Check it in Automations.",
 
-  "moteur.refus.nom_note": "Only a person (house code) can rename an approved automation or change its note."
+  "moteur.refus.nom_note": "Only a person (house code) can rename an approved automation or change its note.",
+  "moteur.refus.chauffage_verrouille": "Daily heating is locked in this release: autonomous authorization is unavailable."
 }

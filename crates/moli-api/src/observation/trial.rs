@@ -63,7 +63,11 @@ fn view(trial: &Trial) -> JsonValue {
 fn rejected(status: StatusCode) -> Response {
     (status, Json(json!({"error":"supervised_trial_refused"}))).into_response()
 }
-fn real_admission(hub: &Hub, selection: &Selection, now: u64) -> Result<Admission, StatusCode> {
+pub(super) fn real_admission(
+    hub: &Hub,
+    selection: &Selection,
+    now: u64,
+) -> Result<Admission, StatusCode> {
     let snapshot = hub.snapshot();
     let mut admitted = admit(&snapshot, selection, now).map_err(|_| StatusCode::CONFLICT)?;
     let source = find(&snapshot, &selection.source).ok_or(StatusCode::CONFLICT)?;

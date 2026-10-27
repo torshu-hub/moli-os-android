@@ -186,5 +186,6 @@
   "moteur.notice.boucle_titre": "Automatisme coupé",
   "moteur.notice.boucle": "« {nom} » se lançait en boucle : je l'ai arrêté. À vérifier dans Automatismes.",
 
-  "moteur.refus.nom_note": "Seule une personne (code de la maison) peut renommer un automatisme validé ou changer sa note."
+  "moteur.refus.nom_note": "Seule une personne (code de la maison) peut renommer un automatisme validé ou changer sa note.",
+  "moteur.refus.chauffage_verrouille": "Régulation verrouillée dans cette version : autorisation autonome indisponible."
 }

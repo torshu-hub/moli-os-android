@@ -1,6 +1,7 @@
 //! Opt-in observation adapter and separately confirmed supervised trial.
 //! Observation is dry-only; trial uses the official executor and scoped hub
 //! authority. No provider transport or parallel scheduler.
+mod daily;
 mod graph;
 #[cfg(test)]
 mod tests;
@@ -64,6 +65,7 @@ struct Inner {
     epoch: u64,
     revision: std::sync::atomic::AtomicU64,
     trial: Mutex<trial::Trial>,
+    daily: Mutex<daily::Daily>,
     generation: std::sync::atomic::AtomicU64,
     authority: std::sync::Mutex<Option<moli_runtime::CommandPermit>>,
     #[cfg(test)]
@@ -180,6 +182,7 @@ impl Observer {
             }
         }
         let revision = storage.value.revision;
+        let daily = daily::Daily::recover(autos.as_ref());
         Self(Arc::new(Inner {
             storage: Mutex::new(storage),
             memory: Mutex::new(Memory::default()),
@@ -187,6 +190,7 @@ impl Observer {
             epoch: moli_core::now_ms(),
             revision: std::sync::atomic::AtomicU64::new(revision),
             trial: Mutex::default(),
+            daily: Mutex::new(daily),
             generation: std::sync::atomic::AtomicU64::new(0),
             authority: std::sync::Mutex::default(),
             #[cfg(test)]
@@ -769,6 +773,7 @@ pub(crate) fn routes(options: &Options) -> Router<Hub> {
         .route("/api/observations/netatmo-meross", get(settings).put(save))
         .route("/api/observations/netatmo-meross/observe", post(observe))
         .merge(trial::routes())
+        .merge(daily::routes())
         .layer(axum::extract::DefaultBodyLimit::max(MAX_FILE))
         .layer(Extension(Observer::open(path, options.automations.clone())))
 }

@@ -350,5 +350,12 @@
   "maison.observation.version": "Exact version to approve",
   "maison.observation.pin": "Confirm with the dashboard code",
   "maison.observation.real_state": "Real Meross state (readback)",
-  "maison.observation.mode": "OBSERVATION — no automatic order"
+  "maison.observation.mode": "OBSERVATION — no automatic order",
+  "maison.observation.daily_name": "Daily Netatmo → Meross heating",
+  "maison.observation.daily_disabled": "Disabled",
+  "maison.observation.daily_ready": "Scenario ready for review",
+  "maison.observation.daily_refused": "Preparation needs checking",
+  "maison.observation.daily_lock": "Real activation is unavailable in this release. Preparation creates a disabled native scenario, available for review and dry testing in Automations.",
+  "maison.observation.daily_prepare": "Prepare the daily scenario",
+  "maison.observation.daily_loss": "If the network or Moli stops, a powered plug may remain on. Stopping or revoking does not guarantee it switches off; retain manual OFF with readback."
 }

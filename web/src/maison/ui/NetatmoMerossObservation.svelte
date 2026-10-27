@@ -1,6 +1,7 @@
 <script>
  import {onMount} from 'svelte';
  import HeatingTrial from './HeatingTrial.svelte';
+ import DailyHeating from './DailyHeating.svelte';
  import {home,hub} from '../lib/home.svelte.js';
  import {t} from '../../lib/i18n.svelte.js';
  import {useReceiptClock} from '../lib/receipt-clock.svelte.js';
@@ -92,6 +93,7 @@
  </div>
  <p data-observation-reason>{t('maison.observation.reason.'+shown.reason)}</p>
  <p class="muted">{t('maison.observation.observed_at')} : <time>{date(shown.observed_at)}</time><br/>{t('maison.observation.collected_at')} : <time>{date(shown.collected_at)}</time></p>
+ <DailyHeating {settings} {dirty}/>
  <HeatingTrial {settings} {shown} {dirty} now={receipt.now??home.now}/>
 </section>
 <style>
