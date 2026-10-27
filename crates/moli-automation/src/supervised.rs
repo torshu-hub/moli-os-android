@@ -69,7 +69,7 @@ impl Automations {
             .entry(a.id.clone())
             .or_default()
             .child_token();
-        scope.bind(token.clone());
+        scope.bind(token.clone(), self.0.cancel.clone());
         let run_id = self.next_id();
         lock(&self.0.scopes).insert(run_id, scope.clone());
         let _grant = Grant(self.clone(), run_id, scope);

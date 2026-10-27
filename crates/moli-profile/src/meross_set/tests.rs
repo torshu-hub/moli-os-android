@@ -819,3 +819,36 @@ async fn revoked_live_admission_during_meross_preflight_prevents_set_without_ret
     assert_eq!(fake.sets(), 0);
     h.stop().await;
 }
+
+#[tokio::test]
+async fn global_engine_shutdown_during_scoped_preflight_prevents_set_without_waiting_for_run_drain()
+{
+    let fake = Fake::start().await;
+    let h = Harness::manual(&fake).await;
+    fake.fault(Fault::SlowAbility);
+    let engine = CancellationToken::new();
+    let permit = moli_runtime::CommandPermit::new(
+        Harness::point(),
+        Value::Bool(true),
+        Duration::from_secs(3),
+        || true,
+    );
+    permit.bind(CancellationToken::new(), engine.clone());
+    let hub = h.hub.clone();
+    let before = fake.state.calls.load(Ordering::SeqCst);
+    let pending = tokio::spawn(async move {
+        hub.command_scoped(&Harness::point(), Value::Bool(true), None, permit)
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        while fake.state.calls.load(Ordering::SeqCst) < before + 2 {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap();
+    engine.cancel();
+    assert!(pending.await.unwrap().is_err());
+    assert_eq!(fake.sets(), 0);
+    h.stop().await;
+}

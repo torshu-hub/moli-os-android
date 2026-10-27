@@ -12,7 +12,12 @@ struct Inner {
     value: Value,
     until: Instant,
     revoked: AtomicBool,
-    stop: std::sync::Mutex<Option<tokio_util::sync::CancellationToken>>,
+    stop: std::sync::Mutex<
+        Option<(
+            tokio_util::sync::CancellationToken,
+            tokio_util::sync::CancellationToken,
+        )>,
+    >,
     admission: Box<dyn Fn() -> bool + Send + Sync>,
 }
 impl std::fmt::Debug for CommandPermit {
@@ -49,19 +54,24 @@ impl CommandPermit {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .as_ref()
-                .is_some_and(tokio_util::sync::CancellationToken::is_cancelled)
+                .is_some_and(|(run, engine)| run.is_cancelled() || engine.is_cancelled())
             && Instant::now() < self.0.until
             && point == &self.0.point
             && value == &self.0.value
             && (self.0.admission)()
     }
-    /// Bind to the original executor's stop token, including driver awaits.
-    pub fn bind(&self, token: tokio_util::sync::CancellationToken) {
+    /// Bind directly to both original stop tokens, including driver awaits.
+    /// The global token closes shutdown races before the engine drains runs.
+    pub fn bind(
+        &self,
+        token: tokio_util::sync::CancellationToken,
+        engine: tokio_util::sync::CancellationToken,
+    ) {
         *self
             .0
             .stop
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(token);
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((token, engine));
     }
     pub fn revoke(&self) {
         self.0.revoked.store(true, Ordering::Release);
@@ -86,9 +96,15 @@ mod tests {
         assert!(!grant.allows(&p, &v));
         current.store(true, Ordering::Relaxed);
         let stop = tokio_util::sync::CancellationToken::new();
-        grant.bind(stop.clone());
+        grant.bind(stop.clone(), tokio_util::sync::CancellationToken::new());
         stop.cancel();
         assert!(!grant.allows(&p, &v));
+        let engine = tokio_util::sync::CancellationToken::new();
+        let global = CommandPermit::new(p.clone(), v.clone(), Duration::from_secs(2), || true);
+        global.bind(tokio_util::sync::CancellationToken::new(), engine.clone());
+        assert!(global.allows(&p, &v));
+        engine.cancel();
+        assert!(!global.allows(&p, &v));
         let cloned = grant.clone();
         grant.revoke();
         assert!(!cloned.allows(&p, &v));
