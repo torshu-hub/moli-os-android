@@ -3,13 +3,13 @@
 use super::{
     Actor, Admission, Author, Caller, Demand, Extension, Hub, Json, JsonValue, Observe, Observer,
     Response, Router, Selection, State, StatusCode, StepStatus, Value, admit, allowed, denied,
-    find, graph, json, post, sample_expiry,
+    find, json, post, sample_expiry,
 };
 use axum::http::HeaderMap;
 use axum::response::IntoResponse;
 use moli_automation::{Automation, Mode, RunStatus, Step};
 use moli_core::PointId;
-use moli_runtime::CommandPermit;
+use moli_runtime::{CommandPermit, ReadStage};
 use serde::Deserialize;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -29,20 +29,46 @@ struct Prepared {
     expires: u64,
 }
 #[derive(Deserialize)]
-// Independent physical assertions in a wire DTO, not an execution state machine.
-#[allow(clippy::struct_excessive_bools)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Execute {
     revision: u64,
     epoch: u64,
     fingerprint: String,
-    /// Each assertion must be made for this attempt, never inherited from
-    /// manual permissions, an update, a saved file or a previous session.
-    vessel_pressure: bool,
-    relay_enclosure: bool,
-    thermostat_input: bool,
-    loss_behavior: bool,
-    supervised: bool,
+    /// One explicit consent for this exact order, never stored or inherited.
+    confirmed: bool,
+}
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct Refusal(StatusCode, &'static str);
+impl From<StatusCode> for Refusal {
+    fn from(status: StatusCode) -> Self {
+        Self(status, "version_changed")
+    }
+}
+impl PartialEq<StatusCode> for Refusal {
+    fn eq(&self, other: &StatusCode) -> bool {
+        self.0 == *other
+    }
+}
+fn assessment(
+    hub: &Hub,
+    selection: &Selection,
+    now: u64,
+) -> Result<(Admission, moli_automation::ObservationSample), Refusal> {
+    let snapshot = hub.snapshot();
+    if find(&snapshot, &selection.target)
+        .is_some_and(|d| !d.device.point("on").is_some_and(|p| p.access.write))
+    {
+        return Err(Refusal(StatusCode::FORBIDDEN, "target_permission"));
+    }
+    super::daily::review_snapshot(&snapshot, selection, now)
+        .map_err(|reason| Refusal(StatusCode::CONFLICT, reason))
+}
+fn unchanged(before: &Admission, after: &Admission) -> bool {
+    before.source == after.source
+        && before.target == after.target
+        && before.demand == after.demand
+        && before.max_age == after.max_age
+        && after.collected >= before.collected
 }
 pub(super) fn revoke(observer: &Observer) {
     observer.0.generation.fetch_add(1, Ordering::AcqRel);
@@ -60,15 +86,36 @@ fn view(trial: &Trial) -> JsonValue {
     json!({"state":if trial.state.is_empty(){"observation"}else{trial.state},"autonomous":false,
         "prepared":trial.pending.as_ref().map(|p|json!({"revision":p.revision,"automation":p.automation,"fingerprint":p.fingerprint,"demand":p.before.demand,"expires_at":p.expires}))})
 }
-fn rejected(status: StatusCode) -> Response {
-    (status, Json(json!({"error":"supervised_trial_refused"}))).into_response()
+fn execution_result(
+    trial: &Trial,
+    progress_before: [u64; 4],
+    progress_after: [u64; 4],
+) -> JsonValue {
+    let mut result = view(trial);
+    result["dispatch"] = json!(if progress_after[1] > progress_before[1]
+        || trial.state == "confirmed"
+    {
+        "acknowledged"
+    } else if progress_after[0] > progress_before[0] {
+        "attempted"
+    } else {
+        "not_sent"
+    });
+    result["reason"] = json!(if trial.state == "refused" {
+        "preflight"
+    } else if trial.state == "sent" {
+        "readback"
+    } else {
+        "unconfirmed"
+    });
+    result
 }
-pub(super) fn real_admission(
-    hub: &Hub,
-    selection: &Selection,
-    now: u64,
-) -> Result<Admission, StatusCode> {
-    real_snapshot(&hub.snapshot(), selection, now)
+fn rejected(Refusal(status, reason): Refusal) -> Response {
+    (
+        status,
+        Json(json!({"state":"refused","reason":reason,"autonomous":false,"prepared":null})),
+    )
+        .into_response()
 }
 pub(super) fn real_snapshot(
     snapshot: &moli_runtime::Snapshot,
@@ -110,15 +157,93 @@ pub(super) fn real_snapshot(
     }
     Ok(admitted)
 }
-fn one_shot_graph(before: &Admission, now: u64) -> moli_automation::Graph {
-    let mut graph = graph::graph(before, now);
-    let unused = if before.demand == Demand::On {
-        "would_off"
-    } else {
-        "would_on"
+fn command_progress(hub: &Hub, target: &str) -> [u64; 4] {
+    let snapshot = hub.snapshot();
+    let Some(device) = find(&snapshot, target) else {
+        return [0; 4];
     };
-    graph.nodes.retain(|n| n.id != unused);
-    graph.edges.retain(|e| e.to != unused && e.from != unused);
+    let Some(diagnostic) = snapshot
+        .diagnostics
+        .iter()
+        .find(|d| d.instance == device.device.instance)
+    else {
+        return [0; 4];
+    };
+    let counts = [
+        ReadStage::CommandSend,
+        ReadStage::CommandAck,
+        ReadStage::CommandReadback,
+    ]
+    .map(|stage| {
+        diagnostic.read.stages.get(&stage).map_or(0, |s| {
+            if stage == ReadStage::CommandSend {
+                s.attempts
+            } else {
+                s.successes
+            }
+        })
+    });
+    [
+        counts[0],
+        counts[1],
+        counts[2],
+        u64::from(diagnostic.read.kind == "meross"),
+    ]
+}
+fn command_error(hub: &Hub, target: &str, since: u64) -> JsonValue {
+    let snapshot = hub.snapshot();
+    find(&snapshot, target)
+        .and_then(|d| {
+            snapshot
+                .diagnostics
+                .iter()
+                .find(|r| r.instance == d.device.instance)
+        })
+        .and_then(|d| {
+            d.read
+                .stages
+                .values()
+                .filter(|s| s.last_error_at >= since)
+                .max_by_key(|s| s.last_error_at)
+        })
+        .map_or(JsonValue::Null, |s| json!(s.last_error))
+}
+fn one_shot_graph(before: &Admission, selection: &Selection) -> moli_automation::Graph {
+    // Reuse the qualified freshness/identity/demand/readback graph, manual only.
+    let mut graph = super::daily::graph(selection, before.max_age);
+    let unused = if before.demand == Demand::On {
+        "off"
+    } else {
+        "on"
+    };
+    graph.nodes.retain(|n| {
+        n.id != "publication"
+            && n.id != format!("set_{unused}")
+            && n.id != format!("demand_{unused}")
+    });
+    for node in &mut graph.nodes {
+        if node.id == moli_automation::DAILY_HEATING_LOCK {
+            node.id = "start".into();
+            node.step = Step::Manual;
+        }
+        if node.id.starts_with("set_") {
+            node.id = node.id.replace("set_", "would_");
+        }
+    }
+    graph.edges.retain(|e| {
+        e.from != "publication"
+            && e.from != format!("demand_{unused}")
+            && e.to != format!("demand_{unused}")
+            && e.to != format!("set_{unused}")
+    });
+    for edge in &mut graph.edges {
+        if edge.from == moli_automation::DAILY_HEATING_LOCK {
+            edge.from = "start".into();
+        }
+        if edge.to.starts_with("set_") {
+            edge.to = edge.to.replace("set_", "would_");
+        }
+    }
     graph
 }
 impl Observer {
@@ -131,7 +256,7 @@ impl Observer {
         &self,
         hub: &Hub,
         input: Observe,
-    ) -> Result<JsonValue, StatusCode> {
+    ) -> Result<JsonValue, Refusal> {
         let mut trial = self.0.trial.try_lock().map_err(|_| StatusCode::CONFLICT)?;
         revoke(self);
         let generation = self.0.generation.load(Ordering::Acquire);
@@ -140,7 +265,7 @@ impl Observer {
         let storage = self.0.storage.lock().await;
         if !storage.valid || input.epoch != self.0.epoch || input.revision != storage.value.revision
         {
-            return Err(StatusCode::CONFLICT);
+            return Err(StatusCode::CONFLICT.into());
         }
         let selection = storage
             .value
@@ -149,10 +274,21 @@ impl Observer {
             .ok_or(StatusCode::CONFLICT)?;
         drop(storage);
         let now = moli_core::now_ms();
-        let before = real_admission(hub, &selection, now)?;
-        let expires = (now + 60_000).min(before.valid_until.saturating_sub(5_000));
+        let (before, sample) = assessment(hub, &selection, now)?;
+        if sample.actual == sample.desired {
+            trial.state = "already_applied";
+            return Ok(view(&trial));
+        }
+        // New target readings are revalidated on confirmation; do not expire a
+        // ticket solely because the previous Meross poll is nearing its deadline.
+        let expires = (now + 120_000).min(
+            before
+                .collected
+                .saturating_add(before.max_age)
+                .saturating_sub(5_000),
+        );
         if expires <= now {
-            return Err(StatusCode::CONFLICT);
+            return Err(StatusCode::CONFLICT.into());
         }
         let autos = self
             .0
@@ -168,7 +304,7 @@ impl Observer {
             ),
             enabled: false,
             mode: Mode::Single,
-            graph: one_shot_graph(&before, now),
+            graph: one_shot_graph(&before, &selection),
             author: Author::Agent,
             approved: None,
             approved_version: None,
@@ -185,7 +321,7 @@ impl Observer {
             != 1
             || !autos.check(&a.graph).ok()
         {
-            return Err(StatusCode::CONFLICT);
+            return Err(StatusCode::CONFLICT.into());
         }
         let saved = autos
             .save(
@@ -233,10 +369,15 @@ impl Observer {
                 observer.upgrade().is_some_and(|inner| {
                     inner.generation.load(Ordering::Acquire) == generation
                         && inner.revision.load(Ordering::Acquire) == revision
-                }) && approved.get(&approved_id).is_some_and(|a| {
-                    !a.enabled && a.is_approved() && a.fingerprint() == approved_version
-                }) && real_admission(&live, &selection, moli_core::now_ms())
-                    .is_ok_and(|a| a == before)
+                }) && approved
+                    .get(&approved_id)
+                    .is_some_and(|a| !a.enabled && a.fingerprint() == approved_version)
+                    && super::daily::review_source(
+                        &live.snapshot(),
+                        &selection,
+                        moli_core::now_ms(),
+                    )
+                    .is_ok_and(|a| unchanged(&before, &a))
             },
         )
     }
@@ -245,22 +386,15 @@ impl Observer {
         hub: &Hub,
         input: Execute,
         by: Actor,
-    ) -> Result<JsonValue, StatusCode> {
-        if !by.human
-            || ![
-                input.vessel_pressure,
-                input.relay_enclosure,
-                input.thermostat_input,
-                input.loss_behavior,
-                input.supervised,
-            ]
-            .into_iter()
-            .all(|v| v)
-        {
-            return Err(StatusCode::FORBIDDEN);
+    ) -> Result<JsonValue, Refusal> {
+        if !by.human || !input.confirmed {
+            return Err(Refusal(StatusCode::FORBIDDEN, "confirmation"));
         }
         let mut trial = self.0.trial.try_lock().map_err(|_| StatusCode::CONFLICT)?;
-        let prepared = trial.pending.take().ok_or(StatusCode::CONFLICT)?;
+        let prepared = trial
+            .pending
+            .take()
+            .ok_or(Refusal(StatusCode::CONFLICT, "cancelled"))?;
         trial.state = "unconfirmed";
         let storage = self.0.storage.lock().await;
         if !storage.valid
@@ -269,9 +403,8 @@ impl Observer {
             || storage.value.revision != prepared.revision
             || input.fingerprint != prepared.fingerprint
             || self.0.generation.load(Ordering::Acquire) != prepared.generation
-            || moli_core::now_ms() >= prepared.expires
         {
-            return Err(StatusCode::CONFLICT);
+            return Err(StatusCode::CONFLICT.into());
         }
         let selection = storage
             .value
@@ -280,19 +413,25 @@ impl Observer {
             .ok_or(StatusCode::CONFLICT)?;
         drop(storage);
         let now = moli_core::now_ms();
-        if real_admission(hub, &selection, now)? != prepared.before {
-            return Err(StatusCode::CONFLICT);
+        if now >= prepared.expires {
+            return Err(Refusal(StatusCode::CONFLICT, "expired"));
+        }
+        let (after, sample) = assessment(hub, &selection, now)?;
+        if !unchanged(&prepared.before, &after) {
+            return Err(Refusal(StatusCode::CONFLICT, "demand_changed"));
+        }
+        if sample.actual == sample.desired {
+            trial.state = "already_applied";
+            return Ok(view(&trial));
         }
         let autos = self
             .0
             .autos
             .as_ref()
             .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
-        autos
-            .approve_supervised(&prepared.automation, &prepared.fingerprint, by)
-            .await
-            .map_err(|_| StatusCode::CONFLICT)?;
         let generation = prepared.generation;
+        let progress_before = command_progress(hub, &selection.target);
+        let target = selection.target.clone();
         let scope = self.trial_scope(hub, autos, &prepared, selection);
         *self
             .0
@@ -308,6 +447,7 @@ impl Observer {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
+        let progress_after = command_progress(hub, &target);
         trial.state = match result {
             Ok(run)
                 if run.status == RunStatus::Done
@@ -320,13 +460,80 @@ impl Observer {
             {
                 "confirmed"
             }
-            _ => "unconfirmed",
+            _ if progress_after[1] > progress_before[1] => "sent",
+            _ if progress_after[0] > progress_before[0] => "unconfirmed",
+            _ => "refused",
         };
+        if trial.state == "confirmed"
+            && progress_after[3] == 1
+            && progress_after[0] == progress_before[0]
+        {
+            trial.state = "already_applied";
+        }
         if self.0.generation.load(Ordering::Acquire) != generation {
             trial.state = "cancelled";
         }
-        Ok(view(&trial))
+        let mut result = execution_result(&trial, progress_before, progress_after);
+        result["technical"] = command_error(hub, &target, now);
+        Ok(result)
     }
+}
+async fn status(
+    State(hub): State<Hub>,
+    Extension(observer): Extension<Observer>,
+    caller: Caller,
+) -> Response {
+    if !allowed(&caller) {
+        return denied();
+    }
+    let storage = observer.0.storage.lock().await;
+    let Some(selection) = &storage.value.selection else {
+        return rejected(Refusal(StatusCode::CONFLICT, "unconfigured"));
+    };
+    let now = moli_core::now_ms();
+    let mut result = json!({"selection":selection,"revision":storage.value.revision,"epoch":observer.0.epoch,"autonomous":false});
+    match assessment(&hub, selection, now) {
+        Ok((admission, sample)) => {
+            result["state"] = json!(if sample.actual == sample.desired {
+                "already_applied"
+            } else {
+                "ready"
+            });
+            result["demand"] = json!(admission.demand);
+            result["actual"] = json!(sample.actual);
+            result["collected_at"] = json!(admission.collected);
+            result["valid_until"] = json!(admission.valid_until);
+        }
+        Err(Refusal(_, reason)) => {
+            result["state"] = json!("refused");
+            result["reason"] = json!(reason);
+        }
+    }
+    Json(result).into_response()
+}
+async fn refresh(
+    State(hub): State<Hub>,
+    Extension(observer): Extension<Observer>,
+    caller: Caller,
+    Json(input): Json<Observe>,
+) -> Response {
+    if !allowed(&caller) {
+        return denied();
+    }
+    let storage = observer.0.storage.lock().await;
+    if !storage.valid || input.epoch != observer.0.epoch || input.revision != storage.value.revision
+    {
+        return rejected(Refusal(StatusCode::CONFLICT, "version_changed"));
+    }
+    let Some(selection) = &storage.value.selection else {
+        return rejected(Refusal(StatusCode::CONFLICT, "unconfigured"));
+    };
+    let snapshot = hub.snapshot();
+    let Some(source) = find(&snapshot, &selection.source) else {
+        return rejected(Refusal(StatusCode::CONFLICT, "identity"));
+    };
+    // Registration only exists for a running Netatmo driver; never dispatch SET.
+    Json(hub.request_read_refresh(&source.device.instance)).into_response()
 }
 async fn prepare(
     State(hub): State<Hub>,
@@ -379,6 +586,11 @@ async fn cancel(Extension(observer): Extension<Observer>, caller: Caller) -> Res
 }
 pub(super) fn routes() -> Router<Hub> {
     Router::new()
+        .route(
+            "/api/observations/netatmo-meross/trial/status",
+            super::get(status),
+        )
+        .route("/api/observations/netatmo-meross/refresh", post(refresh))
         .route(
             "/api/observations/netatmo-meross/trial/prepare",
             post(prepare),

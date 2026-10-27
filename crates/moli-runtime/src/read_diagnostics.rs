@@ -73,6 +73,7 @@ pub enum ReadTrigger {
     Initial,
     Deadline,
     WallDeadline,
+    Manual,
 }
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct ReadPolling {
@@ -81,6 +82,7 @@ pub struct ReadPolling {
     pub next_due_at: u64,
     pub cycles: u64,
     pub automatic_cycles: u64,
+    pub manual_cycles: u64,
     pub successes: u64,
     pub failures: u64,
     pub interruptions: u64,
@@ -190,7 +192,10 @@ impl ReadDiagnostics {
                 };
                 p.last_cycle_at = now;
                 p.cycles = p.cycles.saturating_add(1);
-                if !matches!(trigger, ReadTrigger::Initial) {
+                if matches!(trigger, ReadTrigger::Manual) {
+                    p.manual_cycles = p.manual_cycles.saturating_add(1);
+                }
+                if matches!(trigger, ReadTrigger::Deadline | ReadTrigger::WallDeadline) {
                     p.last_automatic_at = now;
                     p.automatic_cycles = p.automatic_cycles.saturating_add(1);
                 }

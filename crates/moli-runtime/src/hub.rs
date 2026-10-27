@@ -21,6 +21,9 @@ use crate::secrets::{self, MasterKey, SecretStore};
 use crate::state_cache::{self, States};
 use crate::{Stats, labels};
 
+mod refresh;
+pub use refresh::{ReadRefresh, ReadRefreshReply};
+
 const COMMAND_QUEUE: usize = 64;
 /// Secret namespace of the hub itself; reserved as a driver id.
 pub const CORE_NAMESPACE: &str = "core";
@@ -230,6 +233,7 @@ pub struct Hub(Arc<Inner>);
 #[derive(Debug)]
 struct Inner {
     model: RwLock<Model>,
+    read_refresh: Mutex<HashMap<InstanceId, Arc<refresh::Control>>>,
     journal: Mutex<Journal>,
     approvals: Mutex<Approvals>,
     events: broadcast::Sender<Event>,
@@ -349,6 +353,7 @@ impl Hub {
         };
         let (events, _) = broadcast::channel(opts.event_capacity.max(16));
         Ok(Self(Arc::new(Inner {
+            read_refresh: Mutex::default(),
             model: RwLock::new(Model {
                 restored,
                 labels,

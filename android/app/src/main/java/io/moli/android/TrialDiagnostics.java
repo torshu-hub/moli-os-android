@@ -36,9 +36,9 @@ final class TrialDiagnostics {
         if(e.tracedAt==0||now-e.tracedAt>=60000){e.tracedAt=now;return true;}
         e.coalesced=count(e.coalesced+1);return false;
     }
-    enum Trigger { INITIAL, DEADLINE, WALL_DEADLINE, UNOBSERVED }
+    enum Trigger { INITIAL, DEADLINE, WALL_DEADLINE, MANUAL, UNOBSERVED }
     static final class Polling {
-        static final String[] COUNTS={"period_min","period_max","delay_seconds","cycles","automatic_cycles","successes","failures","interruptions","last_gap_ms","late_ms","last_duration_ms","total_cycles","total_automatic_cycles","total_successes","total_failures","total_interruptions"};
+        static final String[] COUNTS={"period_min","period_max","delay_seconds","cycles","automatic_cycles","manual_cycles","successes","failures","interruptions","last_gap_ms","late_ms","last_duration_ms","total_cycles","total_automatic_cycles","total_manual_cycles","total_successes","total_failures","total_interruptions"};
         static final String[] TIMES={"last_cycle_at","last_automatic_at","next_due_at","observed_at","generation","last_finished_at","last_error_at","last_automatic_observed_at","cycle_due_at"};
         final JSONObject values=new JSONObject();Reason reason=Reason.NONE,lastError=Reason.NONE;Trigger trigger=Trigger.UNOBSERVED;boolean inFlight;
         static Polling parse(JSONObject raw)throws JSONException {
@@ -53,7 +53,7 @@ final class TrialDiagnostics {
         static Polling merge(Polling old,JSONObject raw)throws JSONException{
             if(raw.optLong("observed_at")==0)return old;
             Polling p=parse(raw);boolean reset=p.values.optLong("generation")!=old.values.optLong("generation");
-            for(String key:new String[]{"cycles","automatic_cycles","successes","failures","interruptions"})
+            for(String key:new String[]{"cycles","automatic_cycles","manual_cycles","successes","failures","interruptions"})
                 p.values.put("total_"+key,count(old.values.optLong("total_"+key)+delta(p.values.optLong(key),reset?0:old.values.optLong(key))));
             p.values.put("last_automatic_observed_at",Math.max(old.values.optLong("last_automatic_observed_at"),p.values.optLong("last_automatic_at")));
             if(p.values.optLong("last_error_at")<old.values.optLong("last_error_at")){p.values.put("last_error_at",old.values.optLong("last_error_at"));p.lastError=old.lastError;}
@@ -64,6 +64,7 @@ final class TrialDiagnostics {
             if(values.optLong("observed_at")==0)return "CADENCE_NETATMO : UNOBSERVED\n";
             return "CADENCE_NETATMO : fréquence_configurée_s="+values.optLong("period_min")+".."+values.optLong("period_max")
                 +" cycles_moteur="+values.optLong("cycles")+" cycles_automatiques="+values.optLong("automatic_cycles")
+                +" cycles_manuels="+values.optLong("manual_cycles")+" total_manuels_observés="+values.optLong("total_manual_cycles")
                 +" total_cycles_observés="+values.optLong("total_cycles")+" total_automatiques_observés="+values.optLong("total_automatic_cycles")
                 +" dernier_automatique_observé="+stamp(values.optLong("last_automatic_observed_at"))
                 +" dernier_cycle="+stamp(values.optLong("last_cycle_at"))+" dernier_automatique="+stamp(values.optLong("last_automatic_at"))

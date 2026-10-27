@@ -37,3 +37,5 @@ pub use scope::CommandPermit;
 pub use secrets::{MasterKey, forget_secret, has_secret, read_secret, set_secret};
 pub use stats::Stats;
 pub use supervisor::spawn_driver;
+
+pub use hub::{ReadRefresh, ReadRefreshReply};

@@ -7,95 +7,119 @@ import android.widget.*;
 import java.util.concurrent.*;
 import org.json.*;
 
-/** Voluntary foreground-only trial. No credentials or permissions are changed. */
+/** One foreground confirmation; no saved consent, automatic replay or new transport. */
 public final class HeatingTrialActivity extends Activity {
-    static final String[] FIELDS={"vessel_pressure","relay_enclosure","thermostat_input","loss_behavior","supervised"};
-    private static final int[] LABELS={R.string.heating_vessel_pressure,R.string.heating_relay_enclosure,R.string.heating_thermostat_input,R.string.heating_loss_behavior,R.string.heating_supervised};
     private final ExecutorService work=Executors.newSingleThreadExecutor();
-    private final CheckBox[] checks=new CheckBox[FIELDS.length];
     private HeatingTrialConnection client;
     private JSONObject settings,ticket;
     private TextView selected,message;
     private EditText pin;
-    private Button prepare,apply;
+    private Button apply,refresh;
+    private AlertDialog confirmation;
     private volatile boolean foreground;
-    private boolean busy;
-    private long lease;
+    private boolean busy,interrupted;
+    private long lease,visit;
     private String origin,token;
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
         LinearLayout body=TrialUi.page(this);TrialUi.title(this,body,R.string.heating_real_title);
-        TrialUi.text(this,body,R.string.heating_autonomous_blocked);TrialUi.text(this,body,R.string.heating_real_help);
+        TrialUi.text(this,body,R.string.heating_real_help);
         selected=TrialUi.text(this,body,R.string.heating_loading);
-        TrialUi.text(this,body,R.string.heating_physical_warning);
-        for(int i=0;i<checks.length;i++){checks[i]=new CheckBox(this);checks[i].setSaveEnabled(false);checks[i].setSaveFromParentEnabled(false);checks[i].setText(LABELS[i]);checks[i].setMinHeight(TrialUi.dp(this,52));checks[i].setOnCheckedChangeListener((b,on)->update());body.addView(checks[i]);}
+        refresh=TrialUi.button(this,body,R.string.heating_refresh,false,this::refresh);
         pin=new EditText(this);pin.setId(R.id.heating_pin);pin.setSaveEnabled(false);pin.setHint(R.string.heating_pin_optional);pin.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);pin.setSingleLine(true);body.addView(pin);
-        prepare=TrialUi.button(this,body,R.string.heating_prepare,false,this::prepare);prepare.setId(R.id.heating_prepare);
-        apply=TrialUi.button(this,body,R.string.heating_apply,true,this::confirm);apply.setId(R.id.heating_apply);
-        TrialUi.button(this,body,R.string.heating_cancel,false,()->{revoke();ticket=null;message.setText(R.string.heating_trial_cancelled);update();});
-        message=TrialUi.text(this,body,R.string.heating_loading);TrialUi.text(this,body,R.string.heating_stop_warning);
+        apply=TrialUi.button(this,body,R.string.heating_apply,true,this::prepare);apply.setId(R.id.heating_prepare);
+        message=TrialUi.text(this,body,R.string.heating_loading);message.setId(R.id.heating_message);TrialUi.text(this,body,R.string.heating_stop_warning);
         TrialUi.button(this,body,R.string.back,false,this::finish);
         origin=EngineHost.origin();token=EngineHost.token();lease=EngineHost.currentLease();
-        try{client=new HeatingTrialConnection(origin,token);}catch(Exception invalid){message.setText(R.string.heating_unavailable);update();return;}
-        busy=true;update();work.execute(()->{
-            try{JSONObject read=client.read();runOnUiThread(()->{if(isDestroyed())return;settings=read;showSelection(null);message.setText(R.string.heating_unavailable);busy=false;update();});}
-            catch(Exception unavailable){runOnUiThread(()->{if(isDestroyed())return;message.setText(R.string.heating_unavailable);busy=false;update();});}
-        });
+        try{client=new HeatingTrialConnection(origin,token);}catch(Exception invalid){message.setText(R.string.heating_unavailable);}
     }
     private boolean current(){return foreground&&EngineHost.state()==EngineHost.State.RUNNING&&lease==EngineHost.currentLease()&&origin!=null&&origin.equals(EngineHost.origin());}
-    private boolean confirmed(){for(CheckBox check:checks)if(check==null||!check.isChecked())return false;return true;}
     private void update(){
-        if(prepare==null||apply==null)return;
-        prepare.setEnabled(current()&&!busy&&settings!=null&&!settings.isNull("selection")&&confirmed());
-        apply.setEnabled(current()&&!busy&&confirmed()&&ticket!=null&&ticket.optLong("expires_at")>System.currentTimeMillis());
+        apply.setEnabled(current()&&!busy&&settings!=null&&"ready".equals(settings.optString("state")));
+        refresh.setEnabled(current()&&!busy&&settings!=null&&!settings.isNull("selection"));
     }
-    private void showSelection(String demand){
-        JSONObject selection=settings==null?null:settings.optJSONObject("selection");
+    private int reason(String code){
+        return switch(code){
+            case "source_stale","source_unpublished"->R.string.heating_reason_source_stale;
+            case "target_stale","target_unknown"->R.string.heating_reason_target_stale;
+            case "unknown_demand"->R.string.heating_reason_unknown;
+            case "target_permission"->R.string.heating_reason_permission;
+            case "source_offline","target_offline"->R.string.heating_reason_offline;
+            case "source_pending"->R.string.heating_reason_pending;
+            case "source_error"->R.string.heating_reason_source_error;
+            case "identity","coherence"->R.string.heating_reason_identity;
+            case "expired"->R.string.heating_expired_trial;
+            case "demand_changed","version_changed"->R.string.heating_reason_changed;
+            case "cancelled"->R.string.heating_trial_cancelled;
+            case "confirmation","human_session"->R.string.heating_reason_human;
+            case "preflight"->R.string.heating_reason_preflight;
+            case "unconfigured"->R.string.heating_unavailable;
+            default->R.string.heating_trial_failure;
+        };
+    }
+    private int detail(String code){return switch(code){
+        case "timeout","cycle_timeout"->R.string.heating_detail_timeout;
+        case "invalid_response","ambiguous"->R.string.heating_detail_identity;
+        case "credentials","authorization"->R.string.heating_detail_credentials;
+        case "cancelled"->R.string.heating_trial_cancelled;
+        default->R.string.heating_detail_network;
+    };}
+    private String failure(Exception error){return getString(reason(error instanceof HeatingTrialConnection.Refused?error.getMessage():"transport"));}
+    private String value(boolean on){return getString(on?R.string.heating_value_on:R.string.heating_value_off);}
+    private void show(JSONObject read){
+        settings=read;JSONObject selection=read.optJSONObject("selection");
         if(selection==null){selected.setText(R.string.heating_unavailable);return;}
-        selected.setText(getString(R.string.heating_selected,selection.optString("source_name"),selection.optString("target_name"),demand==null?getString(R.string.heating_value_unknown):getString(demand.equals("on")?R.string.heating_value_on:R.string.heating_value_off)));
+        String demand=read.optString("demand");
+        String text=getString(R.string.heating_selected,selection.optString("source_name"),selection.optString("target_name"),demand.equals("on")?value(true):demand.equals("off")?value(false):getString(R.string.heating_value_unknown));
+        if(read.has("actual"))text+="\n"+getString(R.string.heating_real_state)+" : "+value(read.optBoolean("actual"));
+        if(read.has("collected_at"))text+="\n"+getString(R.string.heating_fresh_age,Math.max(0,(System.currentTimeMillis()-read.optLong("collected_at"))/1000));
+        selected.setText(text);apply.setText(getString(R.string.heating_apply_target,selection.optString("target_name")));
     }
+    private void load(){
+        if(client==null||!current())return;final long seen=visit;busy=true;update();
+        work.execute(()->{try{JSONObject read=client.status();runOnUiThread(()->{if(!current()||seen!=visit)return;show(read);message.setText(interrupted?R.string.heating_return:read.optString("state").equals("already_applied")?R.string.heating_already:read.optString("state").equals("ready")?R.string.heating_ready:reason(read.optString("reason")));interrupted=false;busy=false;update();});}
+            catch(Exception e){runOnUiThread(()->{if(!current()||seen!=visit)return;message.setText(failure(e));busy=false;update();});}});
+    }
+    private JSONObject input()throws JSONException{return new JSONObject().put("revision",settings.getLong("revision")).put("epoch",settings.getLong("epoch"));}
     private void prepare(){
-        if(!current()||busy||!confirmed()||settings==null)return;
-        busy=true;ticket=null;update();
-        work.execute(()->{
-            try{JSONObject input=new JSONObject().put("revision",settings.getLong("revision")).put("epoch",settings.getLong("epoch"));JSONObject result=client.prepare(input);JSONObject pending=result.getJSONObject("prepared");
-                runOnUiThread(()->{if(isDestroyed())return;if(!current()){revoke();busy=false;return;}ticket=pending;TrialLog.ui(this,8,2,1,0);showSelection(ticket.optString("demand"));message.setText(getString(R.string.heating_version)+" : "+ticket.optString("fingerprint"));busy=false;update();});
-            }catch(Exception refused){runOnUiThread(()->{if(isDestroyed())return;message.setText(R.string.heating_trial_failure);TrialLog.ui(this,8,5,4,0);busy=false;update();});}
-        });
-    }
-    private void confirm(){
-        if(!current()||busy||!confirmed()||ticket==null||ticket.optLong("expires_at")<=System.currentTimeMillis()){message.setText(R.string.heating_expired_trial);return;}
-        String summary=selected.getText()+"\n"+settings.optJSONObject("selection").optString("target")+"\n\n"+getString(R.string.heating_apply)+"\n"+getString(R.string.heating_stop_warning);
-        new AlertDialog.Builder(this).setTitle(R.string.heating_real_title).setMessage(summary).setNegativeButton(android.R.string.cancel,null).setPositiveButton(R.string.heating_apply,(d,w)->execute()).show();
+        if(!current()||busy||settings==null)return;busy=true;ticket=null;update();final long seen=visit;
+        work.execute(()->{try{JSONObject result=client.prepare(input());runOnUiThread(()->{if(!current()||seen!=visit){revoke();return;}busy=false;ticket=result.optJSONObject("prepared");
+            if(ticket==null){message.setText(R.string.heating_already);update();return;}
+            TrialLog.ui(this,8,2,1,0);message.setText(R.string.heating_await_confirmation);
+            confirmation=new AlertDialog.Builder(this).setTitle(R.string.heating_await_confirmation).setMessage(selected.getText()+"\n\n"+getString(R.string.heating_confirm_once)).setNegativeButton(android.R.string.cancel,(d,w)->{revoke();message.setText(R.string.heating_trial_cancelled);update();}).setPositiveButton(R.string.heating_apply,(d,w)->execute()).create();
+            confirmation.setOnCancelListener(d->{revoke();message.setText(R.string.heating_trial_cancelled);update();});confirmation.show();confirmation.getButton(AlertDialog.BUTTON_POSITIVE).setId(R.id.heating_apply);update();});}
+            catch(Exception e){runOnUiThread(()->{if(!current()||seen!=visit)return;message.setText(failure(e));TrialLog.ui(this,8,5,4,0);busy=false;update();});}});
     }
     private void execute(){
-        if(!current()||busy||!confirmed()||ticket==null||ticket.optLong("expires_at")<=System.currentTimeMillis())return;
-        final JSONObject seen=ticket;ticket=null;busy=true;TrialLog.ui(this,8,1,2,0);update();
-        final String override=pin.getText().toString();pin.setText("");
-        work.execute(()->{
-            int outcome=R.string.heating_trial_failure;
-            try{
-                if(!current())throw new IllegalStateException();
-                JSONObject input=new JSONObject().put("revision",settings.getLong("revision")).put("epoch",settings.getLong("epoch")).put("fingerprint",seen.getString("fingerprint"));
-                for(String field:FIELDS)input.put(field,true);
-                String credential=override.isEmpty()?ProtectedKey.open(this).getString("pin"):override;
-                client.login(credential);
-                if(!current())throw new IllegalStateException();
-                JSONObject result=client.execute(input);
-                if(result.optString("state").equals("confirmed"))outcome=R.string.heating_trial_confirmed;
-                else if(result.optString("state").equals("cancelled"))outcome=R.string.heating_trial_cancelled;
-            }catch(Exception refused){/* Closed diagnostics only; never log HTTP or credentials. */}
-            finally{client.logout();}
-            final int state=outcome;
-            TrialLog.ui(this,8,state==R.string.heating_trial_confirmed?2:5,state==R.string.heating_trial_confirmed?3:4,0);
-            runOnUiThread(()->{if(isDestroyed())return;message.setText(state);busy=false;for(CheckBox c:checks)c.setChecked(false);update();});
-        });
+        if(!current()||busy||ticket==null)return;
+        if(ticket.optLong("expires_at")<=System.currentTimeMillis()){revoke();message.setText(R.string.heating_expired_trial);return;}
+        final JSONObject pending=ticket;ticket=null;busy=true;final long seen=visit;
+        final String override=pin.getText().toString();pin.setText("");message.setText(R.string.heating_sending);TrialLog.ui(this,8,1,2,0);update();
+        work.execute(()->{String outcome;int logState=5;
+            try{if(!current()||seen!=visit)throw new IllegalStateException();
+                JSONObject request=input().put("fingerprint",pending.getString("fingerprint")).put("confirmed",true);
+                client.login(override.isEmpty()?ProtectedKey.open(this).getString("pin"):override);
+                if(!current()||seen!=visit)throw new IllegalStateException();
+                JSONObject result=client.execute(request);String state=result.optString("state");
+                outcome=getString(state.equals("confirmed")?R.string.heating_trial_confirmed:state.equals("already_applied")?R.string.heating_already:state.equals("sent")?R.string.heating_sent:state.equals("cancelled")?R.string.heating_trial_cancelled:reason(result.optString("reason")));
+                if(state.equals("confirmed"))logState=2;
+                if(!state.equals("confirmed")&&!state.equals("already_applied")&&!result.isNull("technical"))outcome+="\n"+getString(detail(result.optString("technical")));
+            }catch(Exception e){outcome=failure(e);}finally{client.logout();}
+            TrialLog.ui(this,8,logState,logState==2?3:4,0);final String result=outcome;
+            runOnUiThread(()->{if(!current()||seen!=visit)return;message.setText(result);busy=false;update();});});
     }
-    private void revoke(){
-        ticket=null;TrialLog.ui(this,8,1,5,0);
-        if(origin!=null&&token!=null)new Thread(()->{boolean confirmed=false;try{confirmed=new HeatingTrialConnection(origin,token).cancel();}catch(Exception ignored){}TrialLog.ui(this,8,confirmed?2:7,confirmed?5:4,0);},"moli-trial-revoke").start();
+    private void refresh(){
+        if(!current()||busy||settings==null)return;busy=true;update();final long seen=visit;
+        work.execute(()->{try{JSONObject result=client.refresh(input());String state=result.optString("status");
+            String text=state.equals("queued")?getString(R.string.heating_refresh_queued):state.equals("busy")?getString(R.string.heating_reason_pending):state.equals("limited")?getString(R.string.heating_refresh_limited,Math.max(1,(result.optLong("retry_at")-System.currentTimeMillis()+999)/1000)):getString(R.string.heating_unavailable);
+            JSONObject observed=client.status();
+            runOnUiThread(()->{if(!current()||seen!=visit)return;show(observed);message.setText(text);busy=false;update();});
+            // Observe completion only; this never asks for another cloud cycle.
+            if(state.equals("queued")||state.equals("busy")){long old=settings.optLong("collected_at");for(int i=0;i<6;i++){Thread.sleep(1000);if(!current()||seen!=visit)return;JSONObject read=client.status();if(read.optLong("collected_at")>old||"refused".equals(read.optString("state"))&&!"source_pending".equals(read.optString("reason"))){runOnUiThread(()->{if(!current()||seen!=visit)return;show(read);message.setText(read.optString("state").equals("ready")?R.string.heating_ready:read.optString("state").equals("already_applied")?R.string.heating_already:reason(read.optString("reason")));update();});break;}}}
+        }catch(Exception e){runOnUiThread(()->{if(!current()||seen!=visit)return;message.setText(failure(e));busy=false;update();});}});
     }
-    @Override public void onStart(){super.onStart();foreground=true;update();}
-    @Override public void onStop(){foreground=false;revoke();for(CheckBox c:checks)if(c!=null)c.setChecked(false);pin.setText("");super.onStop();}
+    private void revoke(){if(ticket!=null)TrialLog.ui(this,8,2,5,0);ticket=null;if(origin!=null&&token!=null)new Thread(()->{try{new HeatingTrialConnection(origin,token).cancel();}catch(Exception ignored){}},"moli-trial-revoke").start();}
+    @Override public void onStart(){super.onStart();foreground=true;visit++;busy=false;load();update();}
+    @Override public void onStop(){foreground=false;visit++;interrupted=ticket!=null||busy;if(confirmation!=null)confirmation.dismiss();revoke();pin.setText("");super.onStop();}
     @Override public void onDestroy(){work.shutdown();super.onDestroy();}
 }

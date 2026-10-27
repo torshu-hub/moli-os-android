@@ -168,8 +168,11 @@ async fn receive_commands(fixture: &Fixture, ctx: &mut DriverCtx) {
             command=ctx.next_command()=>{
                 let Some(command)=command else {break;};
                 fixture.commands.fetch_add(1, Ordering::SeqCst);
-                if command.origin == moli_core::Origin::Automation && !command.automation_authorized() {
-                    command.reply(Err("scope required".into())); continue;
+                if command.origin == moli_core::Origin::Automation {
+                    // Match the existing Meross transport's in-flight invalidation.
+                    // Its own write must not revoke a still-valid source permit.
+                    ctx.set_state(&command.device.id,&command.key,Value::Null);
+                    if !command.automation_authorized() { command.reply(Err("scope required".into())); continue; }
                 }
                 ctx.set_state(&command.device.id,&command.key,command.value.clone()); command.reply(Ok(()));
             }

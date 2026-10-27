@@ -1,4 +1,4 @@
-# Netatmo → Meross : observation continue à blanc et essai supervisé — code35
+# Netatmo → Meross : observation continue à blanc et commande ponctuelle — code36
 
 Code32 reste acquis : quatre permissions manuelles indépendantes, identité,
 SET signé, ACK et relecture. Code33 relie les données du pilote Netatmo existant
@@ -21,7 +21,7 @@ Le pilote traduit uniquement `boiler_status` booléen officiel de ces deux modè
 invalidation → `"unknown"`. Un champ mal typé est refusé par le parsing existant.
 `heating_power_request`, températures et consignes ne déterminent jamais un ON.
 Cela décrit une demande déclarée via le cloud, pas une flamme ni une sécurité.
-La cadence Netatmo validée de code29 n'est pas modifiée ni accélérée par cet écran.
+La cadence ordinaire reste 120 s. Code36 ajoute une lecture manuelle bornée depuis l’écran de commande ; voir `netatmo-polling.md`.
 
 ## Architecture originale et périmètre
 
@@ -30,7 +30,7 @@ La cadence Netatmo validée de code29 n'est pas modifiée ni accélérée par ce
 | Pilotes Netatmo et profil MSS310 | Lectures existantes, variante manuelle, identité, SET/ACK/readback inchangés |
 | Hub et snapshots | Une admission cohérente avant/après le calcul ; origine et journal conservés |
 | `moli-automation` | Graphe code32 réutilisé ; aperçu éphémère via `run_now(dry=true)` ; essai séparé via le même exécuteur |
-| Approbation | Empreinte originale SHA-256 et session humaine originales ; approbation supervisée sans activer de scheduler |
+| Approbation | Empreinte originale SHA-256 et session humaine originales ; confirmation supervisée éphémère sans activer de scheduler |
 | Runtime | `CommandPermit` générique non sérialisable, révocable, borné à un point/une valeur et une admission vivante |
 | API Rust | Petit adaptateur source/cible, sélection et parcours d'essai ; portable Android/Linux |
 | Android | Écran natif de consentement ; connexion humaine privée au seul loopback authentifié |
@@ -38,7 +38,7 @@ La cadence Netatmo validée de code29 n'est pas modifiée ni accélérée par ce
 Le brouillon d'aperçu `!preview-…` n'entre ni dans la liste, ni dans les fichiers,
 ni dans l'historique des runs. Il ne peut être approuvé, activé ou exécuté pour de
 vrai. Le graphe d'essai réel est au contraire un scénario original, visible,
-approuvé sur sa version exacte, **toujours désactivé**. Il n'a qu'un déclencheur
+confirmé ponctuellement sur sa version exacte, **toujours désactivé et non approuvé**. Il n'a qu'un déclencheur
 manuel, des conditions et un seul Set. Aucun déclencheur périodique, de reprise
 ou de changement de demande ne peut être introduit dans ce parcours.
 
@@ -74,24 +74,29 @@ permission d'automatisation.
 2. Choisir source/cible et comparer la demande affichée à Netatmo. Lire l'état réel
    Meross. Un essai sur lampe reste facultatif : le protocole manuel déjà acquis
    n'a pas à être requalifié avant chaque livraison.
-3. Avant tout essai chauffage, faire confirmer l'état du vase d'expansion et la
-   pression/condition de chaudière, l'isolement/boîtier/câblage Finder 230 V, la
-   compatibilité de l'entrée thermostat, et le comportement du relais/commande
-   en perte de Wi-Fi, tablette ou cloud. Ne pas cocher un prérequis inconnu.
-   Aucune mesure ou manipulation sur des bornes 230 V n'est demandée par Moli.
-4. **Préparer un essai réel volontaire** ouvre une page distincte. Les cinq
-   confirmations (dont présence et arrêt manuel sûr) sont décochées au départ,
-   non sauvegardées, révoquées en quittant ou recréant la page. Après confirmation,
-   préparer un ordre unique ; vérifier source, cible, demande et version exacte,
-   puis approuver et appliquer **une fois** dans la confirmation finale.
-5. La préparation expire en 60 s au plus, et plus tôt si les données expirent.
-   Si la source/identité/version change entre-temps, l'essai est refusé. Il n'est
-   jamais rejoué automatiquement. Le succès exige l'ACK et la relecture Meross,
-   pas seulement un envoi. Vérifier soi-même l'effet matériel et l'état final ;
-   exporter le rapport habituel. Un résultat ambigu impose une vérification,
-   pas des clics répétés. Avant de cesser la surveillance, éteindre volontairement
-   la prise choisie depuis sa fiche et vérifier OFF ; en cas de doute, utiliser
-   l’arrêt manuel sûr.
+3. Ouvrir **Commande ponctuelle réelle** : source et prise par nom, demande,
+   âge de collecte et relecture Meross sont regroupés. **Actualiser Netatmo**
+   demande une vraie collecte cloud, distincte du rafraîchissement visuel.
+4. **Appliquer cette demande à [prise]** prépare la version exacte, puis ouvre
+   une seule confirmation pour cet ordre. Aucun questionnaire matériel n’est
+   demandé ni supposé satisfait. L’authentification humaine existante reste requise.
+5. Déjà conforme : aucun ordre ni approbation. Sinon, envoi → ACK → relecture
+   confirmée. Un refus indique sa catégorie technique ; un envoi sans relecture
+   ou transport interrompu reste explicitement incertain. Vérifier l’état avant
+   de recommencer, jamais de rejeu automatique.
+
+La confirmation expire au plus après 120 s, avant expiration de la source.
+Une publication plus récente de même demande est revalidée ; une modification
+source/cible/demande/version annule le ticket. La fraîcheur de la prise est
+recontrôlée au clic, puis le transport manuel existant refait identité, capacité,
+état, ACK et relecture. Quitter/récréer l’écran révoque la préparation et affiche
+l’annulation à la reprise ; aucun OFF n’en résulte. L’ordre déjà transmis ne peut
+être rappelé. Le contrôle manuel OFF reste dans la fiche de la prise.
+
+Contrat : `GET …/trial/status` est sans effet ; `prepare` prend révision/époque,
+`execute` ajoute empreinte et `confirmed:true` uniquement. Les cinq anciens
+booléens sont rejetés ; aucun consentement n’est restauré. L’autorité demeure
+bornée au seul ordre supervisé, sans déverrouillage du scénario quotidien.
 
 Android ouvre une session humaine originale seulement après le dernier clic
 natif. Le PIN déjà protégé par Keystore reste dans le processus natif ; aucun

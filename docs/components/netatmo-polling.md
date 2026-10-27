@@ -121,3 +121,33 @@ confidentiel, regroupement de traces et âge compact. L’exécution des fixture
 Android et la signature sont rapportées à la livraison. Le renouvellement réel
 longue durée et la cadence physique S5e restent à observer sans imposer de nouvelle
 connexion. Toujours aucune commande Netatmo, Meross/Finder ou chauffage.
+
+
+## Code36 — actualisation volontaire
+
+L’écran de commande propose une **vraie lecture Netatmo** via le cycle existant
+`homesdata` + `homestatus`. Une seule demande peut attendre ; aucun scheduler,
+SET ni changement du polling Meross. Minimum **60 s entre débuts** pour une
+lecture volontaire ; le prochain cycle normal est recalé à 120 s. La lecture
+manuelle ne contourne ni backoff réseau ni `429/Retry-After`. Le bouton distingue
+lecture demandée/en cours/délai imposé, puis observe le résultat local sans
+redemander au cloud. Le diagnostic compte `manual_cycles` et `MANUAL` séparément.
+
+Références consultées : [guide développeur Netatmo](https://dev.netatmo.com/guideline)
+et [API Energy](https://dev.netatmo.com/apidocumentation/energy). Le quota exact
+applicable au compte n’est pas inspectable sans ses identifiants ; aucune API
+réelle n’a été appelée par Codex. Les signalements du
+[forum officiel](https://helpcenter.netatmo.com/hc/es/community/posts/29846852785298-Inconsistent-Rate-Limits-for-Netatmo-Home-Control-API)
+montrent des limites effectives variables et des 429 concurrents. On conserve donc
+120 s en fonctionnement courant, sans promettre de push `boiler_status` ni de
+quota disponible. À 60 s au maximum, cette instance effectue 120 lectures de
+données par heure (deux GET par cycle), hors renouvellement OAuth et autres
+applications/instances du compte. Une attente fournisseur supérieure reste prioritaire.
+
+Chevauchement CI vérifié : `android-integrations.yml` et `android-concordance.yml`
+exécutent tous deux les six cas de `test-android-beta-update.sh` lorsque le plan
+sélectionne `update=true`. Le premier scelle les preuves de l’APK candidate, le
+second conserve la preuve indépendante de préservation. Leur réutilisation
+exigerait un artefact attestant SHA/APK et une adaptation de la politique du portail
+épinglée sur main. Aucun workflow ni portail n’est modifié dans code36 ; conserver
+ces validations obligatoires et les caches JNI/plans par fichiers actuels.

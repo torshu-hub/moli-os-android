@@ -19,7 +19,7 @@ final class NetatmoDiagnostics {
         long[][] counts=new long[6][9];String[] outcomes=new String[6];Reason[] lastErrors=new Reason[6];
         java.util.ArrayList<java.util.EnumMap<Reason,Long>> errors=new java.util.ArrayList<>();for(int k=0;k<6;k++)errors.add(new java.util.EnumMap<>(Reason.class));
         long now=System.currentTimeMillis();
-        JSONObject polling=new JSONObject();long minPeriod=0,maxPeriod=0,nextDue=0,pollCycles=0,pollAutomatic=0,pollSuccess=0,pollFailure=0,lastCycle=0,lastAuto=0,gap=0,late=0,delay=0,finished=0,duration=0,interruptions=0,pollErrorAt=0,cycleDue=0;Reason lastPollError=Reason.NONE;boolean inFlight=false;Reason pollReason=Reason.NONE;String trigger="UNOBSERVED";
+        JSONObject polling=new JSONObject();long minPeriod=0,maxPeriod=0,nextDue=0,pollCycles=0,pollAutomatic=0,pollManual=0,pollSuccess=0,pollFailure=0,lastCycle=0,lastAuto=0,gap=0,late=0,delay=0,finished=0,duration=0,interruptions=0,pollErrorAt=0,cycleDue=0;Reason lastPollError=Reason.NONE;boolean inFlight=false;Reason pollReason=Reason.NONE;String trigger="UNOBSERVED";
         for(int i=0;i<Math.min(64,diagnostics.length());i++){
             JSONObject row=diagnostics.optJSONObject(i);if(row==null||!"netatmo".equals(row.optString("kind")))continue;
             configured++;if(row.optBoolean("enabled"))enabled++;if(row.optBoolean("credential_present"))credentials++;if(row.optBoolean("target_selected"))homes++;if(row.optBoolean("driver_started"))started++;if(row.optBoolean("token_expired"))expired++;
@@ -27,8 +27,8 @@ final class NetatmoDiagnostics {
             JSONObject p=row.optJSONObject("polling");if(p!=null&&p.optLong("period_seconds")>0){
                 long period=p.optLong("period_seconds");minPeriod=minPeriod==0?period:Math.min(minPeriod,period);maxPeriod=Math.max(maxPeriod,period);
                 long due=p.optLong("next_due_at");if(due>0)nextDue=nextDue==0?due:Math.min(nextDue,due);
-                pollCycles+=p.optLong("cycles");pollAutomatic+=p.optLong("automatic_cycles");pollSuccess+=p.optLong("successes");pollFailure+=p.optLong("failures");
-                if(p.optLong("last_cycle_at")>=lastCycle){lastCycle=p.optLong("last_cycle_at");trigger=switch(p.optString("trigger")){case "initial"->"INITIAL";case "deadline"->"DEADLINE";case "wall_deadline"->"WALL_DEADLINE";default->"UNOBSERVED";};}
+                pollCycles+=p.optLong("cycles");pollAutomatic+=p.optLong("automatic_cycles");pollManual+=p.optLong("manual_cycles");pollSuccess+=p.optLong("successes");pollFailure+=p.optLong("failures");
+                if(p.optLong("last_cycle_at")>=lastCycle){lastCycle=p.optLong("last_cycle_at");trigger=switch(p.optString("trigger")){case "initial"->"INITIAL";case "deadline"->"DEADLINE";case "wall_deadline"->"WALL_DEADLINE";case "manual"->"MANUAL";default->"UNOBSERVED";};}
                 lastAuto=Math.max(lastAuto,p.optLong("last_automatic_at"));gap=Math.max(gap,p.optLong("last_gap_ms"));late=Math.max(late,p.optLong("late_ms"));delay=Math.max(delay,p.optLong("delay_seconds"));inFlight|=p.optBoolean("in_flight");
                 Reason r=reason(p.optString("reason"));if(r!=Reason.NONE)pollReason=r;
                 finished=Math.max(finished,p.optLong("last_finished_at"));duration=Math.max(duration,p.optLong("last_duration_ms"));interruptions+=p.optLong("interruptions");cycleDue=Math.max(cycleDue,p.optLong("cycle_due_at"));
@@ -59,7 +59,7 @@ final class NetatmoDiagnostics {
         flag(c,Topic.NETATMO_DRIVER,started>0?State.OK:State.ABSENT,started,enabled);
         flag(c,Topic.NETATMO_DATA,seen==0?State.ABSENT:fresh>0?State.OK:State.STALE,temperatures,setpoints);
         flag(c,Topic.NETATMO_BOILER_FIELD,boiler>0?State.OK:State.ABSENT,boiler,unknown);
-        polling.put("period_min",minPeriod).put("period_max",maxPeriod).put("delay_seconds",delay).put("cycles",pollCycles).put("automatic_cycles",pollAutomatic).put("successes",pollSuccess).put("failures",pollFailure)
+        polling.put("period_min",minPeriod).put("period_max",maxPeriod).put("delay_seconds",delay).put("cycles",pollCycles).put("automatic_cycles",pollAutomatic).put("manual_cycles",pollManual).put("successes",pollSuccess).put("failures",pollFailure)
             .put("last_cycle_at",lastCycle).put("last_automatic_at",lastAuto).put("next_due_at",nextDue).put("last_gap_ms",gap).put("late_ms",late).put("trigger",trigger).put("reason",pollReason.name()).put("in_flight",inFlight).put("observed_at",minPeriod>0?now:0).put("generation",generation).put("last_finished_at",finished).put("last_duration_ms",duration).put("interruptions",interruptions).put("last_error_at",pollErrorAt).put("last_error",lastPollError.name()).put("cycle_due_at",cycleDue);
         TrialLog.polling(c,polling);
         TrialLog.diagnostic(c,Topic.NETATMO_POLLING,minPeriod==0?State.UNOBSERVED:inFlight?State.PENDING:pollReason==Reason.CANCELLED?State.CANCELLED:pollReason==Reason.NONE?State.OK:State.FAILED,pollReason,minPeriod,delay,generation,pollCycles,pollSuccess,pollFailure,lastCycle,pollReason==Reason.NONE?finished:0,pollErrorAt);

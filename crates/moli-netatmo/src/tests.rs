@@ -1078,3 +1078,70 @@ async fn categorized_renewal_network_errors_remain_ambiguous_instead_of_requesti
         assert_eq!(m.requests.lock().unwrap().len(), 1);
     }
 }
+
+#[tokio::test(start_paused = true)]
+async fn manual_refresh_uses_existing_read_pair_without_burst_or_quota_bypass() {
+    use moli_runtime::ReadRefreshReply;
+    let h = Harness::start(false).await;
+    let instance = InstanceId::from("energy-test");
+    let initial = h.mock.requests.lock().unwrap().len();
+    assert_eq!(initial, 2);
+    assert!(matches!(
+        h.hub.request_read_refresh(&instance),
+        ReadRefreshReply::Limited { .. }
+    ));
+    advance_read(60).await;
+    queue_recovery(&h.mock);
+    assert_eq!(
+        h.hub.request_read_refresh(&instance),
+        ReadRefreshReply::Queued
+    );
+    assert_eq!(
+        h.hub.request_read_refresh(&instance),
+        ReadRefreshReply::Busy
+    );
+    advance_read(0).await;
+    assert_eq!(h.mock.requests.lock().unwrap().len(), initial + 2);
+    assert_eq!(
+        h.hub.snapshot().diagnostics[0].read.polling.manual_cycles,
+        1
+    );
+    assert_eq!(
+        h.hub.snapshot().diagnostics[0]
+            .read
+            .polling
+            .automatic_cycles,
+        0
+    );
+    advance_read(60).await;
+    let mut headers = HeaderMap::new();
+    headers.insert("retry-after", "7200".parse().unwrap());
+    h.mock.replies.lock().unwrap().push_back(Ok(Response {
+        status: StatusCode::TOO_MANY_REQUESTS,
+        headers,
+        body: "".into(),
+    }));
+    assert_eq!(
+        h.hub.request_read_refresh(&instance),
+        ReadRefreshReply::Queued
+    );
+    advance_read(0).await;
+    advance_read(120).await;
+    assert!(matches!(
+        h.hub.request_read_refresh(&instance),
+        ReadRefreshReply::Limited { .. }
+    ));
+    assert_eq!(h.mock.requests.lock().unwrap().len(), initial + 3);
+    assert!(
+        h.hub
+            .journal(100)
+            .iter()
+            .all(|e| !matches!(e.action, moli_core::Action::Command { .. }))
+    );
+    let hub = h.hub.clone();
+    h.stop().await;
+    assert_eq!(
+        hub.request_read_refresh(&instance),
+        ReadRefreshReply::Unavailable
+    );
+}

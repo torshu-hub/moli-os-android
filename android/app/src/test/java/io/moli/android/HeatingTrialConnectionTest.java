@@ -23,12 +23,12 @@ public final class HeatingTrialConnectionTest {
                     assertEquals("moli_android="+TOKEN+((i==3||i==4)?"; moli_session="+HUMAN:""),cookie);
                     char[] chars=new char[length];int read=0;while(read<length){int n=reader.read(chars,read,length-read);assertTrue(n>0);read+=n;}
                     String body=new String(chars);if(i==2)assertEquals("654321",new JSONObject(body).getString("pin"));
-                    if(i==3){JSONObject input=new JSONObject(body);assertEquals("synthetic-fingerprint",input.getString("fingerprint"));assertFalse(input.has("point"));assertTrue(input.getBoolean("supervised"));}
+                    if(i==3){JSONObject input=new JSONObject(body);assertEquals("synthetic-fingerprint",input.getString("fingerprint"));assertFalse(input.has("point"));assertTrue(input.getBoolean("confirmed"));}
                     String set=i==2?"Set-Cookie: moli_session="+HUMAN+"; HttpOnly; SameSite=Strict; Path=/\r\n":"";
                     byte[] payload="{}".getBytes(StandardCharsets.UTF_8);socket.getOutputStream().write(("HTTP/1.1 200 OK\r\n"+set+"Content-Length: "+payload.length+"\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));socket.getOutputStream().write(payload);
                 }}catch(Exception failure){throw new RuntimeException(failure);}
             });
-            try{HeatingTrialConnection client=new HeatingTrialConnection("http://127.0.0.1:"+server.getLocalPort(),TOKEN);client.read();client.prepare(new JSONObject().put("revision",1));client.login("654321");client.execute(new JSONObject().put("fingerprint","synthetic-fingerprint").put("supervised",true));client.logout();client.cancel();responder.get(8,TimeUnit.SECONDS);}finally{worker.shutdownNow();}
+            try{HeatingTrialConnection client=new HeatingTrialConnection("http://127.0.0.1:"+server.getLocalPort(),TOKEN);client.read();client.prepare(new JSONObject().put("revision",1));client.login("654321");client.execute(new JSONObject().put("fingerprint","synthetic-fingerprint").put("confirmed",true));client.logout();client.cancel();responder.get(8,TimeUnit.SECONDS);}finally{worker.shutdownNow();}
         }
     }
     @Test public void rejectsExternalOrMalformedOriginsWithoutNetwork()throws Exception {

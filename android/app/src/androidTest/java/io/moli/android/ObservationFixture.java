@@ -116,10 +116,56 @@ final class ObservationFixture {
         if(view instanceof android.view.ViewGroup group)for(int i=0;i<group.getChildCount();i++)result.addAll(checkboxes(group.getChildAt(i)));return result;
     }
     private static void nativeActivationStaysBlocked(Context app)throws Exception{
-        try(ActivityScenario<HeatingTrialActivity> trial=ActivityScenario.launch(new Intent(app,HeatingTrialActivity.class))){
-            trial.onActivity(a->{assertTrue((a.getWindow().getAttributes().flags&android.view.WindowManager.LayoutParams.FLAG_SECURE)!=0);java.util.List<android.widget.CheckBox> checks=checkboxes(a.getWindow().getDecorView());assertEquals(5,checks.size());for(android.widget.CheckBox c:checks){assertFalse(c.isChecked());c.setChecked(true);}assertFalse(a.findViewById(R.id.heating_apply).isEnabled());});
-            trial.recreate();trial.onActivity(a->{for(android.widget.CheckBox c:checkboxes(a.getWindow().getDecorView()))assertFalse(c.isChecked());assertFalse(a.findViewById(R.id.heating_apply).isEnabled());});
-        }
+        // Test-only substitution of the embedded origin. Owned loopback responder,
+        // never a provider or device; no production injection hook is shipped.
+        java.lang.reflect.Field field=EngineHost.class.getDeclaredField("origin");field.setAccessible(true);String previous=(String)field.get(null);
+        try(TrialServer server=new TrialServer()){
+            field.set(null,"http://127.0.0.1:"+server.socket.getLocalPort());
+            try(ActivityScenario<HeatingTrialActivity> trial=ActivityScenario.launch(new Intent(app,HeatingTrialActivity.class))){
+                trial.onActivity(a->{assertTrue((a.getWindow().getAttributes().flags&android.view.WindowManager.LayoutParams.FLAG_SECURE)!=0);assertEquals(0,checkboxes(a.getWindow().getDecorView()).size());assertNull(confirmation(a));});
+                waitTrial(trial,a->a.findViewById(R.id.heating_prepare).isEnabled());
+                assertEquals(0,server.executions);
+                trial.onActivity(a->a.findViewById(R.id.heating_prepare).performClick());
+                waitTrial(trial,a->confirmation(a)!=null);
+                assertEquals(0,server.executions);
+                trial.onActivity(a->confirmation(a).performClick());
+                waitTrial(trial,a->((android.widget.TextView)a.findViewById(R.id.heating_message)).getText().toString().equals(a.getString(R.string.heating_trial_confirmed)));
+                assertEquals(1,server.executions);
+                trial.recreate();waitTrial(trial,a->a.findViewById(R.id.heating_prepare).isEnabled());assertEquals(1,server.executions);
+                trial.onActivity(a->a.findViewById(R.id.heating_prepare).performClick());waitTrial(trial,a->confirmation(a)!=null);
+                trial.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
+                trial.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
+                waitTrial(trial,a->a.findViewById(R.id.heating_prepare).isEnabled());
+                trial.onActivity(a->assertNull(confirmation(a)));assertEquals(1,server.executions);
+                field.set(null,previous);
+            }
+            server.check();
+        }finally{field.set(null,previous);}
+    }
+    private static android.widget.Button confirmation(HeatingTrialActivity activity){
+        try{java.lang.reflect.Field field=HeatingTrialActivity.class.getDeclaredField("confirmation");field.setAccessible(true);android.app.AlertDialog dialog=(android.app.AlertDialog)field.get(activity);return dialog!=null&&dialog.isShowing()?dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE):null;}catch(Exception e){throw new AssertionError(e);}
+    }
+    private static void waitTrial(ActivityScenario<HeatingTrialActivity> trial,java.util.function.Predicate<HeatingTrialActivity> condition)throws Exception{
+        TouchRegression.until(()->{java.util.concurrent.atomic.AtomicBoolean yes=new java.util.concurrent.atomic.AtomicBoolean();trial.onActivity(a->yes.set(condition.test(a)));return yes.get();});
+    }
+    private static final class TrialServer implements AutoCloseable {
+        final ServerSocket socket;final Thread worker;volatile int executions;volatile Throwable failure;volatile boolean closed;
+        TrialServer()throws Exception{socket=new ServerSocket(0,16,InetAddress.getByName("127.0.0.1"));worker=new Thread(this::serve,"synthetic-trial");worker.start();}
+        void serve(){try{while(!closed)try(Socket connection=socket.accept()){
+            BufferedReader reader=new BufferedReader(new InputStreamReader(connection.getInputStream(),StandardCharsets.UTF_8));String request=reader.readLine(),line;int length=0;String cookie="";
+            while((line=reader.readLine())!=null&&!line.isEmpty()){String lower=line.toLowerCase(java.util.Locale.ROOT);if(lower.startsWith("content-length:"))length=Integer.parseInt(line.substring(line.indexOf(':')+1).trim());if(lower.startsWith("cookie:"))cookie=line;}
+            char[] input=new char[length];int read=0;while(read<length){int n=reader.read(input,read,length-read);if(n<0)throw new EOFException();read+=n;}
+            assertTrue(cookie.contains("moli_android="));JSONObject body=length==0?new JSONObject():new JSONObject(new String(input));
+            String path=request.split(" ")[1],extra="";JSONObject result=new JSONObject().put("autonomous",false);
+            if(path.endsWith("/status")){result.put("revision",1).put("epoch",2).put("selection",new JSONObject().put("source_name","Synthetic thermostat").put("target_name","Synthetic outlet")).put("state","ready").put("demand","on").put("actual",false).put("collected_at",System.currentTimeMillis());}
+            else if(path.endsWith("/prepare")){assertEquals(1,body.getInt("revision"));result.put("state","prepared").put("prepared",new JSONObject().put("fingerprint","synthetic-fingerprint").put("demand","on").put("expires_at",System.currentTimeMillis()+120000));}
+            else if(path.endsWith("/execute")){assertTrue(cookie.contains("moli_session="));assertTrue(body.getBoolean("confirmed"));assertEquals(4,body.length());assertEquals("synthetic-fingerprint",body.getString("fingerprint"));executions++;result.put("state","confirmed");}
+            else if(path.equals("/api/session")){if(request.startsWith("POST"))extra="Set-Cookie: moli_session="+"b".repeat(64)+"; HttpOnly; Path=/\r\n";}
+            else if(path.endsWith("/cancel"))result.put("state","cancelled");else if(path.equals("/api/health"))result.put("name","moli-os");else if(path.equals("/api/devices")||path.equals("/api/snapshot"))result.put("devices",new JSONArray()).put("drivers",new JSONArray()).put("diagnostics",new JSONArray());else if(!request.startsWith("GET "))throw new AssertionError("Unexpected synthetic mutation: "+path);
+            byte[] output=result.toString().getBytes(StandardCharsets.UTF_8);connection.getOutputStream().write(("HTTP/1.1 200 OK\r\n"+extra+"Content-Type: application/json\r\nContent-Length: "+output.length+"\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));connection.getOutputStream().write(output);
+        }}catch(Throwable error){if(!closed)failure=error;}}
+        void check(){if(failure!=null)throw new AssertionError("Synthetic native trial",failure);}
+        public void close()throws Exception{closed=true;socket.close();worker.join(2000);check();}
     }
     private ObservationFixture(){}
 }

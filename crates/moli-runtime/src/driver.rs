@@ -110,6 +110,11 @@ impl DriverCtx {
         self.hub.observe_read(&self.instance, kind, event);
     }
 
+    /// Register a bounded read-only wakeup on the existing driver loop.
+    pub fn read_refresh(&self) -> crate::ReadRefresh {
+        self.hub.register_read_refresh(&self.instance)
+    }
+
     /// Builds a device id owned by this instance.
     #[must_use]
     pub fn device_id(&self, native: &str) -> DeviceId {

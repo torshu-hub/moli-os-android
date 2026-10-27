@@ -1,5 +1,5 @@
-//! One human-approved, non-scheduled, bounded execution of an existing graph.
-use super::{Actor, Automation, AutomationError, Automations, Graph, Run, Step, lock, run};
+//! One human-confirmed, non-scheduled, bounded execution of an existing graph.
+use super::{Actor, AutomationError, Automations, Graph, Run, Step, lock, run};
 use moli_i18n::tr;
 use moli_runtime::CommandPermit;
 struct Grant(Automations, u64, CommandPermit);
@@ -10,19 +10,9 @@ impl Drop for Grant {
     }
 }
 impl Automations {
-    /// Approve the exact manual-only version without enabling any scheduler.
-    pub async fn approve_supervised(
-        &self,
-        id: &str,
-        fingerprint: &str,
-        by: Actor,
-    ) -> Result<Automation, AutomationError> {
-        let a = self.get(id).ok_or(AutomationError::Unknown)?;
-        manual_only(&a.graph)?;
-        self.approve_as(id, fingerprint, by, false).await
-    }
     /// Uses the original executor, guard, journal and driver path. The grant is
     /// confined to this run and always revoked, including task cancellation.
+    /// Human confirmation is per call; no approval is persisted or inherited.
     pub async fn run_supervised(
         &self,
         id: &str,
@@ -37,9 +27,9 @@ impl Automations {
         if a.fingerprint() != fingerprint {
             return Err(AutomationError::Conflict);
         }
-        if !a.is_approved() || a.enabled || !self.check(&a.graph).ok() {
+        if a.enabled || !self.check(&a.graph).ok() {
             return Err(AutomationError::Invalid(
-                "approve the disabled supervised version first".into(),
+                "supervised execution requires a valid disabled version".into(),
             ));
         }
         manual_only(&a.graph)?;

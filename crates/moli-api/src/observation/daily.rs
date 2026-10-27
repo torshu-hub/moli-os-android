@@ -94,6 +94,34 @@ pub(super) fn review_snapshot(
     selection: &Selection,
     now: u64,
 ) -> Result<(super::Admission, moli_automation::ObservationSample), &'static str> {
+    let mut admitted = review_source(snapshot, selection, now)?;
+    let target = find(snapshot, &selection.target)
+        .and_then(|d| d.state.get("on"))
+        .ok_or("target_unknown")?;
+    let Value::Bool(actual) = target.value else {
+        return Err("target_unknown");
+    };
+    if target.ts == 0 || target.ts > now || now - target.ts >= 65_000 {
+        return Err("target_stale");
+    }
+    admitted.valid_until = admitted.valid_until.min(target.ts.saturating_add(65_000));
+    admitted.stamp = json!([admitted.stamp, target]);
+    let sample = moli_automation::ObservationSample {
+        publication: admitted.collected,
+        desired: admitted.demand == Demand::On,
+        actual,
+        valid_until: admitted.valid_until,
+        witness: admitted.stamp.clone(),
+    };
+    Ok((admitted, sample))
+}
+// Also used at the one-shot command boundary: its own in-flight Meross
+// write temporarily invalidates `on`, so only the source/model gate belongs here.
+pub(super) fn review_source(
+    snapshot: &moli_runtime::Snapshot,
+    selection: &Selection,
+    now: u64,
+) -> Result<super::Admission, &'static str> {
     let source = find(snapshot, &selection.source).ok_or("identity")?;
     let read = &snapshot
         .diagnostics
@@ -125,26 +153,8 @@ pub(super) fn review_snapshot(
     {
         return Err("unknown_demand");
     }
-    let mut admitted = trial::real_snapshot(snapshot, selection, now).map_err(|_| "coherence")?;
-    let target = find(snapshot, &selection.target)
-        .and_then(|d| d.state.get("on"))
-        .ok_or("target_unknown")?;
-    let Value::Bool(actual) = target.value else {
-        return Err("target_unknown");
-    };
-    if target.ts == 0 || target.ts > now || now - target.ts >= 65_000 {
-        return Err("target_stale");
-    }
-    admitted.valid_until = admitted.valid_until.min(target.ts.saturating_add(65_000));
-    admitted.stamp = json!([admitted.stamp, target]);
-    let sample = moli_automation::ObservationSample {
-        publication: admitted.collected,
-        desired: admitted.demand == Demand::On,
-        actual,
-        valid_until: admitted.valid_until,
-        witness: admitted.stamp.clone(),
-    };
-    Ok((admitted, sample))
+    let admitted = trial::real_snapshot(snapshot, selection, now).map_err(|_| "coherence")?;
+    Ok(admitted)
 }
 impl moli_automation::ObservationSource for AdmissionGate {
     fn review(&self) -> Result<moli_automation::ObservationSample, &'static str> {

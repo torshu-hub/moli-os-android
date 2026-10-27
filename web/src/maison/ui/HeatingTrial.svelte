@@ -6,15 +6,14 @@
  import {onMount} from 'svelte';
  let {settings,shown,dirty,now}= $props();
  let sequence=0,destroyed=false;
- let pending=$state(null),status=$state(''),busy=$state(false),checks=$state({});
- const fields=['vessel_pressure','relay_enclosure','thermostat_input','loss_behavior','supervised'];
+ let pending=$state(null),status=$state(''),busy=$state(false),consent=$state(false);
  const ready=$derived(!dirty&&shown.state==='ready'&&settings?.selection);
  const valid=$derived(ready&&pending&&pending.revision===settings.revision&&pending.demand===shown.demand&&now<pending.expires_at);
- const confirmed=$derived(fields.every(k=>checks[k]===true));
+ const confirmed=$derived(consent);
  const request=(suffix,body)=>readJson(observationPath+'/trial/'+suffix,{timeout:9000,valid:r=>r?.autonomous===false&&typeof r.state==='string',fetcher:(url,opts)=>fetch(url,{...opts,method:'POST',headers:{'content-type':'application/json','x-moli-origin':'ui'},...(body?{body:JSON.stringify(body)}:{})})});
- async function prepare(){if(!ready||!confirmed||busy)return;busy=true;const attempt=++sequence;pending=null;status='';try{const r=await request('prepare',{revision:settings.revision,epoch:settings.epoch});if(attempt===sequence&&!destroyed)pending=r.prepared;}catch{if(attempt===sequence&&!destroyed)status='trial_failure';}finally{busy=false;}}
- async function apply(){if(!valid||!confirmed||busy||!hub.session?.human)return;busy=true;const attempt=++sequence,seen=pending;pending=null;try{const r=await request('execute',{revision:settings.revision,epoch:settings.epoch,fingerprint:seen.fingerprint,...Object.fromEntries(fields.map(k=>[k,checks[k]===true]))});if(attempt===sequence&&!destroyed)status=r.state==='confirmed'?'trial_confirmed':r.state==='cancelled'?'trial_cancelled':'trial_failure';}catch{if(attempt===sequence&&!destroyed)status='trial_failure';}finally{checks={};busy=false;}}
- async function cancel(){sequence++;pending=null;checks={};status='trial_cancelled';await request('cancel').catch(()=>{if(!destroyed)status='trial_failure';});}
+ async function prepare(){if(!ready||!confirmed||busy)return;busy=true;const attempt=++sequence;pending=null;status='';try{const r=await request('prepare',{revision:settings.revision,epoch:settings.epoch});if(attempt===sequence&&!destroyed){pending=r.prepared;if(r.state==='already_applied')status='already';}}catch{if(attempt===sequence&&!destroyed)status='trial_failure';}finally{busy=false;}}
+ async function apply(){if(!valid||!confirmed||busy||!hub.session?.human)return;busy=true;const attempt=++sequence,seen=pending;pending=null;try{const r=await request('execute',{revision:settings.revision,epoch:settings.epoch,fingerprint:seen.fingerprint,confirmed:consent});if(attempt===sequence&&!destroyed)status=r.state==='already_applied'?'already':r.state==='confirmed'?'trial_confirmed':r.state==='cancelled'?'trial_cancelled':'trial_failure';}catch{if(attempt===sequence&&!destroyed)status='trial_failure';}finally{consent=false;busy=false;}}
+ async function cancel(){sequence++;pending=null;consent=false;status='trial_cancelled';await request('cancel').catch(()=>{if(!destroyed)status='trial_failure';});}
  function identify(){home.held={label:t('maison.observation.real_title'),reason:'automation',custom:()=>{}};}
  onMount(()=>{destroyed=false;refreshSession();const hide=()=>{if(document.hidden&&(pending||busy))cancel();};document.addEventListener('visibilitychange',hide);return()=>{document.removeEventListener('visibilitychange',hide);if(pending||busy)cancel();destroyed=true;sequence++;};});
 </script>
@@ -24,8 +23,7 @@
  {#if home.platform==='android'}
   <a class="native" href="/android/heating-trial" data-heating-native>{t('maison.observation.real_open')}</a>
  {:else}
-  <p>{t('maison.observation.physical_warning')}</p>
-  {#each fields as field}<label><input type="checkbox" bind:checked={checks[field]} disabled={busy}/>{t('maison.observation.'+field)}</label>{/each}
+  <label><input type="checkbox" bind:checked={consent} disabled={busy}/>{t('maison.observation.confirm_once')}</label>
   <button data-heating-prepare disabled={!ready||!confirmed||busy} onclick={prepare}>{t('maison.observation.prepare')}</button>
   {#if pending}<p>{t('maison.observation.version')} : <code>{pending.fingerprint}</code> — {t('maison.observation.value.'+pending.demand)}</p>{/if}
   {#if !hub.session?.human}<button onclick={identify}>{t('maison.observation.pin')}</button>{/if}

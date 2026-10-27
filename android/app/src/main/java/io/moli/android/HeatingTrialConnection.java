@@ -15,6 +15,9 @@ final class HeatingTrialConnection {
         if(!origin.equals("http://127.0.0.1:"+url.getPort())||!"http".equals(url.getProtocol())||!"127.0.0.1".equals(url.getHost())||url.getPort()<1||!url.getPath().isEmpty()||token==null||!token.matches("[a-f0-9]{64}"))throw new IOException("local_connection");
         this.origin=origin;this.token=token;
     }
+    static final class Refused extends IOException { Refused(String reason){super(reason);} }
+    JSONObject status()throws Exception{return request("GET",PATH+"/trial/status",null);}
+    JSONObject refresh(JSONObject input)throws Exception{return request("POST",PATH+"/refresh",input);}
     JSONObject read()throws Exception{return request("GET",PATH,null);}
     JSONObject prepare(JSONObject input)throws Exception{return request("POST",PATH+"/trial/prepare",input);}
     JSONObject execute(JSONObject input)throws Exception{return request("POST",PATH+"/trial/execute",input);}
@@ -32,7 +35,12 @@ final class HeatingTrialConnection {
         c.setRequestProperty("X-Moli-Origin","ui");c.setRequestProperty("Cache-Control","no-store");
         try {
             if(input!=null){byte[] bytes=input.toString().getBytes(StandardCharsets.UTF_8);c.setRequestProperty("Content-Type","application/json");c.setFixedLengthStreamingMode(bytes.length);c.setDoOutput(true);try(OutputStream out=c.getOutputStream()){out.write(bytes);}}
-            if(c.getResponseCode()!=200)throw new IOException("local_trial_refused");
+            if(c.getResponseCode()!=200){
+                String reason="transport";
+                try(InputStream in=c.getErrorStream()){if(in!=null)reason=new JSONObject(ProfileStore.bounded(in,4096)).optString("reason","transport");}catch(Exception ignored){}
+                if(path.equals("/api/session"))reason="human_session";
+                throw new Refused(reason);
+            }
             if(path.equals("/api/session")&&method.equals("POST")){
                 String set=c.getHeaderField("Set-Cookie");
                 if(set!=null&&set.matches("moli_session=[a-f0-9]{64};.*"))human=set.substring(0,set.indexOf(';'));

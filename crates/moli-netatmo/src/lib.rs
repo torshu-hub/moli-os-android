@@ -295,6 +295,8 @@ impl Driver for Netatmo {
     fn kind(&self) -> &'static str {
         "netatmo"
     }
+    // Keep the single read/select/backoff loop together; no parallel refresher.
+    #[allow(clippy::too_many_lines)]
     fn run<'a>(&'a self, ctx: &'a mut DriverCtx) -> BoxFuture<'a, anyhow::Result<()>> {
         Box::pin(async move {
             ctx.observe_read(
@@ -311,6 +313,7 @@ impl Driver for Netatmo {
             for id in ctx.devices() {
                 invalidate(ctx, &id, "unconfirmed", "");
             }
+            let refresh = ctx.read_refresh();
             let mut polling = polling::Polling::new(Instant::now(), now_ms());
             let mut force_refresh = false;
             let mut pending = None;
@@ -318,21 +321,28 @@ impl Driver for Netatmo {
             let mut tick = tokio::time::interval(Duration::from_secs(5));
             tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                tokio::select! {
+                let manual = tokio::select! {
+                    ()=refresh.notified()=>refresh.take(),
                     command = ctx.next_command() => {
                         let Some(command) = command else { return Ok(()); };
                         command.reply(Err(tr!("pilotes.netatmo.read_only")));
                         continue;
                     }
-                    () = tokio::time::sleep_until(polling.next) => {},
-                    _ = tick.tick() => {}
-                }
+                    () = tokio::time::sleep_until(polling.next) => false,
+                    _ = tick.tick() => false
+                };
                 expire(ctx, &mut records, self.config.max_age_seconds * 1000);
                 let start = Instant::now();
                 let start_wall = now_ms();
-                let Some((trigger, late_ms)) = polling.due(start, start_wall) else {
+                let due = if manual {
+                    Some((moli_runtime::ReadTrigger::Manual, 0))
+                } else {
+                    polling.due(start, start_wall)
+                };
+                let Some((trigger, late_ms)) = due else {
                     continue;
                 };
+                refresh.begin();
                 ctx.observe_read(
                     "netatmo",
                     ReadEvent::Cycle {
@@ -386,6 +396,12 @@ impl Driver for Netatmo {
                 };
                 let delay = delay.min(7 * 86400);
                 polling.schedule(start, start_wall, Instant::now(), now_ms(), delay, outcome);
+                let minimum = start + Duration::from_secs(60);
+                refresh.complete(if outcome == ReadOutcome::Ok {
+                    minimum
+                } else {
+                    minimum.max(polling.next)
+                });
                 ctx.observe_read(
                     "netatmo",
                     ReadEvent::Scheduled {
