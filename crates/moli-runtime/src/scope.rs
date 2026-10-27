@@ -11,6 +11,8 @@ struct Inner {
     point: PointId,
     value: Value,
     until: Instant,
+    issued_ms: u64,
+    until_ms: u64,
     revoked: AtomicBool,
     stop: std::sync::Mutex<
         Option<(
@@ -36,10 +38,14 @@ impl CommandPermit {
         ttl: Duration,
         admission: impl Fn() -> bool + Send + Sync + 'static,
     ) -> Self {
+        let ttl = ttl.min(Duration::from_secs(10));
+        let issued_ms = moli_core::now_ms();
         Self(Arc::new(Inner {
             point,
             value,
-            until: Instant::now() + ttl.min(Duration::from_secs(10)),
+            until: Instant::now() + ttl,
+            issued_ms,
+            until_ms: issued_ms.saturating_add(u64::try_from(ttl.as_millis()).unwrap_or(u64::MAX)),
             revoked: AtomicBool::new(false),
             admission: Box::new(admission),
             stop: std::sync::Mutex::default(),
@@ -47,7 +53,12 @@ impl CommandPermit {
     }
     #[must_use]
     pub fn allows(&self, point: &PointId, value: &Value) -> bool {
-        !self.0.revoked.load(Ordering::Acquire)
+        // Android/Linux monotonic clocks can pause during device suspension.
+        // Neither suspension nor a backwards clock change extends this grant.
+        let now = moli_core::now_ms();
+        now >= self.0.issued_ms
+            && now < self.0.until_ms
+            && !self.0.revoked.load(Ordering::Acquire)
             && !self
                 .0
                 .stop
@@ -110,5 +121,23 @@ mod tests {
         assert!(!cloned.allows(&p, &v));
         let expired = CommandPermit::new(p.clone(), v.clone(), Duration::ZERO, || true);
         assert!(!expired.allows(&p, &v));
+    }
+    #[test]
+    fn wall_expiration_or_reversal_refuses_a_still_live_monotonic_grant() {
+        let p = PointId::from("synthetic:plug/on");
+        let v = Value::Bool(true);
+        for reverse in [false, true] {
+            let mut grant =
+                CommandPermit::new(p.clone(), v.clone(), Duration::from_secs(6), || true);
+            assert!(grant.allows(&p, &v));
+            let inner = Arc::get_mut(&mut grant.0).unwrap();
+            assert!(Instant::now() < inner.until);
+            if reverse {
+                inner.issued_ms = moli_core::now_ms() + 60_000;
+            } else {
+                inner.until_ms = 0;
+            }
+            assert!(!grant.allows(&p, &v));
+        }
     }
 }
