@@ -64,8 +64,8 @@ final class TrialDiagnostics {
             if(values.optLong("observed_at")==0)return "CADENCE_NETATMO : UNOBSERVED\n";
             return "CADENCE_NETATMO : fréquence_configurée_s="+values.optLong("period_min")+".."+values.optLong("period_max")
                 +" cycles_moteur="+values.optLong("cycles")+" cycles_automatiques="+values.optLong("automatic_cycles")
-                +" cycles_manuels="+values.optLong("manual_cycles")+" total_manuels_observés="+values.optLong("total_manual_cycles")
                 +" total_cycles_observés="+values.optLong("total_cycles")+" total_automatiques_observés="+values.optLong("total_automatic_cycles")
+                +" cycles_manuels="+values.optLong("manual_cycles")+" total_manuels_observés="+values.optLong("total_manual_cycles")
                 +" dernier_automatique_observé="+stamp(values.optLong("last_automatic_observed_at"))
                 +" dernier_cycle="+stamp(values.optLong("last_cycle_at"))+" dernier_automatique="+stamp(values.optLong("last_automatic_at"))
                 +" intervalle_effectif_max_ms="+values.optLong("last_gap_ms")+" prochaine_échéance="+stamp(values.optLong("next_due_at"))
