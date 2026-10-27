@@ -6,24 +6,21 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 
 /** Authenticated loopback only. Human cookie never enters the WebView or logs. */
-final class HeatingTrialConnection {
-    static final String PATH="/api/observations/netatmo-meross";
+final class DeviceLinkConnection {
+    static final String PATH="/api/device-link";
     private final String origin,token;
     private String human="";
-    HeatingTrialConnection(String origin,String token)throws Exception {
+    DeviceLinkConnection(String origin,String token)throws Exception {
         URL url=new URL(origin);
         if(!origin.equals("http://127.0.0.1:"+url.getPort())||!"http".equals(url.getProtocol())||!"127.0.0.1".equals(url.getHost())||url.getPort()<1||!url.getPath().isEmpty()||token==null||!token.matches("[a-f0-9]{64}"))throw new IOException("local_connection");
         this.origin=origin;this.token=token;
     }
     static final class Refused extends IOException { Refused(String reason){super(reason);} }
-    JSONObject status()throws Exception{return request("GET",PATH+"/trial/status",null);}
-    JSONObject refresh(JSONObject input)throws Exception{return request("POST",PATH+"/refresh",input);}
     JSONObject read()throws Exception{return request("GET",PATH,null);}
-    JSONObject prepare(JSONObject input)throws Exception{return request("POST",PATH+"/trial/prepare",input);}
-    JSONObject execute(JSONObject input)throws Exception{return request("POST",PATH+"/trial/execute",input);}
-    boolean cancel(){try{return "cancelled".equals(request("POST",PATH+"/trial/cancel",null).optString("state"));}catch(Exception ignored){return false;}}
+    JSONObject save(JSONObject input)throws Exception{return request("PUT",PATH,input);}
+    JSONObject refresh(JSONObject input)throws Exception{return request("POST",PATH+"/refresh",input);}
     void login(String pin)throws Exception {
-        // Only called following the native final physical-effect confirmation.
+        // Only following an explicit configuration/activation gesture.
         request("POST","/api/session",new JSONObject().put("pin",pin));
         if(human.isEmpty())throw new IOException("human_session");
     }

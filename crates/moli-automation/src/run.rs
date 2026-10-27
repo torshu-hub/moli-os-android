@@ -191,8 +191,6 @@ pub(crate) async fn execute(
 }
 
 async fn remember(autos: &Automations, run: &Run) {
-    if !run.automation.starts_with(crate::PREVIEW_PREFIX)
-        && !lock(&autos.0.observation_runs).contains(&run.id)
     {
         let recent: Vec<Run> = {
             let mut runs = lock(&autos.0.runs);
@@ -272,7 +270,7 @@ async fn step(
             }
         }
         Step::Set { point, value } => {
-            act(autos, a, point, Value::from_json(value), dry, run.id).await
+            act(autos, a, point, Value::from_json(value), dry, token).await
         }
         Step::Toggle { point } => {
             let pid = PointId::from(point.as_str());
@@ -288,7 +286,7 @@ async fn step(
                     );
                 }
             };
-            act(autos, a, point, next, dry, run.id).await
+            act(autos, a, point, next, dry, token).await
         }
         Step::Wait { seconds } => {
             if dry {
@@ -398,13 +396,17 @@ async fn act(
     point: &str,
     value: Value,
     dry: bool,
-    run_id: u64,
+    token: &CancellationToken,
 ) -> (StepStatus, Option<String>, Option<&'static str>) {
     let pid = PointId::from(point);
     if (!dry && crate::heating_locked(&a.graph)) || !autos.admits(a, &pid, &value) {
         return (
             StepStatus::Failed,
-            Some(tr!("moteur.refus.chauffage_verrouille")),
+            Some(if crate::heating_locked(&a.graph) {
+                tr!("moteur.refus.chauffage_verrouille")
+            } else {
+                tr!("moteur.refus.regle_indisponible")
+            }),
             None,
         );
     }
@@ -415,12 +417,17 @@ async fn act(
             Some("out"),
         );
     }
-    let scope = lock(&autos.0.scopes).get(&run_id).cloned();
-    let result = if let Some(scope) = scope {
+    let authority = autos.command_authority(a, &pid, &value, token);
+    let result = if let Some(authority) = &authority {
         autos
             .0
             .hub
-            .command_scoped(&pid, value.clone(), Some(a.name.clone()), scope)
+            .command_scoped(
+                &pid,
+                value.clone(),
+                Some(a.name.clone()),
+                authority.0.clone(),
+            )
             .await
     } else {
         autos

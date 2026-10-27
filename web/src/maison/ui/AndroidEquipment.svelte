@@ -1,5 +1,4 @@
 <script>
-  import NetatmoMerossObservation from './NetatmoMerossObservation.svelte';
   import { home, hub, device, clock, num } from '../lib/home.svelte.js';
   import { equipmentStatus, durationParts, sampleMaxAge } from '../lib/equipment-status.js';
   import { t } from '../../lib/i18n.svelte.js';
@@ -37,7 +36,7 @@
 
 <section class="equipment" class:standalone data-my-devices>
   <div class="card-head">{#if standalone}<h1>{t('maison.equipment.title')}</h1>{:else}<h2>{t('maison.equipment.title')}</h2>{/if}<a href="/android/equipment">{t('maison.android.settings')}</a></div>
-  {#if standalone}<NetatmoMerossObservation/>{/if}
+  {#if standalone}<section class="card" data-device-link><h2>{t('maison.link.title')}</h2><p>{t('maison.link.help')}</p><a href="/android/device-link">{t('maison.link.open')}</a></section>{/if}
   {#if cards.some(c=>c.kind!=='meross')}<p class="muted">{t('maison.equipment.help')}</p>{/if}
   {#if !cards.length}<p>{t('maison.equipment.empty')}</p>{/if}
   <div class="devices">

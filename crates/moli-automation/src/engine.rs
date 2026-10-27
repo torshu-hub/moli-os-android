@@ -34,7 +34,6 @@ pub(crate) async fn run(autos: Automations) {
             () = cancel.cancelled() => break,
             event = events.recv() => match event {
                 Ok(event) => {
-                    autos.observation_event(&event);
                     if let Event::State { point, value, ts }=event { on_state(&autos,&point,&value,ts); }
                 }
                 Err(RecvError::Lagged(missed)) => {
@@ -43,7 +42,7 @@ pub(crate) async fn run(autos: Automations) {
                 }
                 Err(RecvError::Closed) => break,
             },
-            _ = clock.tick() => { autos.observation_tick(); on_clock(&autos); },
+            _ = clock.tick() => { on_clock(&autos); },
             () = &mut started, if !start_done => {
                 start_done = true;
                 for a in live(&autos).iter() {
@@ -61,7 +60,6 @@ pub(crate) async fn run(autos: Automations) {
         .0
         .shutting_down
         .store(true, std::sync::atomic::Ordering::Relaxed);
-    autos.stop_observations();
     for (_, all) in lock(&autos.0.stops).drain() {
         all.cancel();
     }
@@ -75,10 +73,10 @@ pub(crate) async fn run(autos: Automations) {
 /// within the minute, they do not fire twice.
 fn mark_this_minute(autos: &Automations) {
     for a in live(autos).iter() {
-        mark_observation_minute(autos, a);
+        mark_minute(autos, a);
     }
 }
-pub(crate) fn mark_observation_minute(autos: &Automations, a: &Automation) {
+fn mark_minute(autos: &Automations, a: &Automation) {
     let now = jiff::Timestamp::now().to_zoned(autos.0.tz.clone());
     let minute = u32::from(now.hour().unsigned_abs()) * 60 + u32::from(now.minute().unsigned_abs());
     let stamp = format!("{} {minute}", now.date());
@@ -93,18 +91,7 @@ pub(crate) fn mark_observation_minute(autos: &Automations, a: &Automation) {
     }
 }
 fn live(autos: &Automations) -> std::sync::Arc<Vec<Automation>> {
-    let live = autos.live();
-    let observed = autos.observed();
-    if observed.is_empty() {
-        return live;
-    }
-    let mut scheduled = live.as_ref().clone();
-    for a in observed {
-        if !scheduled.iter().any(|existing| existing.id == a.id) {
-            scheduled.push(a);
-        }
-    }
-    std::sync::Arc::new(scheduled)
+    autos.live()
 }
 
 /// Current values, so the first change seen has a « before ».
@@ -118,16 +105,13 @@ fn remember_all(autos: &Automations) {
     }
 }
 
-pub(crate) fn on_state(autos: &Automations, point: &PointId, value: &Value, ts: u64) {
+pub(crate) fn on_state(autos: &Automations, point: &PointId, value: &Value, _ts: u64) {
     let key = point.to_string();
     let prev = lock(&autos.0.last).insert(key.clone(), value.clone());
     if prev.as_ref() == Some(value) {
         return;
     }
     for a in live(autos).iter() {
-        if !autos.observation_event_is_current(&a.id, ts) {
-            continue;
-        }
         for t in a.graph.triggers() {
             match &t.step {
                 Step::WhenState {
@@ -314,9 +298,6 @@ fn sun_minute(
 
 /// Starts a run, by the automation's mode, unless it is running away.
 pub(crate) fn fire(autos: &Automations, a: &Automation, trigger: &str, why: String) {
-    if autos.observation_fire(a, trigger) {
-        return;
-    }
     if runaway(autos, a) {
         return;
     }

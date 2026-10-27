@@ -141,8 +141,8 @@ public final class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
                 String origin = loaded;
-                if(request.isForMainFrame()&&origin!=null&&EngineHost.state()==EngineHost.State.RUNNING&&origin.equals(EngineHost.origin())&&(origin+"/android/heating-trial").equals(uri.toString())){
-                    startActivity(new Intent(MainActivity.this,HeatingTrialActivity.class));return true;
+                if(request.isForMainFrame()&&origin!=null&&EngineHost.state()==EngineHost.State.RUNNING&&origin.equals(EngineHost.origin())&&(origin+"/android/device-link").equals(uri.toString())){
+                    startActivity(new Intent(MainActivity.this,DeviceLinkActivity.class));return true;
                 }
                 if(request.isForMainFrame()&&origin!=null&&EngineHost.state()==EngineHost.State.RUNNING&&origin.equals(EngineHost.origin())&&(origin+"/android/netatmo").equals(uri.toString())){
                     startActivity(new Intent(MainActivity.this,NetatmoOAuthActivity.class));return true;

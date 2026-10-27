@@ -9,20 +9,16 @@
 
 mod admission;
 mod check;
-pub use admission::DraftAdmission;
+pub use admission::CommandAdmission;
+/// Marker of a generic source → output link with a trusted live admission.
+pub const DEVICE_LINK: &str = "moli_device_link_v1";
 #[cfg(test)]
 mod daily_tests;
 mod engine;
 mod model;
-mod observation;
-mod watch;
-pub use watch::{ObservationDecision, ObservationSample, ObservationSource, ObservationStatus};
-#[cfg(test)]
-mod preview_tests;
 mod run;
 mod store;
 pub mod sun;
-mod supervised;
 
 /// Reserved node marking the daily heating candidate. This release cannot
 /// authorize it, including through generic REST/MCP approval or restored files.
@@ -160,11 +156,6 @@ struct Inner {
     /// serializes the graph). Forgotten at every write, under the list's
     /// write lock; approving and running always hash afresh.
     fingerprints: Mutex<HashMap<String, String>>,
-    /// Bounded, ephemeral drafts: never listed, persisted, approved or scheduled.
-    previews: Mutex<HashMap<String, Automation>>,
-    scopes: Mutex<HashMap<u64, moli_runtime::CommandPermit>>,
-    observations: Mutex<HashMap<String, watch::Watch>>,
-    observation_runs: Mutex<std::collections::HashSet<u64>>,
     admissions: Mutex<HashMap<String, admission::Admission>>,
     runs: Mutex<VecDeque<Run>>,
     next_run: AtomicU64,
@@ -193,14 +184,6 @@ struct Inner {
     writer: RwLock<Option<Arc<dyn Writer>>>,
     saving: tokio::sync::Mutex<()>,
     cancel: CancellationToken,
-}
-
-const PREVIEW_PREFIX: &str = "!preview-";
-struct PreviewDraft(Automations, String);
-impl Drop for PreviewDraft {
-    fn drop(&mut self) {
-        lock(&self.0.0.previews).remove(&self.1);
-    }
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -281,10 +264,6 @@ impl Automations {
             )),
             list: RwLock::new(list),
             fingerprints: Mutex::default(),
-            previews: Mutex::default(),
-            scopes: Mutex::default(),
-            observations: Mutex::default(),
-            observation_runs: Mutex::default(),
             admissions: Mutex::default(),
             runs: Mutex::new(runs),
             next_run: AtomicU64::new(next),
@@ -677,13 +656,7 @@ impl Automations {
         fingerprint: Option<&str>,
         by: Actor,
     ) -> Result<Run, AutomationError> {
-        let preview = lock(&self.0.previews).get(id).cloned();
-        if preview.is_some() && !dry {
-            return Err(AutomationError::Invalid("dry-only draft".into()));
-        }
-        let a = preview
-            .or_else(|| self.get(id))
-            .ok_or(AutomationError::Unknown)?;
+        let a = self.get(id).ok_or(AutomationError::Unknown)?;
         if !dry {
             if !by.human {
                 return Err(AutomationError::NeedsHuman);
@@ -725,38 +698,6 @@ impl Automations {
         } else {
             Ok(self.start_run(&a, &start, tr!("moteur.pourquoi.main"), true))
         }
-    }
-
-    /// Run an uninstalled draft through the same dry-run path. It cannot be
-    /// listed, approved, enabled or executed for real, even during this await.
-    pub async fn preview_graph(&self, mut graph: Graph, by: Actor) -> Result<Run, AutomationError> {
-        tidy(&mut graph)?;
-        let id = format!("{PREVIEW_PREFIX}{}", self.next_id());
-        let now = moli_core::now_ms();
-        {
-            let mut previews = lock(&self.0.previews);
-            if previews.len() >= 8 {
-                return Err(AutomationError::Invalid("preview capacity".into()));
-            }
-            previews.insert(
-                id.clone(),
-                Automation {
-                    id: id.clone(),
-                    name: tr!("moteur.pourquoi.essai"),
-                    enabled: false,
-                    mode: Mode::Single,
-                    graph,
-                    author: by.author,
-                    approved: None,
-                    approved_version: None,
-                    note: None,
-                    created: now,
-                    updated: now,
-                },
-            );
-        }
-        let _draft = PreviewDraft(self.clone(), id.clone());
-        self.run_now(&id, true, None, by).await
     }
 
     fn next_id(&self) -> u64 {
@@ -823,7 +764,6 @@ impl Automations {
     /// Cancels every run of it (waiting ones included) and its pending
     /// « held for » timers.
     fn stop(&self, id: &str) {
-        self.stop_observation(id);
         if let Some(all) = lock(&self.0.stops).remove(id) {
             all.cancel();
         }

@@ -6,10 +6,10 @@ Chaque prise peut être autorisée indépendamment dans Mes appareils Android, a
 confirmation locale du nom, de l’adresse et de l’UUID. Une prise déclarée critique
 nécessite aussi un accord explicite sur son effet physique, lié au même UUID. Aucun compte cloud ou nouvel appairage.
 Netatmo code29 (lecture, cadence 120 s, âge et renouvellement) reste inchangé ;
-son endurance n’est pas requalifiée par ce lot. Aucun suivi automatique Netatmo/Finder.
-Code33 ajoute un [essai réel ponctuel séparé](netatmo-meross-observation.md),
-avec prérequis matériels, approbation humaine exacte et autorité éphémère ;
-les permissions manuelles seules ne l’autorisent pas.
+son endurance n’est pas requalifiée ici. Code37 ajoute une [règle simple
+Netatmo → Meross](device-link.md), activée explicitement une fois par le propriétaire.
+La variante et les permissions manuelles existantes sont conservées ; elles ne
+suffisent pas à créer ou approuver une règle. Les anciennes démonstrations sont retirées.
 
 ## Écart minimal après la simulation 99f1a0c
 
@@ -105,9 +105,8 @@ commandes réservées à la cible, refus des autres origines, absence de retry a
 ACK inconnu. Les serveurs factices seuls reçoivent les essais de commandes.
 Ne pas refaire le protocole réel ON/OFF acquis sur code30/31 pour qualifier ce lot.
 
-Code32 ne contenait pas d’observateur sur tablette. Code33 relie l’observation
-et un essai ponctuel sous consentement séparé, décrits dans
-[netatmo-meross-observation.md](netatmo-meross-observation.md).
+L’[automatisation simple code37](device-link.md) réutilise intégralement ce
+transport et ses diagnostics ; aucune approbation par événement n’est requise.
 
 ## Accès simplifié — code31
 

@@ -6,7 +6,7 @@ import android.os.*;
 import android.widget.*;
 import java.util.concurrent.*;
 
-/** One explicit trial session shared by every screen; export through the system document picker only. */
+/** Independent general state journal; text export through the system document picker. */
 public final class TrialJournalActivity extends Activity {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final ExecutorService io=Executors.newSingleThreadExecutor();

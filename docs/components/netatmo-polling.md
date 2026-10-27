@@ -125,7 +125,7 @@ connexion. Toujours aucune commande Netatmo, Meross/Finder ou chauffage.
 
 ## Code36 — actualisation volontaire
 
-L’écran de commande propose une **vraie lecture Netatmo** via le cycle existant
+L’écran d’automatisation propose une **vraie lecture Netatmo** via le cycle existant
 `homesdata` + `homestatus`. Une seule demande peut attendre ; aucun scheduler,
 SET ni changement du polling Meross. Minimum **60 s entre débuts** pour une
 lecture volontaire ; le prochain cycle normal est recalé à 120 s. La lecture
@@ -140,8 +140,8 @@ réelle n’a été appelée par Codex. Les signalements du
 [forum officiel](https://helpcenter.netatmo.com/hc/es/community/posts/29846852785298-Inconsistent-Rate-Limits-for-Netatmo-Home-Control-API)
 montrent des limites effectives variables et des 429 concurrents. On conserve donc
 120 s en fonctionnement courant, sans promettre de push `boiler_status` ni de
-quota disponible. À 60 s au maximum, cette instance effectue 120 lectures de
-données par heure (deux GET par cycle), hors renouvellement OAuth et autres
+quota disponible. À 60 s au maximum, une cadence réussie de 60 s représente 120 GET par heure, hors reprises sur
+erreur déjà bornées, renouvellement OAuth et autres
 applications/instances du compte. Une attente fournisseur supérieure reste prioritaire.
 
 Chevauchement CI vérifié : `android-integrations.yml` et `android-concordance.yml`

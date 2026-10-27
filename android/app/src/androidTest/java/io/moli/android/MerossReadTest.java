@@ -113,6 +113,9 @@ public final class MerossReadTest {
                 until(()->device(1)!=null && device(4)!=null);assertEquals(stable,device(1).getString("id"));
                 assertEquals(4,EquipmentStore.read(app).getJSONArray("meross").length());
                 for(Fixture f:fixtures)f.check();
+                try(androidx.test.core.app.ActivityScenario<DeviceLinkActivity> rule=androidx.test.core.app.ActivityScenario.launch(new Intent(app,DeviceLinkActivity.class))){
+                    rule.onActivity(a->{assertNotNull(a.findViewById(R.id.link_source));assertNotNull(a.findViewById(R.id.link_target));assertNotNull(a.findViewById(R.id.link_status));assertFalse(((android.widget.Switch)a.findViewById(R.id.link_enabled)).isChecked());});
+                }
                 String journal=TrialLog.export(app);assertFalse(journal.contains("a".repeat(32)));assertFalse(journal.contains("b".repeat(32)));
             } finally {
                 app.startService(new Intent(app,MoliService.class).setAction(MoliService.STOP));until(()->EngineHost.state()==EngineHost.State.STOPPED);
@@ -120,7 +123,6 @@ public final class MerossReadTest {
             }
         }
         MerossManualFixture.verify();
-        ObservationFixture.verify();
     }
     static final class Fixture implements AutoCloseable {
         final int id;final ServerSocket server=new ServerSocket(0,8,InetAddress.getByName("0.0.0.0"));final Thread worker;

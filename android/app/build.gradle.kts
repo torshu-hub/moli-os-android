@@ -62,7 +62,6 @@ android {
     }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/notices"))
     sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("../integrations/ipp/fixtures"))
-    sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("../web/scripts/fixtures"))
     sourceSets.getByName("androidTest").assets.srcDir(layout.buildDirectory.dir("generated/meross-test-assets"))
 }
 
