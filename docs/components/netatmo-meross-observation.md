@@ -1,4 +1,4 @@
-# Netatmo → Meross : observation et essai réel supervisé — code33
+# Netatmo → Meross : observation continue à blanc et essai supervisé — code35
 
 Code32 reste acquis : quatre permissions manuelles indépendantes, identité,
 SET signé, ACK et relecture. Code33 relie les données du pilote Netatmo existant
@@ -9,7 +9,12 @@ Dans **Mes appareils**, choisir le thermostat NATherm1/OTM qui publie la demande
 la MSS310 cible, puis enregistrer. Noms et modèles sont visibles ; instance et
 identifiant sont dans les détails. La demande cloud, l'intention simulée, l'état
 réel Meross, la date de collecte et un motif de refus restent distincts.
-L'observation se rafraîchit tant que cet écran est visible. Elle ne commande rien.
+L’aperçu instantané se rafraîchit tant que cet écran est visible. Code35 ajoute,
+après préparation du scénario quotidien, un démarrage/arrêt explicite de
+l’**observation continue à blanc**, qui suit les déclencheurs natifs même après
+sortie de cet écran. Son journal compact et son compteur restent distincts des
+lectures et des commandes. Elle n’active ni n’approuve le scénario et ne commande
+rien ; voir le contrat code35 en fin de document.
 
 Le pilote traduit uniquement `boiler_status` booléen officiel de ces deux modèles :
 `true → declared_demand="on"`, `false → "off"`, champ absent → `"missing"`,
@@ -201,3 +206,59 @@ The UI preserves manual OFF and states this limitation. The original trial repor
 adds only `UI_DAILY_HEATING` readiness/transport categories, coalesced using the
 existing logger, without identifiers or sample values. No hardware claim follows
 from a prepared graph or a successful synthetic test.
+
+## Code35 — explicit continuous dry observation
+
+After choosing the source and target in **My devices**, prepare the daily draft,
+then choose **Start continuous dry observation**. The graph stays disabled and
+unapproved. The only new registration is volatile and **dry-only**, inside the
+existing `moli-automation` clock/event engine; no additional timer, subscription,
+network poll, provider connection or command permit is created. The exact native
+`every` or `when_state(collected_at)` trigger traverses the original graph and
+executor with `dry=true`. Generic approval, restored enable flags and real SET
+remain independently locked. Code33's supervised one-shot path remains separate.
+
+The current version/fingerprint, source/target selection, publication validity,
+coherent declared demand, driver/device availability and fresh typed Meross
+readback are checked. A newer failed/incomplete Netatmo collection refuses a
+current intention. Conditions and SET admission are checked again by the native
+executor, and a coherent witness before/after the evaluation is required. The
+status reports simulated ON/OFF, already matching readback, or a closed refusal
+reason; it never reports physical execution. A publication that finishes after
+its state event can be refused as pending, then evaluated by the next ordinary
+minute deadline; there is no retry loop or extra provider request.
+
+Starting skips the current publication. Loss of valid data clears that baseline;
+the first valid publication after recovery only establishes a new baseline.
+There is no startup replay or missed-deadline catch-up. An engine scheduling gap
+longer than five seconds cancels the previous evaluation and marks the resumed
+clock minute as consumed. A command on the selected target also discards the old
+intention; subsequent readbacks and publications are evaluated afresh. This does
+not undo, repeat or grant permission for that command. Leaving the screen keeps
+observation running; **Stop observation**, changing the saved selection, editing
+its graph, or stopping the engine cancels it. Restart/restoration never restores
+an observation registration or any command authority.
+
+A maximum of 32 in-memory decision transitions is retained, identical decisions
+are coalesced, omitted transitions are counted, and trigger counts distinguish
+publication events from periodic deadlines. Native observation runs stream through
+the existing local automation events but do not fill the persisted run history.
+The existing Android trial report receives only closed numeric status/reason and
+bounded event counts under `UI_DAILY_HEATING`; no names, IDs, samples, fingerprints,
+URLs, tokens or secrets are added to that export. Loss of local UI transport or
+expired data hides the last current intention; historical decisions stay labelled
+as simulations. An already-ON plug may remain ON after STOP/network loss; manual
+OFF with verified readback remains available through the existing controls.
+
+`GET /api/observations/netatmo-meross/daily` includes this volatile status.
+`POST …/daily/observation` accepts only revision, epoch, exact fingerprint and
+`action: "start" | "stop"`. Start requires the current prepared version; stop is
+also accepted from an outdated view so a changed selection cannot trap observation
+in an active state. Household/visitor restrictions, body limits and Android's
+private loopback cookie are unchanged. There is no new MCP server or tablet bridge.
+
+All development tests use synthetic drivers/local HTTP/browser/WebView fixtures.
+Neither physical reception on S5e nor autonomous heating operation is established
+by this release. Install over the existing beta without clearing its data; later,
+the owner can compare the displayed simulation with Netatmo and Meross without
+issuing any command.

@@ -15,6 +15,8 @@ mod daily_tests;
 mod engine;
 mod model;
 mod observation;
+mod watch;
+pub use watch::{ObservationDecision, ObservationSample, ObservationSource, ObservationStatus};
 #[cfg(test)]
 mod preview_tests;
 mod run;
@@ -161,6 +163,8 @@ struct Inner {
     /// Bounded, ephemeral drafts: never listed, persisted, approved or scheduled.
     previews: Mutex<HashMap<String, Automation>>,
     scopes: Mutex<HashMap<u64, moli_runtime::CommandPermit>>,
+    observations: Mutex<HashMap<String, watch::Watch>>,
+    observation_runs: Mutex<std::collections::HashSet<u64>>,
     admissions: Mutex<HashMap<String, admission::Admission>>,
     runs: Mutex<VecDeque<Run>>,
     next_run: AtomicU64,
@@ -279,6 +283,8 @@ impl Automations {
             fingerprints: Mutex::default(),
             previews: Mutex::default(),
             scopes: Mutex::default(),
+            observations: Mutex::default(),
+            observation_runs: Mutex::default(),
             admissions: Mutex::default(),
             runs: Mutex::new(runs),
             next_run: AtomicU64::new(next),
@@ -817,6 +823,7 @@ impl Automations {
     /// Cancels every run of it (waiting ones included) and its pending
     /// « held for » timers.
     fn stop(&self, id: &str) {
+        self.stop_observation(id);
         if let Some(all) = lock(&self.0.stops).remove(id) {
             all.cancel();
         }

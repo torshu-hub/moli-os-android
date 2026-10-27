@@ -65,35 +65,96 @@ fn daily_admission(
     selection: &Selection,
     now: u64,
 ) -> Result<super::Admission, StatusCode> {
-    let snapshot = hub.snapshot();
-    let source = find(&snapshot, &selection.source).ok_or(StatusCode::CONFLICT)?;
+    review_daily(hub, selection, now)
+        .map(|(admitted, _)| admitted)
+        .map_err(|_| StatusCode::CONFLICT)
+}
+fn reason_code(reason: super::Reason) -> &'static str {
+    use super::Reason;
+    match reason {
+        Reason::SourceOffline | Reason::DriverStopped => "source_offline",
+        Reason::TargetOffline => "target_offline",
+        Reason::SourceStale | Reason::MissingDate | Reason::FutureDate => "source_stale",
+        Reason::TargetStale => "target_stale",
+        Reason::Identity | Reason::SourceMissing | Reason::TargetMissing => "identity",
+        Reason::InvalidDemand | Reason::UnknownDemand => "unknown_demand",
+        Reason::SourceUnpublished => "source_unpublished",
+        _ => "coherence",
+    }
+}
+fn review_daily(
+    hub: &Hub,
+    selection: &Selection,
+    now: u64,
+) -> Result<(super::Admission, moli_automation::ObservationSample), &'static str> {
+    review_snapshot(&hub.snapshot(), selection, now)
+}
+pub(super) fn review_snapshot(
+    snapshot: &moli_runtime::Snapshot,
+    selection: &Selection,
+    now: u64,
+) -> Result<(super::Admission, moli_automation::ObservationSample), &'static str> {
+    let source = find(snapshot, &selection.source).ok_or("identity")?;
     let read = &snapshot
         .diagnostics
         .iter()
         .find(|d| d.instance == source.device.instance && d.read.kind == "netatmo")
-        .ok_or(StatusCode::CONFLICT)?
+        .ok_or("source_unpublished")?
         .read;
     if read.token_expired
-        || read.polling.in_flight
         || (read.polling.last_error_at > 0 && read.polling.last_error_at >= read.last_publish_at)
-        || read.stages.values().any(|stage| {
-            stage.status == moli_runtime::ReadOutcome::Pending
-                || (stage.last_error_at > 0 && stage.last_error_at >= read.last_publish_at)
-        })
+        || read
+            .stages
+            .values()
+            .any(|s| s.last_error_at > 0 && s.last_error_at >= read.last_publish_at)
     {
-        return Err(StatusCode::CONFLICT);
+        return Err("source_error");
     }
-    let target = find(&snapshot, &selection.target)
+    if read.polling.in_flight
+        || read
+            .stages
+            .values()
+            .any(|s| s.status == moli_runtime::ReadOutcome::Pending)
+    {
+        return Err("source_pending");
+    }
+    if super::admit(snapshot, selection, now)
+        .map_err(reason_code)?
+        .demand
+        == Demand::Unknown
+    {
+        return Err("unknown_demand");
+    }
+    let mut admitted = trial::real_snapshot(snapshot, selection, now).map_err(|_| "coherence")?;
+    let target = find(snapshot, &selection.target)
         .and_then(|d| d.state.get("on"))
-        .ok_or(StatusCode::CONFLICT)?;
-    if !matches!(target.value, Value::Bool(_))
-        || target.ts == 0
-        || target.ts > now
-        || now - target.ts >= 65_000
-    {
-        return Err(StatusCode::CONFLICT);
+        .ok_or("target_unknown")?;
+    let Value::Bool(actual) = target.value else {
+        return Err("target_unknown");
+    };
+    if target.ts == 0 || target.ts > now || now - target.ts >= 65_000 {
+        return Err("target_stale");
     }
-    trial::real_admission(hub, selection, now)
+    admitted.valid_until = admitted.valid_until.min(target.ts.saturating_add(65_000));
+    admitted.stamp = json!([admitted.stamp, target]);
+    let sample = moli_automation::ObservationSample {
+        publication: admitted.collected,
+        desired: admitted.demand == Demand::On,
+        actual,
+        valid_until: admitted.valid_until,
+        witness: admitted.stamp.clone(),
+    };
+    Ok((admitted, sample))
+}
+impl moli_automation::ObservationSource for AdmissionGate {
+    fn review(&self) -> Result<moli_automation::ObservationSample, &'static str> {
+        if !self.observer.upgrade().is_some_and(|inner| {
+            inner.revision.load(std::sync::atomic::Ordering::Acquire) == self.revision
+        }) {
+            return Err("selection_changed");
+        }
+        review_daily(&self.hub, &self.selection, moli_core::now_ms()).map(|(_, sample)| sample)
+    }
 }
 // Trusted read-only admission, rechecked at the native SET boundary. No
 // permit can be derived from this object or from the four manual permissions.
@@ -182,6 +243,7 @@ impl Observer {
             });
         json!({"revision":stored.value.revision,"epoch":self.0.epoch,"state":"disabled","readiness":if ready {"ready"} else if daily.id.is_some(){"refused"}else{"disabled"},
             "activation_available":false,"reason":"release_locked","already_on_may_remain_on":true,
+            "observation":self.0.autos.as_ref().and_then(|autos|daily.id.as_ref().and_then(|id|autos.observation_status(id))).filter(|o|draft.as_ref().is_some_and(|a|a.fingerprint()==o.fingerprint)),
             "draft":draft.map(|a|json!({"id":a.id,"fingerprint":a.fingerprint()}))})
     }
     pub(super) async fn prepare_daily(
@@ -279,9 +341,94 @@ async fn status(
     }
     Json(observer.daily_view(&hub).await).into_response()
 }
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WatchRequest {
+    revision: u64,
+    epoch: u64,
+    fingerprint: String,
+    action: WatchAction,
+}
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum WatchAction {
+    Start,
+    Stop,
+}
+impl Observer {
+    async fn watch_daily(&self, hub: &Hub, input: WatchRequest) -> Result<JsonValue, StatusCode> {
+        let daily = self.0.daily.lock().await;
+        let autos = self
+            .0
+            .autos
+            .as_ref()
+            .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+        let id = daily.id.as_ref().ok_or(StatusCode::CONFLICT)?;
+        match input.action {
+            WatchAction::Stop => autos.stop_observation(id),
+            WatchAction::Start => {
+                let stored = self.0.storage.lock().await;
+                if !stored.valid
+                    || stored.path.is_none()
+                    || input.epoch != self.0.epoch
+                    || input.revision != stored.value.revision
+                    || daily.revision != Some(input.revision)
+                {
+                    return Err(StatusCode::CONFLICT);
+                }
+                let selection = stored
+                    .value
+                    .selection
+                    .as_ref()
+                    .ok_or(StatusCode::CONFLICT)?;
+                let admission = daily_admission(hub, selection, moli_core::now_ms())?;
+                let draft = autos.get(id).ok_or(StatusCode::CONFLICT)?;
+                if draft.graph != graph(selection, admission.max_age)
+                    || draft.fingerprint() != input.fingerprint
+                {
+                    return Err(StatusCode::CONFLICT);
+                }
+                autos
+                    .start_observation(
+                        id,
+                        &input.fingerprint,
+                        Arc::new(AdmissionGate {
+                            observer: Arc::downgrade(&self.0),
+                            hub: hub.clone(),
+                            selection: selection.clone(),
+                            revision: input.revision,
+                        }),
+                    )
+                    .map_err(|_| StatusCode::CONFLICT)?;
+            }
+        }
+        drop(daily);
+        Ok(self.daily_view(hub).await)
+    }
+}
+async fn watch(
+    State(hub): State<Hub>,
+    Extension(observer): Extension<Observer>,
+    caller: Caller,
+    Json(input): Json<WatchRequest>,
+) -> Response {
+    if !allowed(&caller) {
+        return denied();
+    }
+    match observer.watch_daily(&hub, input).await {
+        Ok(value) => Json(value).into_response(),
+        Err(status) => (status, Json(json!({"error":"daily_observation_refused"}))).into_response(),
+    }
+}
+
 pub(super) fn routes() -> Router<Hub> {
-    Router::new().route(
-        "/api/observations/netatmo-meross/daily",
-        get(status).post(prepare),
-    )
+    Router::new()
+        .route(
+            "/api/observations/netatmo-meross/daily/observation",
+            axum::routing::post(watch),
+        )
+        .route(
+            "/api/observations/netatmo-meross/daily",
+            get(status).post(prepare),
+        )
 }

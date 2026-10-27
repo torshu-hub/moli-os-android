@@ -1,6 +1,12 @@
 //! Explicit dry observation uses the existing executor from the actual native
 //! trigger. No caller can select physical execution or confer command authority.
 use super::{AutomationError, Automations, Run, Step, heating_locked};
+struct ObservedRun(Automations, u64);
+impl Drop for ObservedRun {
+    fn drop(&mut self) {
+        super::lock(&self.0.0.observation_runs).remove(&self.1);
+    }
+}
 use tokio_util::sync::CancellationToken;
 
 impl Automations {
@@ -28,6 +34,9 @@ impl Automations {
         {
             return Err(AutomationError::Conflict);
         }
+        let id = self.next_id();
+        super::lock(&self.0.observation_runs).insert(id);
+        let _observed = ObservedRun(self.clone(), id);
         Ok(crate::run::execute(
             self,
             &a,
@@ -35,7 +44,7 @@ impl Automations {
             moli_i18n::tr!("moteur.pourquoi.essai"),
             true,
             cancel,
-            self.next_id(),
+            id,
         )
         .await)
     }

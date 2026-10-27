@@ -93,7 +93,7 @@
  </div>
  <p data-observation-reason>{t('maison.observation.reason.'+shown.reason)}</p>
  <p class="muted">{t('maison.observation.observed_at')} : <time>{date(shown.observed_at)}</time><br/>{t('maison.observation.collected_at')} : <time>{date(shown.collected_at)}</time></p>
- <DailyHeating {settings} {dirty}/>
+ <DailyHeating {settings} {dirty} now={receipt.now??home.now}/>
  <HeatingTrial {settings} {shown} {dirty} now={receipt.now??home.now}/>
 </section>
 <style>

@@ -3,7 +3,7 @@
 window.installObservationFixture=function(base,options={}){
  const original=window.fetch.bind(window),key='moli-synthetic-observation-'+(options.key||'browser');
  let saved;try{saved=JSON.parse(localStorage.getItem(key)||'null');}catch{}
- const state={selection:saved?.selection||null,revision:saved?.revision||0,epoch:777,armed:false,mode:'on',transitions:0,last:'',commands:0,puts:0,observations:0};
+ const state={selection:saved?.selection||null,revision:saved?.revision||0,epoch:777,armed:false,mode:'on',transitions:0,last:'',commands:0,puts:0,observations:0,dailyPrepared:false,dailyStarted:false,dailyActive:false,dailyEvents:0,dailyReason:'warming',dailyHistory:[]};
  let lastSnapshot;
  const listeners=new Set(),sourceId='android-netatmo-personal:synthetic-thermostat';
  const makeSnapshot=()=>{
@@ -18,10 +18,20 @@ window.installObservationFixture=function(base,options={}){
   const snap=snapshot(),choice=d=>({id:d.id,name:d.label?.name||d.native_name,instance:d.instance,model:d.model,online:d.online});
   return {revision:state.revision,epoch:state.epoch,storage_available:true,selection:state.selection,sources:snap.devices.filter(d=>d.model==='NATherm1').map(choice),targets:snap.devices.filter(d=>String(d.model).toLowerCase()==='mss310').map(choice)};
  };
- const emit=()=>{lastSnapshot=makeSnapshot();for(const fn of listeners)fn({data:JSON.stringify(snapshot())});};
+ const decideDaily=()=>{
+  if(!state.dailyActive)return;
+  const reasons={unknown:'unknown_demand',null:'unknown_demand',boolean:'unknown_demand',old:'source_stale',future:'source_stale',missing:'source_stale',source_offline:'source_offline',target_offline:'target_offline',identity:'identity',coherence:'coherence'};
+  state.dailyEvents++;state.dailyReason=reasons[state.mode]||(state.mode==='off'?'no_change':'would_on');
+  const row={at:Date.now(),reason:state.dailyReason,intention:state.dailyReason==='would_on'?true:null,actual:reasons[state.mode]?null:false,repeats:1};
+  const last=state.dailyHistory.at(-1);if(last?.reason===row.reason)last.repeats++;else state.dailyHistory.push(row);
+  if(state.dailyHistory.length>32)state.dailyHistory.shift();
+ };
+ const daily=()=>({revision:state.revision,epoch:state.epoch,state:'disabled',readiness:state.dailyPrepared?'ready':'disabled',activation_available:false,reason:'release_locked',already_on_may_remain_on:true,draft:state.dailyPrepared?{id:'synthetic-daily',fingerprint:'synthetic-version'}:null,
+  observation:state.dailyStarted?{active:state.dailyActive,fingerprint:'synthetic-version',events:state.dailyEvents,publications:state.dailyEvents,clocks:0,omitted:0,last_at:Date.now(),reason:state.dailyReason,intention:state.dailyReason==='would_on'?true:null,actual:['would_on','no_change'].includes(state.dailyReason)?false:null,valid_until:state.dailyReason==='would_on'?Date.now()+60000:null,history:state.dailyHistory}:null});
+ const emit=()=>{lastSnapshot=makeSnapshot();decideDaily();for(const fn of listeners)fn({data:JSON.stringify(snapshot())});};
  window.EventSource=class{addEventListener(type,fn){if(type==='snapshot'){this.fn=fn;listeners.add(fn);queueMicrotask(()=>fn({data:JSON.stringify(snapshot())}));}}close(){listeners.delete(this.fn);}};
  window.fixtureObservation=mode=>{state.mode=mode;emit();};
- window.restartObservationFixture=()=>{state.epoch++;state.armed=false;emit();};
+ window.restartObservationFixture=()=>{state.epoch++;state.armed=false;state.dailyActive=false;state.dailyStarted=false;state.dailyPrepared=false;emit();};
  window.observationFixtureState=state;
  window.fetch=async(url,opts={})=>{
   const path=String(url).split('?')[0],method=opts.method||'GET';let body;
@@ -34,9 +44,26 @@ window.installObservationFixture=function(base,options={}){
      const choices=settings(),s=choices.sources.find(c=>c.id===input.source),t=choices.targets.find(c=>c.id===input.target);
      if(!s||!t)return new Response('{}',{status:422});state.selection={source:s.id,target:t.id,source_name:s.name,target_name:t.name};
     }
-    state.revision++;state.armed=false;localStorage.setItem(key,JSON.stringify({selection:state.selection,revision:state.revision}));
+    state.revision++;state.armed=false;state.dailyActive=false;state.dailyPrepared=false;state.dailyStarted=false;localStorage.setItem(key,JSON.stringify({selection:state.selection,revision:state.revision}));
    }
    body=settings();
+  }else if(path==='/api/observations/netatmo-meross/daily'){
+   if(method==='POST'){
+    const input=JSON.parse(opts.body);
+    if(Object.keys(input).sort().join()!=='epoch,revision')return new Response('{}',{status:422});
+    if(!state.selection||input.revision!==state.revision||input.epoch!==state.epoch)return new Response('{}',{status:409});
+    state.dailyPrepared=true;
+   }
+   body=daily();
+  }else if(path==='/api/observations/netatmo-meross/daily/observation'){
+   const input=JSON.parse(opts.body);
+   if(Object.keys(input).sort().join()!=='action,epoch,fingerprint,revision')return new Response('{}',{status:422});
+   if(input.action==='start'){
+    if(!state.dailyPrepared||input.fingerprint!=='synthetic-version'||input.revision!==state.revision||input.epoch!==state.epoch)return new Response('{}',{status:409});
+    state.dailyActive=true;state.dailyStarted=true;state.dailyReason='warming';
+   }else if(input.action==='stop'){state.dailyActive=false;state.dailyReason='stopped';}
+   else return new Response('{}',{status:422});
+   body=daily();
   }else if(path==='/api/observations/netatmo-meross/observe'){
    state.observations++;if(Object.keys(JSON.parse(opts.body)).sort().join()!=='epoch,revision')return new Response('{}',{status:422});const now=Date.now();let reason='none',status='ready',demand=state.mode==='off'?'off':'on',intention=demand==='on',collected=now-1000;
    if(!state.selection){reason='unconfigured';status='unconfigured';}

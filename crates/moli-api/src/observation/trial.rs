@@ -68,9 +68,15 @@ pub(super) fn real_admission(
     selection: &Selection,
     now: u64,
 ) -> Result<Admission, StatusCode> {
-    let snapshot = hub.snapshot();
-    let mut admitted = admit(&snapshot, selection, now).map_err(|_| StatusCode::CONFLICT)?;
-    let source = find(&snapshot, &selection.source).ok_or(StatusCode::CONFLICT)?;
+    real_snapshot(&hub.snapshot(), selection, now)
+}
+pub(super) fn real_snapshot(
+    snapshot: &moli_runtime::Snapshot,
+    selection: &Selection,
+    now: u64,
+) -> Result<Admission, StatusCode> {
+    let mut admitted = admit(snapshot, selection, now).map_err(|_| StatusCode::CONFLICT)?;
+    let source = find(snapshot, &selection.source).ok_or(StatusCode::CONFLICT)?;
     let expected = match admitted.demand {
         Demand::On => true,
         Demand::Off => false,
@@ -98,7 +104,7 @@ pub(super) fn real_admission(
         .map_err(|_| StatusCode::CONFLICT)?;
     admitted.valid_until = admitted.valid_until.min(boiler_until);
     admitted.stamp = json!([admitted.stamp, boiler]);
-    let target = find(&snapshot, &selection.target).ok_or(StatusCode::CONFLICT)?;
+    let target = find(snapshot, &selection.target).ok_or(StatusCode::CONFLICT)?;
     if !target.device.point("on").is_some_and(|p| p.access.write) {
         return Err(StatusCode::FORBIDDEN);
     }

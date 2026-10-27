@@ -86,7 +86,7 @@ final class ObservationFixture {
                     ui.recreate();ui.onActivity(a->install(a,script));waitJs(ui,"document.querySelector('[data-observation-intention]')?.textContent==='ON'");
                     assertEquals("true",js(ui,"document.documentElement.scrollWidth<=innerWidth && window.observationFixtureState.commands===0"));
                     assertEquals("true",js(ui,"document.querySelector('[data-observation-source]').value==='android-netatmo-personal:synthetic-thermostat'"));
-                    if(permissions==4)nativeActivationStaysBlocked(app);
+                    if(permissions==4){continuousDryOnly(ui);nativeActivationStaysBlocked(app);}
                     String report=TrialLog.export(app);assertTrue(report.contains("UI_OBSERVATION"));assertFalse(report.contains("Synthetic thermostat"));assertFalse(report.contains("Observation fixture"));
                 }finally{stop(app);}
                 assertEquals(before,EquipmentStore.read(app).toString());assertEquals(master,ProtectedKey.open(app).getString("master"));
@@ -94,7 +94,22 @@ final class ObservationFixture {
                 for(MerossReadTest.Fixture device:devices){assertEquals(0,device.sets);device.check();}
             }
         }
-        TouchRegression.evidence("OBSERVATION WebView: explicit source/target, ON/OFF/unknown/invalid/stale/offline/recovery, saved selection across rotation/recreation; 0/1/4 manual permissions and vault preserved; zero command requests and SET on synthetic responders");
+        TouchRegression.evidence("OBSERVATION WebView: explicit source/target, ON/OFF/unknown/invalid/stale/offline/recovery, saved selection across rotation/recreation; daily native candidate stays disabled while explicit dry observation starts, follows simulated publications and stops; 0/1/4 manual permissions and vault preserved; zero command requests and SET on synthetic responders");
+    }
+    private static void continuousDryOnly(ActivityScenario<MainActivity> ui)throws Exception{
+        waitJs(ui,"!!document.querySelector('[data-daily-prepare]:not(:disabled)')");
+        js(ui,"document.querySelector('[data-daily-prepare]').click();true");
+        waitJs(ui,"!!document.querySelector('[data-daily-start]:not(:disabled)')");
+        js(ui,"document.querySelector('[data-daily-start]').click();true");
+        waitJs(ui,"document.querySelector('[data-daily-observation]')?.dataset.dailyObservation==='active'");
+        js(ui,"window.fixtureObservation('on');document.dispatchEvent(new Event('visibilitychange'));true");
+        waitJs(ui,"document.querySelector('[data-daily-decision]')?.textContent.includes('Simulation')&&document.querySelector('[data-daily-decision]')?.textContent.includes('ON')");
+        js(ui,"window.fixtureObservation('unknown');document.dispatchEvent(new Event('visibilitychange'));true");
+        waitJs(ui,"!document.querySelector('[data-daily-decision]')?.textContent.includes('ON')");
+        js(ui,"document.querySelector('[data-daily-stop]').click();true");
+        waitJs(ui,"document.querySelector('[data-daily-observation]')?.dataset.dailyObservation==='stopped'");
+        assertEquals("true",js(ui,"document.querySelector('[data-daily-heating]')?.dataset.dailyHeating==='disabled'&&window.observationFixtureState.commands===0"));
+        js(ui,"window.fixtureObservation('on');true");
     }
     private static java.util.List<android.widget.CheckBox> checkboxes(android.view.View view){
         java.util.List<android.widget.CheckBox> result=new java.util.ArrayList<>();if(view instanceof android.widget.CheckBox check)result.add(check);

@@ -71,4 +71,14 @@ public final class TrialDiagnosticsTest {
   d.observe(1000,Topic.NETATMO_PUBLICATION,State.OK,Reason.NONE,2,2,1,1,1,0,1000,1000,0);
   String text=d.text(30000);assertTrue(text.contains("CHARGEMENT_NON_TERMINE"));assertTrue(text.contains("NETATMO_VISIBILITE"));
  }
+ @Test public void dailyObservationReportHasClosedCategoriesWithoutDemandDirectionOrPrivateFields()throws Exception{
+  long now=System.currentTimeMillis();TrialDiagnostics d=TrialDiagnostics.empty();
+  d.observe(now,Topic.UI_DAILY_HEATING,State.OK,Reason.NONE,DailyObservationReason.SIMULATED.ordinal(),12,-1,0,0,0,0,0,0);
+  JSONObject stored=d.json();stored.getJSONObject("UI_DAILY_HEATING").put("private","synthetic-private-payload");
+  String text=TrialDiagnostics.parse(stored).text(now);
+  assertTrue(text.contains("observation_à_blanc=SIMULATED événements_natifs_bornés=12 aucune_preuve_de_commande_physique"));
+  assertFalse(text.contains("synthetic-private-payload"));assertFalse(text.contains("WOULD_ON"));assertFalse(text.contains("WOULD_OFF"));
+  d.observe(now,Topic.UI_DAILY_HEATING,State.OK,Reason.NONE,999,4096,-1,0,0,0,0,0,0);
+  assertTrue(d.text(now).contains("observation_à_blanc=UNOBSERVED"));
+ }
 }

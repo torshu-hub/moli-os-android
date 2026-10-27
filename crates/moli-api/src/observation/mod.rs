@@ -251,6 +251,9 @@ impl Observer {
             selection,
         };
         trial::revoke(self);
+        if let Some(autos) = &self.0.autos {
+            autos.stop_observations();
+        }
         let path = storage
             .path
             .as_ref()

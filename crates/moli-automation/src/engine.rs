@@ -33,15 +33,17 @@ pub(crate) async fn run(autos: Automations) {
         tokio::select! {
             () = cancel.cancelled() => break,
             event = events.recv() => match event {
-                Ok(Event::State { point, value, .. }) => on_state(&autos, &point, &value),
-                Ok(_) => {}
+                Ok(event) => {
+                    autos.observation_event(&event);
+                    if let Event::State { point, value, ts }=event { on_state(&autos,&point,&value,ts); }
+                }
                 Err(RecvError::Lagged(missed)) => {
                     tracing::warn!(missed, "automations lagged behind the hub: some changes were not seen");
                     remember_all(&autos);
                 }
                 Err(RecvError::Closed) => break,
             },
-            _ = clock.tick() => on_clock(&autos),
+            _ = clock.tick() => { autos.observation_tick(); on_clock(&autos); },
             () = &mut started, if !start_done => {
                 start_done = true;
                 for a in live(&autos).iter() {
@@ -59,6 +61,7 @@ pub(crate) async fn run(autos: Automations) {
         .0
         .shutting_down
         .store(true, std::sync::atomic::Ordering::Relaxed);
+    autos.stop_observations();
     for (_, all) in lock(&autos.0.stops).drain() {
         all.cancel();
     }
@@ -71,24 +74,37 @@ pub(crate) async fn run(autos: Automations) {
 /// Clock triggers due this very minute count as fired: after a restart
 /// within the minute, they do not fire twice.
 fn mark_this_minute(autos: &Automations) {
+    for a in live(autos).iter() {
+        mark_observation_minute(autos, a);
+    }
+}
+pub(crate) fn mark_observation_minute(autos: &Automations, a: &Automation) {
     let now = jiff::Timestamp::now().to_zoned(autos.0.tz.clone());
     let minute = u32::from(now.hour().unsigned_abs()) * 60 + u32::from(now.minute().unsigned_abs());
     let stamp = format!("{} {minute}", now.date());
     let mut fired = lock(&autos.0.fired);
-    for a in live(autos).iter() {
-        for t in a.graph.triggers() {
-            if matches!(
-                t.step,
-                Step::AtTime { .. } | Step::AtSun { .. } | Step::Every { .. }
-            ) {
-                fired.insert((a.id.clone(), t.id.clone()), stamp.clone());
-            }
+    for t in a.graph.triggers() {
+        if matches!(
+            t.step,
+            Step::AtTime { .. } | Step::AtSun { .. } | Step::Every { .. }
+        ) {
+            fired.insert((a.id.clone(), t.id.clone()), stamp.clone());
         }
     }
 }
-
 fn live(autos: &Automations) -> std::sync::Arc<Vec<Automation>> {
-    autos.live()
+    let live = autos.live();
+    let observed = autos.observed();
+    if observed.is_empty() {
+        return live;
+    }
+    let mut scheduled = live.as_ref().clone();
+    for a in observed {
+        if !scheduled.iter().any(|existing| existing.id == a.id) {
+            scheduled.push(a);
+        }
+    }
+    std::sync::Arc::new(scheduled)
 }
 
 /// Current values, so the first change seen has a « before ».
@@ -102,13 +118,16 @@ fn remember_all(autos: &Automations) {
     }
 }
 
-fn on_state(autos: &Automations, point: &PointId, value: &Value) {
+pub(crate) fn on_state(autos: &Automations, point: &PointId, value: &Value, ts: u64) {
     let key = point.to_string();
     let prev = lock(&autos.0.last).insert(key.clone(), value.clone());
     if prev.as_ref() == Some(value) {
         return;
     }
     for a in live(autos).iter() {
+        if !autos.observation_event_is_current(&a.id, ts) {
+            continue;
+        }
         for t in a.graph.triggers() {
             match &t.step {
                 Step::WhenState {
@@ -239,7 +258,7 @@ fn unhold(autos: &Automations, automation: &str, trigger: &str) {
     }
 }
 
-fn on_clock(autos: &Automations) {
+pub(crate) fn on_clock(autos: &Automations) {
     let now = jiff::Timestamp::now().to_zoned(autos.0.tz.clone());
     let minute = u32::from(now.hour().unsigned_abs()) * 60 + u32::from(now.minute().unsigned_abs());
     let stamp = format!("{} {minute}", now.date());
@@ -295,6 +314,9 @@ fn sun_minute(
 
 /// Starts a run, by the automation's mode, unless it is running away.
 pub(crate) fn fire(autos: &Automations, a: &Automation, trigger: &str, why: String) {
+    if autos.observation_fire(a, trigger) {
+        return;
+    }
     if runaway(autos, a) {
         return;
     }

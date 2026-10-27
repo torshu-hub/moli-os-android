@@ -22,6 +22,13 @@ const SOURCE: &str = "source:thermostat";
 const NATIVE: &str = "00000000000000000000000000000001";
 const TARGET: &str = "target:00000000000000000000000000000001";
 #[derive(Debug)]
+enum FixtureUpdate {
+    Publish(Option<bool>, bool),
+    Offline,
+    Pending,
+}
+type Updates = Arc<tokio::sync::Mutex<tokio::sync::mpsc::UnboundedReceiver<FixtureUpdate>>>;
+#[derive(Debug)]
 struct Fixture {
     target: bool,
     demand: Value,
@@ -29,6 +36,7 @@ struct Fixture {
     online: bool,
     writable: bool,
     commands: Arc<AtomicUsize>,
+    updates: Option<Updates>,
 }
 fn point(key: &str, kind: Kind, write: bool) -> PointSpec {
     PointSpec {
@@ -151,14 +159,46 @@ impl Driver for Fixture {
 }
 
 async fn receive_commands(fixture: &Fixture, ctx: &mut DriverCtx) {
-    while let Some(command) = ctx.next_command().await {
-        fixture.commands.fetch_add(1, Ordering::SeqCst);
-        if command.origin == moli_core::Origin::Automation && !command.automation_authorized() {
-            command.reply(Err("scope required".into()));
-            continue;
+    let mut updates = match &fixture.updates {
+        Some(updates) => Some(updates.lock().await),
+        None => None,
+    };
+    loop {
+        tokio::select! {
+            command=ctx.next_command()=>{
+                let Some(command)=command else {break;};
+                fixture.commands.fetch_add(1, Ordering::SeqCst);
+                if command.origin == moli_core::Origin::Automation && !command.automation_authorized() {
+                    command.reply(Err("scope required".into())); continue;
+                }
+                ctx.set_state(&command.device.id,&command.key,command.value.clone()); command.reply(Ok(()));
+            }
+            update=async{match &mut updates {Some(rx)=>rx.recv().await,None=>std::future::pending().await}}=>{
+                let Some(update)=update else {break;};
+                let source=ctx.device_id("thermostat");
+                match update {
+                    FixtureUpdate::Publish(demand,fresh)=>{
+                        ctx.observe_read("netatmo",ReadEvent::Cycle {period_seconds:120,trigger:moli_runtime::ReadTrigger::Deadline,late_ms:0});
+                        ctx.set_availability(&source,true);
+                        ctx.set_state(&source,"boiler_status",demand.map_or(Value::Null,Value::Bool));
+                        ctx.set_state(&source,"declared_demand",Value::from(match demand {Some(true)=>"on",Some(false)=>"off",None=>"unknown"}));
+                        let now=moli_core::now_ms();
+                        ctx.set_state(&source,"collected_at",Value::Int(i64::try_from(if fresh {now}else{now-301_000}).unwrap()));
+                        ctx.set_state(&source,"freshness",Value::from("cloud_recent"));
+                        ctx.set_state(&source,"max_age_seconds",Value::Int(300));
+                        ctx.observe_read("netatmo",ReadEvent::Published(ReadSummary{devices:1,fresh:1,..ReadSummary::default()}));
+                        ctx.observe_read("netatmo",ReadEvent::Scheduled {delay_seconds:120,next_due_at:now+120_000,reason:moli_runtime::ReadOutcome::Ok,duration_ms:1});
+                    }
+                    FixtureUpdate::Offline=>{
+                        ctx.observe_read("netatmo",ReadEvent::Stage(moli_runtime::ReadStage::Homestatus,moli_runtime::ReadOutcome::Transport));
+                        ctx.set_availability(&source,false);
+                    }
+                    FixtureUpdate::Pending=>{
+                        ctx.observe_read("netatmo",ReadEvent::Cycle {period_seconds:120,trigger:moli_runtime::ReadTrigger::Deadline,late_ms:0});
+                    }
+                }
+            }
         }
-        ctx.set_state(&command.device.id, &command.key, command.value.clone());
-        command.reply(Ok(()));
     }
 }
 
@@ -193,6 +233,22 @@ async fn setup(
     CancellationToken,
     Arc<AtomicUsize>,
 ) {
+    setup_updates(demand, collected, online, writable, path, None).await
+}
+async fn setup_updates(
+    demand: Value,
+    collected: Option<i64>,
+    online: bool,
+    writable: bool,
+    path: PathBuf,
+    updates: Option<Updates>,
+) -> (
+    Hub,
+    Automations,
+    Observer,
+    CancellationToken,
+    Arc<AtomicUsize>,
+) {
     let hub = Hub::new(HubOptions::default()).unwrap();
     let cancel = CancellationToken::new();
     let commands = Arc::new(AtomicUsize::new(0));
@@ -207,6 +263,7 @@ async fn setup(
                 online: target || online,
                 writable,
                 commands: commands.clone(),
+                updates: if target { None } else { updates.clone() },
             }),
             cancel.clone(),
         );

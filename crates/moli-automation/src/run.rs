@@ -191,7 +191,9 @@ pub(crate) async fn execute(
 }
 
 async fn remember(autos: &Automations, run: &Run) {
-    if !run.automation.starts_with(crate::PREVIEW_PREFIX) {
+    if !run.automation.starts_with(crate::PREVIEW_PREFIX)
+        && !lock(&autos.0.observation_runs).contains(&run.id)
+    {
         let recent: Vec<Run> = {
             let mut runs = lock(&autos.0.runs);
             runs.push_back(run.clone());

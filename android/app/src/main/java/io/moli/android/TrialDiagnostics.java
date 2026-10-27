@@ -10,6 +10,7 @@ final class TrialDiagnostics {
         NETATMO_TOKENS, NETATMO_HOMESDATA, NETATMO_HOMESTATUS, NETATMO_PARSING, NETATMO_PUBLICATION,
         NETATMO_DATA, NETATMO_BOILER_FIELD, UI_DEVICES, UI_SYSTEM, NETATMO_TILE, UI_SCRIPT, UI_ASSISTANT, NETATMO_POLLING,
         MEROSS_MANUAL_SELECTION,MEROSS_PREFLIGHT,MEROSS_SEND,MEROSS_ACK,MEROSS_READBACK,UI_MEROSS_COMMAND,MEROSS_IDENTITY,UI_OBSERVATION,UI_HEATING_TRIAL,UI_DAILY_HEATING }
+    enum DailyObservationReason { UNOBSERVED, WARMING, SIMULATED, NO_CHANGE, SOURCE_PENDING, SOURCE_ERROR, SOURCE_OFFLINE, TARGET_OFFLINE, SOURCE_STALE, TARGET_STALE, TARGET_UNKNOWN, SOURCE_UNPUBLISHED, IDENTITY, UNKNOWN_DEMAND, COHERENCE, SELECTION_CHANGED, GRAPH_CHANGED, ENGINE, PAUSED, MANUAL, STOPPED, THROTTLED, TRANSPORT }
     enum HeatingTrialState { UNOBSERVED, PREPARED, RUNNING, READBACK_CONFIRMED, UNCONFIRMED, REVOKED }
     enum ObservationReason { NONE, UNCONFIGURED, STORAGE, SELECTION_CHANGED, RESTARTED, SOURCE_MISSING, TARGET_MISSING, IDENTITY, SOURCE_OFFLINE, TARGET_OFFLINE, DRIVER_STOPPED, SOURCE_UNPUBLISHED, INVALID_DEMAND, UNKNOWN_DEMAND, MISSING_DATE, FUTURE_DATE, SOURCE_STALE, TARGET_STALE, COHERENCE, ENGINE, LOADING, DISCONNECTED, PENDING_SELECTION, HIDDEN, TRANSPORT, EXPIRED }
     enum State { UNOBSERVED, ABSENT, DISABLED, PENDING, STORED, OK, FAILED, STALE, CANCELLED }
@@ -144,6 +145,11 @@ final class TrialDiagnostics {
         for(Topic topic:Topic.values()){
             Entry e=entries.get(topic);out.append(topic).append(" : ");
             if(e==null){out.append("UNOBSERVED\n");continue;}
+            if(topic==Topic.UI_DAILY_HEATING){
+                int index=e.a>=0&&e.a<DailyObservationReason.values().length?(int)e.a:0;
+                out.append("observation_à_blanc=").append(DailyObservationReason.values()[Math.max(0,index)])
+                    .append(" événements_natifs_bornés=").append(e.b).append(" aucune_preuve_de_commande_physique ");
+            }
             out.append(e.state).append(" cause=").append(e.reason).append(" a=").append(e.a).append(" b=").append(e.b)
                 .append(" tentatives=").append(e.attempts).append(" succès=").append(e.successes).append(" échecs=").append(e.failures)
                 .append(" dernière_tentative=").append(stamp(e.lastAttempt)).append(" dernier_succès=").append(stamp(e.lastSuccess))
