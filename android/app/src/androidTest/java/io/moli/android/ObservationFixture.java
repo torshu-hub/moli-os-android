@@ -18,7 +18,10 @@ import static org.junit.Assert.*;
  * admission is independently tested. Only emulator-owned GET responders exist. */
 final class ObservationFixture {
     private static String js(ActivityScenario<MainActivity> ui,String code)throws Exception {return TouchRegression.js(ui,code);}
-    private static void waitJs(ActivityScenario<MainActivity> ui,String condition)throws Exception {TouchRegression.until(()->"true".equals(js(ui,condition)));}
+    private static void waitJs(ActivityScenario<MainActivity> ui,String condition)throws Exception {
+        try{TouchRegression.until(()->"true".equals(js(ui,condition)));}
+        catch(AssertionError failure){throw new AssertionError("Synthetic observation UI: "+js(ui,"JSON.stringify({fixture:!!window.observationFixtureState,source:document.querySelectorAll('[data-observation-source] option').length,target:document.querySelectorAll('[data-observation-target] option').length,card:!!document.querySelector('[data-observation]'),state:document.querySelector('[data-observation]')?.dataset.observationState,blocked:document.querySelector('[data-observation-source]')?.disabled})"),failure);}
+    }
     private static void stop(Context app)throws Exception {app.startService(new Intent(app,MoliService.class).setAction(MoliService.STOP));TouchRegression.until(()->EngineHost.state()==EngineHost.State.STOPPED);}
     private static void install(MainActivity activity,String script){
         activity.web.setWebViewClient(new WebViewClient(){
@@ -33,7 +36,10 @@ final class ObservationFixture {
                 }catch(Exception unavailable){return null;}
             }
         });
-        activity.showEquipmentPage();activity.web.reload();
+        activity.showEquipmentPage();
+        // Reloading immediately after a hash navigation can reload the old
+        // document/route instead. Force one new document with an explicit route.
+        activity.web.loadUrl(EngineHost.origin()+"/?synthetic_observation="+System.nanoTime()+"#/appareils");
     }
     private static void refresh(ActivityScenario<MainActivity> ui)throws Exception {
         waitJs(ui,"!!document.querySelector('[data-observation-refresh]:not(:disabled)')");
@@ -58,11 +64,11 @@ final class ObservationFixture {
                 }
                 EngineHost.maintain(()->{EquipmentStore.save(app,new JSONObject().put("meross",rows),keys);return null;}).get();
                 app.startForegroundService(new Intent(app,MoliService.class));TouchRegression.until(()->EngineHost.state()==EngineHost.State.RUNNING);
-                TouchRegression.until(()->MerossReadTest.device(1)!=null&&MerossReadTest.device(4)!=null);
+                TouchRegression.until(()->MerossReadTest.device(1)!=null&&MerossReadTest.device(2)!=null&&MerossReadTest.device(3)!=null&&MerossReadTest.device(4)!=null);
                 String before=EquipmentStore.read(app).toString(),master=ProtectedKey.open(app).getString("master");
                 byte[] vault=java.nio.file.Files.readAllBytes(new File(ProfileStore.data(app),"secrets.enc").toPath());
                 JSONObject snapshot=MerossReadTest.get("/api/devices");
-                String script=fixture+";window.installObservationFixture("+snapshot+",{key:'native-"+permissions+"'});";
+                String script=fixture+";window.installObservationFixture("+snapshot+",{key:'native-"+permissions+"',refreshSamples:true});";
                 try(AutoCloseable display=TouchRegression.tablet();ActivityScenario<MainActivity> ui=ActivityScenario.launch(MainActivity.class)){
                     ui.onActivity(a->install(a,script));
                     waitJs(ui,"document.querySelectorAll('[data-observation-source] option').length===2 && document.querySelectorAll('[data-observation-target] option').length===5 && !document.querySelector('[data-observation-source]').disabled");

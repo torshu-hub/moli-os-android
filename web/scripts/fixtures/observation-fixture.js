@@ -10,7 +10,7 @@ window.installObservationFixture=function(base,options={}){
   const initial=typeof base==='function'?base():base,now=Date.now(),sample=value=>({value,ts:now});
   const source={id:sourceId,instance:'android-netatmo-personal',native_name:'Synthetic thermostat',model:'NATherm1',manufacturer:'Netatmo',online:state.mode!=='source_offline',
    points:[{key:'declared_demand',access:{read:true,write:false},kind:'text'}],state:{declared_demand:sample(state.mode==='off'?'off':state.mode==='boolean'?false:'on'),freshness:sample('cloud_recent'),collected_at:sample(now-1000),max_age_seconds:sample(300)}};
-  const devices=[...initial.devices.filter(d=>d.id!==sourceId).map(d=>({...d,online:state.mode==='target_offline'&&d.id===state.selection?.target?false:d.online})),source];
+  const devices=[...initial.devices.filter(d=>d.id!==sourceId).map(d=>({...d,...(options.refreshSamples?{state:Object.fromEntries(Object.entries(d.state||{}).map(([key,sample])=>[key,{...sample,ts:now}]))}:{}),online:state.mode==='target_offline'&&d.id===state.selection?.target?false:d.online})),source];
   return {...initial,devices,drivers:[...initial.drivers.filter(d=>d.instance!==source.instance),{instance:source.instance,kind:'netatmo',integration:'netatmo',devices:1,points:4,offline:0,status:{state:'running'}}]};
  };
  const snapshot=()=>lastSnapshot||(lastSnapshot=makeSnapshot());
