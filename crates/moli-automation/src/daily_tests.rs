@@ -66,3 +66,71 @@ async fn daily_lock_covers_human_approval_native_executor_and_restored_enable() 
     restored_task.await.unwrap();
     tokio::fs::remove_dir_all(path).await.unwrap();
 }
+
+#[tokio::test]
+async fn observation_uses_the_exact_native_trigger_and_cancellation_without_authority() {
+    #[derive(Debug)]
+    struct Admit;
+    impl DraftAdmission for Admit {
+        fn allows(&self, _: &moli_core::PointId, _: &moli_core::Value) -> bool {
+            true
+        }
+    }
+    let hub = Hub::new(HubOptions::default()).unwrap();
+    let cancel = CancellationToken::new();
+    let (autos, task) = Automations::start(&hub, Config::default(), None, cancel.clone())
+        .await
+        .unwrap();
+    let a = autos
+        .save(
+            candidate(),
+            Actor {
+                human: false,
+                author: Author::Agent,
+            },
+        )
+        .await
+        .unwrap();
+    let fp = a.fingerprint();
+    autos.admit_draft(&a.id, &fp, Arc::new(Admit)).unwrap();
+    let run = autos
+        .observe_trigger(&a.id, &fp, DAILY_HEATING_LOCK, cancel.child_token())
+        .await
+        .unwrap();
+    assert!(run.dry);
+    assert_eq!(run.trigger, DAILY_HEATING_LOCK);
+    assert_eq!(run.steps[0].status, StepStatus::Simulated);
+    assert!(
+        autos
+            .observe_trigger(
+                &a.id,
+                "other-version",
+                DAILY_HEATING_LOCK,
+                cancel.child_token()
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        autos
+            .observe_trigger(&a.id, &fp, "set", cancel.child_token())
+            .await
+            .is_err()
+    );
+    let stopped = CancellationToken::new();
+    stopped.cancel();
+    let run = autos
+        .observe_trigger(&a.id, &fp, DAILY_HEATING_LOCK, stopped)
+        .await
+        .unwrap();
+    assert_eq!(run.status, RunStatus::Cancelled);
+    assert!(run.steps.is_empty());
+    assert!(autos.list().iter().all(|a| !a.enabled && !a.is_approved()));
+    assert!(
+        hub.journal(50)
+            .iter()
+            .all(|e| !matches!(e.action, moli_core::Action::Command { .. }))
+    );
+    cancel.cancel();
+    task.await.unwrap();
+}

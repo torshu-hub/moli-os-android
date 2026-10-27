@@ -14,6 +14,7 @@ pub use admission::DraftAdmission;
 mod daily_tests;
 mod engine;
 mod model;
+mod observation;
 #[cfg(test)]
 mod preview_tests;
 mod run;
