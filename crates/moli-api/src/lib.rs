@@ -96,6 +96,10 @@ impl Household {
     }
 }
 
+/// Authenticated embedding client: household, never CLI or a PIN session.
+#[derive(Clone, Copy, Debug)]
+pub struct EmbeddedClient;
+
 /// Surface settings.
 #[derive(Clone, Debug, Default)]
 pub struct Options {

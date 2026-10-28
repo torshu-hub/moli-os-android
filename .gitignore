@@ -3,3 +3,8 @@
 web/node_modules
 web/dist
 *.bak-*
+
+.gradle/
+android/**/build/
+android/app/src/main/jniLibs/
+android/local.properties

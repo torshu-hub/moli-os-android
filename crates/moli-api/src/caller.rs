@@ -281,6 +281,15 @@ pub(crate) async fn identify(
         _ => None,
     };
     let mut caller = classify(peer, request.headers(), email);
+    if request
+        .extensions()
+        .get::<crate::EmbeddedClient>()
+        .is_some()
+        && caller.via == Via::Loopback
+    {
+        caller.via = Via::Lan;
+        "embedded-app".clone_into(&mut caller.key);
+    }
     // A phone's report carries its own token (checked by the route): the
     // one way in without the home network or Cloudflare Access.
     if caller.via == Via::Outside
