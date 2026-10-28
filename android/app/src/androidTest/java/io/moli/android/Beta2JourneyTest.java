@@ -57,7 +57,7 @@ public final class Beta2JourneyTest {
         }
         assertTrue("Official Svelte dashboard did not render",displayed);
         android.graphics.Bitmap screenshot=instrumentation.getUiAutomation().takeScreenshot();
-        File captures=new File(app.getExternalFilesDir(null),"screenshots");captures.mkdirs();
+        File captures=new File(app.getFilesDir(),"screenshots");captures.mkdirs();
         try(FileOutputStream out=new FileOutputStream(new File(captures,"official-dashboard.png"))){assertTrue(screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));}
         instrumentation.runOnMainSync(activity::finish);
         app.startForegroundService(new Intent(app,MoliService.class).setAction(MoliService.STOP));waitState(EngineHost.State.STOPPED);
