@@ -103,7 +103,7 @@
   // ---- words ------------------------------------------------------------------
   // Driver kinds: their name and description are in the catalog
   // (systeme.pilotes.<kind>.nom / .desc); a kind not listed shows as it is.
-  const KINDS = ['z2m', 'hue', 'tuya', 'reolink', 'sonos', 'helpers', 'philips', 'frigate', 'bambu', 'tapo', 'igd', 'presence', 'telegram', 'phones', 'profile'];
+  const KINDS = ['z2m', 'hue', 'tuya', 'reolink', 'sonos', 'helpers', 'philips', 'frigate', 'bambu', 'tapo', 'shelly', 'igd', 'presence', 'telegram', 'phones', 'profile', 'izypower', 'solarman'];
   const kindWord = (kind, part) => (KINDS.includes(kind) ? t(`systeme.pilotes.${kind}.${part}`) : null);
   const driverName = (d) => {
     const devices=Object.values(hub.devices).filter(x=>x.instance===d.instance);

@@ -12,6 +12,7 @@ val updateFixture = findProperty("moliUpdateFixture") == "true"
 val embedNotices by tasks.registering(Copy::class) {
     from(rootProject.file("../LICENSE"), rootProject.file("../NOTICE"))
     from(rootProject.file("../licenses/meross-lan-MIT.txt"))
+    from(rootProject.file("../licenses/ha-solarman-MIT.txt"))
     into(layout.buildDirectory.dir("generated/notices"))
 }
 

@@ -1,4 +1,62 @@
-# Upstream synchronisation — step 1
+# Upstream synchronisation — step 2
+
+Pinned official source remains `rudy-io/moli-os@ea3db0a`. Step 1's exact inventory
+in [`upstream-sync-step1.json`](../upstream-sync-step1.json) is retained as history.
+This step connects functional groups without a global upstream merge/rebase.
+
+- **Native packages:** Shelly, Solarman/Deye and IzyPower are compiled, registered
+  in the shared Android/Linux factory and exposed by the existing catalogue/inventory.
+  They can be configured with their official driver options and encrypted secrets;
+  no instance is created or enabled by this update. Package fixtures/docs are included.
+- **Energy:** solar/export meters, flows and period summaries, general energy points,
+  and the configured load controller are connected to the existing driver lifecycle.
+  The solar page now receives the real energy schema. Loads remain absent unless
+  explicitly configured; they use the original hub, guard and journal.
+- **Opening/Access guards:** official opener classification, Zigbee lock semantics,
+  value-aware routine checks and Access owner checks are connected together. Fork
+  command permits, freshness diagnostics, embedded client gate and device-link routes
+  are preserved. Targeted code37 ON/OFF/unavailable/stop coverage passes after this change.
+- **Widgets:** official LightTile/Slider and RoomCard, empty climate/pool sections,
+  light recognition and PIN-error wording are integrated with both translation sets.
+  The automation Inspector/Editor layout is unchanged.
+
+## Explicit reports and retained adaptations
+
+The new house-model/provider assistant remains **unconnected as a complete group**.
+Its `house_tools.rs::plan/schedule` uses a separate queue of `tokio::spawn`/sleep
+commands rather than the original automation engine. Activating it would introduce
+another scheduler, which this mission excludes. Its contract/tools/provider source
+copies are not available features. The four assistant updates deferred in step 1
+remain deferred, along with their startup, CLI, provider examples and UI privacy
+wiring. Existing assistant configuration, API keys, Claude compatibility, standard
+automation drafting and stale rules are retained. Only the energy enum/summary
+compatibility fields and corresponding role translations enter the current assistant.
+Moving that new planner onto native automations would be a further design change;
+it is not improvised here.
+
+The remaining fork adaptations have concrete roles: Android's shared library/CLI
+split and authenticated embedded lifecycle; Netatmo/OAuth, Meross scoped commands and
+read diagnostics; stronger stale-timestamp rejection; catalogue inventory and native
+rule routes; fork documentation/translation additions; both third-party notices;
+pinned CI/signing workflows, security dependency patches and their lockfile versions.
+They are retained rather than replaced with the monolithic upstream executable or
+older dependency/security policy. Existing JSON keys are preserved while official
+changes are reconciled key by key. The lockfile adds only the three new local crates
+and their dependency edges, without replacing resolved registry versions.
+
+## Validation and candidate
+
+Development checks cover the 23 new native-driver fixture tests, catalogue registration,
+the opening/Access changes, scoped rule compatibility, and seven new energy cases.
+Web build/i18n and compilation/lints cover the modified compiled components. No general
+local Rust/JVM/Android suite or hardware command is run. Code37/code38 evidence remains
+the baseline for unchanged flows. One candidate, 0.27.0-beta.1/code39, uses the existing
+mandatory Android preservation/signing pipeline and unchanged package/certificate.
+Solarman's MIT notice is included in the APK with the existing notices.
+
+---
+
+# Historical upstream synchronisation — step 1
 
 Reference: official `rudy-io/moli-os` commit `ea3db0a379bbee0a0a3571e9f9c231248e5ed79b`,
 fork starting at `3d15431848920cedc604e44a298ee87b4aa68996`, common ancestor

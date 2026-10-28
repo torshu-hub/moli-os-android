@@ -374,5 +374,11 @@
   "systeme.diagnostic.timeout": "System read exceeded its deadline. You can retry.",
   "systeme.diagnostic.retry": "Retry read",
   "systeme.diagnostic.render": "The System graph could not render. The trial report retains an error category without private content.",
-  "systeme.diagnostic.assistant_unavailable": "Exchange history unavailable or assistant not configured."
+  "systeme.diagnostic.assistant_unavailable": "Exchange history unavailable or assistant not configured.",
+  "systeme.pilotes.shelly.nom": "Shelly Plus / Pro",
+  "systeme.pilotes.shelly.desc": "Shelly Gen2 and later switches and meters over a local connection.",
+  "systeme.pilotes.solarman.nom": "Solarman / Deye",
+  "systeme.pilotes.solarman.desc": "Local readings from Deye inverters through their Solarman V5 gateway.",
+  "systeme.pilotes.izypower.nom": "IzyPower",
+  "systeme.pilotes.izypower.desc": "Micro-inverter readings from an IzyPower account."
 }

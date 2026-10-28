@@ -67,12 +67,12 @@ Le hub l'appelle quand une surface demande une image : rien n'est récupéré po
   pièce choisis par l'humain sont des **étiquettes** (`data/labels.toml`), qui gagnent
   toujours et ne changent jamais une identité.
 
-### Déclarer un pilote (`crates/moli-os/src/config.rs`, `main.rs`)
+### Déclarer un pilote (`crates/moli-os/src/config.rs`, `lib.rs`)
 
 ```toml
 [[driver]]
 id = "enceinte"         # non vide, sans ':' ni '/', unique ; réservés : core, assistant, automations
-kind = "sonos"          # z2m, hue, dirigera, tuya, reolink, sonos, philips, frigate, bambu, tapo, igd, helpers, profile
+kind = "sonos"          # z2m, hue, dirigera, tuya, reolink, sonos, philips, frigate, bambu, tapo, shelly, igd, helpers, profile
 # enabled = false       # désactive l'instance sans la supprimer
 
 [driver.options]        # s'applique au [[driver]] qui précède ; clés inconnues refusées
@@ -80,7 +80,7 @@ host = "192.168.1.x"
 ```
 
 `moli-os check-config` construit chaque pilote (donc valide ses options) sans le lancer.
-Les `kind` connus sont la liste `KINDS` à côté de `build_driver` (`crates/moli-os/src/main.rs`) :
+Les `kind` connus sont la liste `KINDS` à côté de `build_driver` (`crates/moli-os/src/lib.rs`) :
 un `kind` absent de la liste est inconnu, et un test vérifie que chacun est bien construit.
 Ajouter un pilote = une crate, une branche du `match`, une entrée de `KINDS` et un paquet
 `integrations/<kind>/` (le test `the_catalogue_describes_every_driver_and_built_in_profile`
@@ -135,7 +135,7 @@ base_topic = "zigbee2mqtt"  # défaut
 ```
 
 - **Secrets** : mot de passe MQTT éventuel dans la variable d'environnement nommée par `password_env`.
-- **Points** : construits depuis les `exposes` du message retenu `bridge/devices` (`src/catalog.rs`). Clé = propriété Z2M ; les composites sont aplatis (`color.x`). Écriture si le bit `set` de Z2M est présent, **sauf** membres d'un composite (Z2M refuse un membre seul). Une exposition de catégorie `config` a la sémantique `config`. Les énumérations numériques sont exposées en texte et reconverties en nombre à l'envoi.
+- **Points** : construits depuis les `exposes` du message retenu `bridge/devices` (`src/catalog.rs`). Clé = propriété Z2M ; les composites sont aplatis (`color.x`). Écriture si le bit `set` de Z2M est présent, **sauf** membres d'un composite (Z2M refuse un membre seul). Une exposition de catégorie `config` a la sémantique `config`. Les énumérations numériques sont exposées en texte et reconverties en nombre à l'envoi. **Lumières** : la luminosité Zigbee (0–254, `value_max`) est exposée en % (0–100, unité `%`), comme les autres pilotes ; conversion arrondie à la lecture et à l'envoi, une ampoule allumée n'est jamais affichée à 0 %. La température de blanc reste en mired. **Migration** : au déploiement, l'historique `brightness` des ampoules Z2M passe de 0–254 à 0–100 (les anciennes valeurs restent sur 254 dans les graphiques) ; une automatisation écrite avec un seuil brut (`> 200`) est à reprendre.
 - **Identité** : adresse IEEE. Le `friendly_name` ne sert qu'au routage des sujets.
 - **Découverte** : chaque nouveau `bridge/devices` recharge le catalogue (appareils disparus retirés ; coordinateur et appareils désactivés exclus). Disponibilité via `<nom>/availability` (`{"state":"online"}` ou `online`).
 - **Pièges** : Z2M ne rejoue pas les états aux nouveaux abonnés. Les appareils sur secteur (routeurs) sont donc interrogés une fois par exécution via `/get`, un toutes les 500 ms pour ne pas saturer le réseau ; les appareils endormis restent couverts par le cache d'état du hub. Taille de paquet portée à 4 Mio (`bridge/devices` grossit avec le réseau). Les propres `/set` et `/get` de Moli reviennent par `#` : ignorés. Une commande reçue avant que le broker ait accepté la connexion (`ConnAck`) est **refusée** (`broker injoignable`) au lieu d'être acquittée puis perdue ; toute erreur de connexion termine l'exécution (le superviseur vide la file et reconnecte).
@@ -403,6 +403,39 @@ name = "Bambu A1"              # optionnel
 - **Pas fait** : lancer une impression (le plateau doit être libre : un humain sur place), la caméra (le flux du U1 ne répond pas en HTTP local), le flux en direct par websocket (le relevé toutes les 5 s suffit).
 - **Tests** : réponses réelles du U1 (`integrations/klipper/fixtures/u1.json`) → forme, points, valeurs ; estimation du temps restant ; Klipper arrêté ; ordres → requêtes.
 
+## `shelly` : Shelly Gen2 et suivants (`crates/moli-shelly`)
+
+- **Couvre** : Shelly Plus, Pro, Gen3, Gen4 alimentés (sorties `switch`, compteurs `em`/`emdata`
+  du Pro 3EM, `em1`/`em1data`, `pm1`, entrées, température). Pas encore : volets, lumières,
+  capteurs sur pile, Gen1.
+- **Protocole** : websocket local `ws://<hôte>/rpc` (JSON-RPC 2.0). Au départ
+  `Shelly.GetDeviceInfo`, `GetConfig`, `GetStatus` ; ensuite l'appareil pousse ses changements
+  (`NotifyStatus`, `NotifyFullStatus` ; un Pro 3EM toutes les 5 s) ; état complet relu chaque
+  minute en filet. Commande : `Switch.Set` sur la même connexion.
+- **Configuration** : une instance par Shelly.
+
+```toml
+[[driver]]
+id = "pince"
+kind = "shelly"
+[driver.options]
+host = "192.168.1.x"
+# port = 80
+# mac = "aa:bb:cc:dd:ee:ff"   # pour le retrouver même avant qu'il ait répondu une fois
+```
+
+- **Secrets** : `password` (facultatif) si l'appareil est protégé (digest SHA-256, utilisateur
+  `admin`). Sans mot de passe rangé, l'instance attend avec la commande à taper.
+- **Appareils** : le boîtier `<mac>` (signal, mise à jour disponible, entrées, température, et
+  le compteur d'un Pro 3EM), `<mac>_switch_<n>` par sortie (`on` ✎, puissance, énergie
+  consommée et restituée en kWh, alertes), `<mac>_em1_<n>` / `<mac>_pm1_<n>` par voie.
+  Pro 3EM : phases câblées reconnues (tension ou énergie comptée) ; une seule = pas de points
+  par phase ; puissance **signée** (positive = soutirée, négative = injectée).
+- **Adresse qui change** : suivi par MAC (`moli_net::lan::relocate`), identité vérifiée par
+  `Shelly.GetDeviceInfo` avant d'adopter la nouvelle adresse.
+- **Tests** : `src/model.rs` sur les captures réelles `integrations/shelly/fixtures/`
+  (Pro 4PM, Pro 3EM, notification) ; `src/rpc.rs` (digest).
+
 ## `tapo` : ampoules et prises TP-Link Tapo (`crates/moli-tapo`)
 
 - **Couvre** : marche/arrêt, luminosité, température de couleur, couleur.
@@ -583,6 +616,7 @@ ni pièce native). Il ne déplace jamais rien. Sans argument : plan à blanc ; `
 | `bambu` | `moli-bambu` | MQTT TLS 8883, épinglé | lumière, `control` (humain pour un agent) | pas encore (cible : Bambu Lab A1) |
 | `moonraker` | `moli-moonraker` | HTTP local 7125 | lumière, `control` (humain pour un agent) | Snapmaker U1 |
 | `tapo` | `moli-tapo` | HTTP 80 + KLAP v2 | oui : tout | pas encore (cible : Tapo L530) |
+| `shelly` | `moli-shelly` | WebSocket local 80 (JSON-RPC Gen2), notifications poussées, digest SHA-256 | oui : sorties (`on`) | Pro 4PM, Pro 3EM (une phase câblée) : lecture identique à HA au Wh près ; ordre sur une sortie : pas encore |
 | `igd` | `moli-igd` | UPnP IGD (SSDP + SOAP) | non | Livebox |
 | `ipp` | `moli-ipp` | IPP 2.0 HTTP 631 | identifier, annuler, imprimer (tableau de bord) | Canon MG3600 |
 | `host` | `moli-host` | /proc, /sys ; WoL ; agent HTTP sortant | allumer, éteindre, veille, Claude et Codex pour le téléphone (PIN) | hôte Linux ; PC Windows avec l'agent |

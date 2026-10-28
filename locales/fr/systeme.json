@@ -374,5 +374,11 @@
   "systeme.diagnostic.timeout": "La lecture Système a dépassé le délai prévu. Vous pouvez réessayer.",
   "systeme.diagnostic.retry": "Réessayer la lecture",
   "systeme.diagnostic.render": "Le schéma Système ne peut pas être affiché. Le rapport d’essai conserve une catégorie d’erreur sans contenu privé.",
-  "systeme.diagnostic.assistant_unavailable": "Historique des échanges indisponible ou assistant non configuré."
+  "systeme.diagnostic.assistant_unavailable": "Historique des échanges indisponible ou assistant non configuré.",
+  "systeme.pilotes.shelly.nom": "Shelly Plus / Pro",
+  "systeme.pilotes.shelly.desc": "Sorties et compteurs Shelly Gen2 et suivants, en connexion locale.",
+  "systeme.pilotes.solarman.nom": "Solarman / Deye",
+  "systeme.pilotes.solarman.desc": "Lecture locale des onduleurs Deye via leur passerelle Solarman V5.",
+  "systeme.pilotes.izypower.nom": "IzyPower",
+  "systeme.pilotes.izypower.desc": "Lecture des micro-onduleurs depuis le compte IzyPower."
 }

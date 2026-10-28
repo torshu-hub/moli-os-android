@@ -20,7 +20,6 @@
   "commun.demander_moli": "Ask Moli",
   "commun.ambiances": "{label} moods",
   "commun.hors_ligne": "Moli is restarting or can’t be reached… trying again.",
-
   "commun.salut.nuit": "Good night",
   "commun.salut.matin": "Good morning",
   "commun.salut.apres_midi": "Good afternoon",
@@ -29,7 +28,6 @@
   "commun.relatif.minutes": "{n} min ago",
   "commun.relatif.heures": "{n} h ago",
   "commun.relatif.jours": "{n} d ago",
-
   "commun.nav.aria": "Navigation",
   "commun.nav.scroll": "More pages: scroll horizontally in portrait",
   "commun.nav.logo": "Moli, home",
@@ -57,7 +55,6 @@
   "commun.theme.titre_auto": "Theme: automatic (follows the sun)",
   "commun.theme.titre_jour": "Theme: day",
   "commun.theme.titre_nuit": "Theme: night",
-
   "commun.atelier.maison": "Home",
   "commun.atelier.connexion": "Connecting to the hub…",
   "commun.atelier.aucun_appareil": "No devices yet. Drivers publish their devices as soon as they connect.",
@@ -66,7 +63,6 @@
   "commun.atelier.protegee_titre": "Protected room: agents have to ask for permission",
   "commun.atelier.piece_introuvable": "Protected room not found: “{room}”",
   "commun.atelier.piece_introuvable_detail": "no device is assigned to it (renamed?). Its protection no longer applies.",
-
   "commun.etage.dehors": "Outside",
   "commun.etage.toute_la_maison": "Whole house",
   "commun.filtre.ne_voir_que": "Show only…",
@@ -77,7 +73,6 @@
   "commun.filtre.capteurs": "Sensors",
   "commun.filtre.cameras": "Cameras",
   "commun.filtre.medias": "TV & sound",
-
   "commun.meteo.indisponible": "Weather unavailable",
   "commun.meteo.degage": "Clear sky",
   "commun.meteo.quelques_nuages": "A few clouds",
@@ -88,7 +83,6 @@
   "commun.meteo.forte_pluie": "Heavy rain",
   "commun.meteo.neige": "Snow",
   "commun.meteo.orage": "Thunderstorm",
-
   "commun.capteur.fermee": "Closed",
   "commun.capteur.ouverte": "Open",
   "commun.capteur.quelquun": "Someone",
@@ -104,12 +98,10 @@
   "commun.capteur.moyenne": "Medium",
   "commun.capteur.bonne": "Good",
   "commun.capteur.pas_de_mesure": "No readings yet.",
-
   "commun.volet.ouvrir": "Open",
   "commun.volet.stop": "Stop",
   "commun.volet.fermer": "Close",
   "commun.volet.ouvert_a": "{pct}% open",
-
   "commun.lampe.introuvable": "Not found",
   "commun.lampe.coupee": "Switched off at the wall",
   "commun.lampe.injoignable": "Unreachable",
@@ -140,7 +132,6 @@
   "commun.lampe.vitesse": "Fan speed",
   "commun.lampe.moins_vite": "Slower",
   "commun.lampe.plus_vite": "Faster",
-
   "commun.piece.protegee_titre": "Protected room: agents have to ask, you just need your code",
   "commun.piece.allumees_one": "{count} light on",
   "commun.piece.allumees_other": "{count} lights on",
@@ -178,7 +169,6 @@
   "commun.piece.consomme": "{name} · {watts} W",
   "commun.piece.au_repos": "{name} · idle",
   "commun.piece.prises_allumees": "{on} of {count}",
-
   "commun.clim.label_consigne": "{name}: target",
   "commun.clim.label_arret": "{name}: off",
   "commun.clim.label_marche": "{name}: on",
@@ -202,7 +192,6 @@
   "commun.clim.aujourdhui": "Today",
   "commun.clim.ce_mois": "This month",
   "commun.clim.cout_non_mesure": "Cost not measured: no clamp on its circuit",
-
   "commun.jour.jusqua": "Today until {h}:00",
   "commun.jour.habitude": "usually {kwh} kWh",
   "commun.jour.plus_chargee": "Busiest hour",
@@ -219,7 +208,6 @@
   "commun.jour.talon_legende": "base load (what never switches off)",
   "commun.jour.aujourdhui": "today",
   "commun.jour.moyenne_7j": "average of the last 7 days",
-
   "commun.code.confirmer": "Confirm with your code",
   "commun.code.cette_action": "This action",
   "commun.code.actuel": "Current code",
@@ -237,5 +225,17 @@
   "commun.code.saisis_one": "{count} digit entered",
   "commun.code.saisis_other": "{count} digits entered",
   "commun.code.effacer": "Delete",
-  "commun.code.nouveau_choisir": "Choose a new code"
+  "commun.code.nouveau_choisir": "Choose a new code",
+  "commun.lampe.temperature": "{label} color temperature",
+  "commun.kelvin": "{n} K",
+  "commun.lampe.temperature_valeur": "{n} K, {nom}",
+  "commun.lampe.blanc_tres_chaud": "Very warm white",
+  "commun.lampe.blanc_jour": "Daylight",
+  "commun.lampe.blanc_bleute": "Bluish white",
+  "commun.piece.eclairement": "Illuminance",
+  "commun.capteur.monoxyde": "Carbon monoxide",
+  "commun.niveau.bon": "Good",
+  "commun.niveau.attention": "Worth watching",
+  "commun.niveau.mauvais": "Poor",
+  "commun.capteur.humidite": "Humidity"
 }
