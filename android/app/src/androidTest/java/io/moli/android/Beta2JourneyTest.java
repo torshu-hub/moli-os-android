@@ -45,17 +45,25 @@ public final class Beta2JourneyTest {
         assertEquals(configured,EngineHost.inspect(()->new ConfigStore(app).read()).get());
         MainActivity activity=(MainActivity)instrumentation.startActivitySync(new Intent(app,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         instrumentation.runOnMainSync(activity::showDashboard);
-        long deadline=System.currentTimeMillis()+20000;boolean displayed=false;
+        java.util.concurrent.ConcurrentLinkedQueue<String> errors=new java.util.concurrent.ConcurrentLinkedQueue<>();
+        instrumentation.runOnMainSync(()->activity.web.setWebChromeClient(new android.webkit.WebChromeClient(){
+            @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage message){if(message.messageLevel()==android.webkit.ConsoleMessage.MessageLevel.ERROR && errors.size()<8)errors.add(message.message().substring(0,Math.min(300,message.message().length())));return true;}
+        }));
+        long deadline=System.currentTimeMillis()+30000;boolean displayed=false;
         while(System.currentTimeMillis()<deadline){
             CountDownLatch latch=new CountDownLatch(1);String[] value={null};
-            instrumentation.runOnMainSync(()->activity.web.evaluateJavascript("JSON.stringify({body:document.body.innerText,html:document.documentElement.outerHTML.length})",v->{value[0]=v;latch.countDown();}));
+            instrumentation.runOnMainSync(()->activity.web.evaluateJavascript("JSON.stringify({nav:!!document.querySelector('.maison nav.rail'),text:document.body.innerText.length})",v->{value[0]=v;latch.countDown();}));
             if(latch.await(3,TimeUnit.SECONDS)&&value[0]!=null&&!value[0].equals("null")){
                 JSONObject dom=new JSONObject(new JSONTokener(value[0]).nextValue().toString());
-                if(dom.optInt("html")>1000){displayed=true;break;}
+                if(dom.optBoolean("nav") && dom.optInt("text")>20){displayed=true;break;}
             }
             Thread.sleep(250);
         }
-        assertTrue("Official Svelte dashboard did not render",displayed);
+        assertTrue("Official Svelte dashboard did not render: "+errors,displayed);
+        CountDownLatch visual=new CountDownLatch(1);
+        instrumentation.runOnMainSync(()->activity.web.postVisualStateCallback(1,new WebView.VisualStateCallback(){@Override public void onComplete(long request){visual.countDown();}}));
+        assertTrue("WebView did not commit its visual state",visual.await(5,TimeUnit.SECONDS));
+        instrumentation.waitForIdleSync();Thread.sleep(500);
         android.graphics.Bitmap screenshot=instrumentation.getUiAutomation().takeScreenshot();
         File captures=new File(app.getFilesDir(),"screenshots");captures.mkdirs();
         try(FileOutputStream out=new FileOutputStream(new File(captures,"official-dashboard.png"))){assertTrue(screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));}
