@@ -146,5 +146,7 @@
   "assistant.door.porte": "the door",
   "assistant.recap.porte": "🔔 At the door: {n}",
   "assistant.recap.porte_sonne": "{time} · door · rang, no message",
-  "assistant.recap.porte_message": "{time} · door · “{message}”"
+  "assistant.recap.porte_message": "{time} · door · “{message}”",
+  "assistant.auto.role_solar": "what the solar panels produce (lifetime index)",
+  "assistant.auto.role_export": "what the home sends to the grid (index)"
 }

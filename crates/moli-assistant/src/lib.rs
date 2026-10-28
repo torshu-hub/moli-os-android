@@ -2844,6 +2844,9 @@ mod tests {
             total: Amount { kwh, cost },
             meters: std::collections::BTreeMap::new(),
             unmeasured: None,
+            production: None,
+            export: None,
+            solar: None,
         };
         let mut summary = moli_energy::Summary {
             currency: "€".into(),
@@ -2854,6 +2857,7 @@ mod tests {
             period_point: None,
             meters: vec![meter("g", "Linky", Role::Grid, "linky/index", None, None)],
             live: None,
+            flows: None,
             today: period(0.0, None),
             yesterday: period(0.0, None),
             month: period(0.0, None),

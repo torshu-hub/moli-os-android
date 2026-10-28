@@ -443,6 +443,8 @@ fn meters_text(s: &moli_energy::Summary) -> String {
             moli_energy::Role::Grid => moli_i18n::tr!("assistant.auto.role_grid"),
             moli_energy::Role::Circuit => moli_i18n::tr!("assistant.auto.role_circuit"),
             moli_energy::Role::Appliance => moli_i18n::tr!("assistant.auto.role_appliance"),
+            moli_energy::Role::Solar => moli_i18n::tr!("assistant.auto.role_solar"),
+            moli_energy::Role::Export => moli_i18n::tr!("assistant.auto.role_export"),
         };
         let line = match &m.power {
             Some(power) => moli_i18n::tr!(
@@ -663,7 +665,11 @@ mod tests {
             });
             assert_eq!(nodes[1]["rules"][0], expected);
             assert_eq!(nodes[2]["rule"], expected);
-            assert_eq!(graph.nodes[1].x, 120.0);
+            assert!(
+                (graph.nodes[1].x - 120.0).abs() < 1e-9,
+                "x={}",
+                graph.nodes[1].x
+            );
         }
     }
 

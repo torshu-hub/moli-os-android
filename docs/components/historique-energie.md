@@ -1,8 +1,5 @@
 # Historique et énergie
 
-> Android, synchronisation étape 1 : les sections « Production solaire » et « Charges pilotées »
-> documentent l’amont ; leur raccordement reste différé. Voir [le périmètre intégré](upstream-sync-step1.md).
-
 ## Historique (`crates/moli-history`)
 
 - SQLite `data/history.db`, enregistrement **au changement** (le hub n'émet que les

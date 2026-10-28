@@ -146,5 +146,7 @@
   "assistant.door.porte": "la porte",
   "assistant.recap.porte": "🔔 À la porte : {n}",
   "assistant.recap.porte_sonne": "{time} · porte · sonné, sans message",
-  "assistant.recap.porte_message": "{time} · porte · « {message} »"
+  "assistant.recap.porte_message": "{time} · porte · « {message} »",
+  "assistant.auto.role_solar": "la production des panneaux solaires (index à vie)",
+  "assistant.auto.role_export": "ce que la maison injecte sur le réseau (index)"
 }
