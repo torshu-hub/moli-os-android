@@ -33,15 +33,16 @@ pub(crate) async fn run(autos: Automations) {
         tokio::select! {
             () = cancel.cancelled() => break,
             event = events.recv() => match event {
-                Ok(Event::State { point, value, .. }) => on_state(&autos, &point, &value),
-                Ok(_) => {}
+                Ok(event) => {
+                    if let Event::State { point, value, ts }=event { on_state(&autos,&point,&value,ts); }
+                }
                 Err(RecvError::Lagged(missed)) => {
                     tracing::warn!(missed, "automations lagged behind the hub: some changes were not seen");
                     remember_all(&autos);
                 }
                 Err(RecvError::Closed) => break,
             },
-            _ = clock.tick() => on_clock(&autos),
+            _ = clock.tick() => { on_clock(&autos); },
             () = &mut started, if !start_done => {
                 start_done = true;
                 for a in live(&autos).iter() {
@@ -71,22 +72,24 @@ pub(crate) async fn run(autos: Automations) {
 /// Clock triggers due this very minute count as fired: after a restart
 /// within the minute, they do not fire twice.
 fn mark_this_minute(autos: &Automations) {
+    for a in live(autos).iter() {
+        mark_minute(autos, a);
+    }
+}
+fn mark_minute(autos: &Automations, a: &Automation) {
     let now = jiff::Timestamp::now().to_zoned(autos.0.tz.clone());
     let minute = u32::from(now.hour().unsigned_abs()) * 60 + u32::from(now.minute().unsigned_abs());
     let stamp = format!("{} {minute}", now.date());
     let mut fired = lock(&autos.0.fired);
-    for a in live(autos).iter() {
-        for t in a.graph.triggers() {
-            if matches!(
-                t.step,
-                Step::AtTime { .. } | Step::AtSun { .. } | Step::Every { .. }
-            ) {
-                fired.insert((a.id.clone(), t.id.clone()), stamp.clone());
-            }
+    for t in a.graph.triggers() {
+        if matches!(
+            t.step,
+            Step::AtTime { .. } | Step::AtSun { .. } | Step::Every { .. }
+        ) {
+            fired.insert((a.id.clone(), t.id.clone()), stamp.clone());
         }
     }
 }
-
 fn live(autos: &Automations) -> std::sync::Arc<Vec<Automation>> {
     autos.live()
 }
@@ -102,7 +105,7 @@ fn remember_all(autos: &Automations) {
     }
 }
 
-fn on_state(autos: &Automations, point: &PointId, value: &Value) {
+pub(crate) fn on_state(autos: &Automations, point: &PointId, value: &Value, _ts: u64) {
     let key = point.to_string();
     let prev = lock(&autos.0.last).insert(key.clone(), value.clone());
     if prev.as_ref() == Some(value) {
@@ -239,7 +242,7 @@ fn unhold(autos: &Automations, automation: &str, trigger: &str) {
     }
 }
 
-fn on_clock(autos: &Automations) {
+pub(crate) fn on_clock(autos: &Automations) {
     let now = jiff::Timestamp::now().to_zoned(autos.0.tz.clone());
     let minute = u32::from(now.hour().unsigned_abs()) * 60 + u32::from(now.minute().unsigned_abs());
     let stamp = format!("{} {minute}", now.date());
@@ -464,5 +467,64 @@ fn words(v: &Value) -> String {
         Value::Int(i) => i.to_string(),
         Value::Text(t) => t.to_string(),
         Value::Null => "—".into(),
+    }
+}
+
+#[cfg(test)]
+mod daily_clock_tests {
+    use super::*;
+    use crate::{Actor, Author, Config, RunStatus};
+    use moli_runtime::{Hub, HubOptions};
+    use tokio_util::sync::CancellationToken;
+
+    #[tokio::test]
+    async fn native_clock_deduplicates_daily_candidate_and_cannot_cross_release_lock() {
+        let hub = Hub::new(HubOptions::default()).unwrap();
+        let cancel = CancellationToken::new();
+        let (autos, task) = Automations::start(&hub, Config::default(), None, cancel.clone())
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        let a = autos
+            .save(
+                crate::daily_tests::candidate(),
+                Actor {
+                    human: false,
+                    author: Author::Agent,
+                },
+            )
+            .await
+            .unwrap();
+        // Synthetic corrupted in-memory enable, bypassing public approval only
+        // inside this test. Actual SET must still fail before the hub.
+        autos
+            .update(&a.id, |a| {
+                a.enabled = true;
+                a.approved = Some(a.fingerprint());
+            })
+            .unwrap();
+        for _ in 0..5 {
+            on_clock(&autos);
+        }
+        for _ in 0..100 {
+            if !autos.runs(Some(&a.id), 10).is_empty() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        let runs = autos.runs(Some(&a.id), 10);
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, RunStatus::Failed);
+        assert!(
+            hub.journal(20)
+                .iter()
+                .all(|e| !matches!(e.action, moli_core::Action::Command { .. }))
+        );
+        // Resume marks only the current minute: no missed-minute catch-up.
+        mark_this_minute(&autos);
+        on_clock(&autos);
+        assert_eq!(autos.runs(Some(&a.id), 10).len(), 1);
+        cancel.cancel();
+        task.await.unwrap();
     }
 }

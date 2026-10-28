@@ -1,0 +1,30 @@
+# SYNTHETIC SIMULATION ONLY. Not registered as a built-in or active catalogue profile.
+[profile]
+id = "meross-togglex-simulation"
+name = "Meross ToggleX simulation"
+host = "127.0.0.1"
+secret = "key"
+identity = "all.payload.all.system.hardware.uuid"
+
+[[request]]
+id = "all"
+path = "/config"
+format = "json"
+every = "1h"
+transport = "meross"
+namespace = "Appliance.System.All"
+payload = '{}'
+
+[[point]]
+key = "on"
+label = "Simulated state"
+from = "all.payload.all.digest.togglex.[channel=0].onoff"
+kind = "binary"
+
+[[write]]
+point = "on"
+path = "/config"
+transport = "meross"
+namespace = "Appliance.Control.ToggleX"
+channel = 0
+refresh = "all"

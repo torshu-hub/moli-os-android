@@ -1,0 +1,6 @@
+<resources>
+    <item name="link_source" type="id"/>
+    <item name="link_target" type="id"/>
+    <item name="link_enabled" type="id"/>
+    <item name="link_status" type="id"/>
+</resources>

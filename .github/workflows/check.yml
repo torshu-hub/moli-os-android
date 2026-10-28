@@ -1,60 +1,79 @@
-# The same checks as scripts/check.sh and the dashboard's build, on every
-# pull request and every push to main.
 name: check
-
-on:
+'on':
+  pull_request: null
   push:
-    branches: [main]
-  pull_request:
-    paths-ignore:
-      - 'android/**'
-      - 'docs/**'
-      - 'scripts/test-android-*.sh'
-      - '.github/workflows/android-*.yml'
-
+    branches:
+    - main
+    - android/beta-ready
 permissions:
   contents: read
-
 jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      candidate: ${{ steps.plan.outputs.candidate }}
+      rust: ${{ steps.plan.outputs.rust }}
+      web: ${{ steps.plan.outputs.web }}
+      image: ${{ steps.plan.outputs.image }}
+      emulator: ${{ steps.plan.outputs.emulator }}
+      update: ${{ steps.plan.outputs.update }}
+      classes: ${{ steps.plan.outputs.classes }}
+      reused: ${{ steps.plan.outputs.reused }}
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - id: plan
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: python3 tools/android-ci/plan.py
   rust:
-    runs-on: ubuntu-latest
+    needs: plan
+    if: needs.plan.outputs.rust == 'true'
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-      # fmt, clippy pedantic -D warnings, tests, integration catalogue, leak check
-      # (generic patterns: a private denylist never leaves its house).
-      - run: mkdir -p web/dist && sh scripts/check.sh
-
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - run: |-
+        rustup toolchain install 1.99.1 --profile minimal --component clippy,rustfmt
+        rustup default 1.99.1
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+    - run: sh scripts/check.sh
   web:
-    runs-on: ubuntu-latest
+    needs: plan
+    if: needs.plan.outputs.web == 'true'
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci --no-audit --no-fund
-        working-directory: web
-      - run: npm run build
-        working-directory: web
-      - run: node scripts/i18n-check.mjs
-      - run: node --test src/maison/lib/voice/*.test.js
-        working-directory: web
-      - run: node scripts/solar-sim.check.mjs
-        working-directory: web
-
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      with:
+        node-version: 24.19.0
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+    - working-directory: web
+      run: |-
+        npm ci --no-audit --no-fund
+        npm run build
+        node --test src/maison/lib/voice/*.test.js src/maison/lib/source-status.test.js
+        node scripts/solar-sim.check.mjs
+    - run: node scripts/i18n-check.mjs
   image:
-    runs-on: ubuntu-latest
+    needs: plan
+    if: needs.plan.outputs.image == 'true'
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      # The release image builds (x86-64 here; ARM builds the same way on an ARM machine).
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          tags: moli-os:check
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - run: docker build --tag moli-os:check .

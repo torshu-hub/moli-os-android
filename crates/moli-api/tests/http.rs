@@ -1047,6 +1047,51 @@ async fn live_streams_are_counted() {
     panic!("the seat of a closed stream never came back");
 }
 
+/// Without Cloudflare Access, an owner who has only an e-mail cannot sign in:
+/// the house's code keeps managing the people (and can invite that owner).
+#[tokio::test]
+async fn an_owner_e_mail_without_access_leaves_the_people_to_the_code() {
+    let dir = std::env::temp_dir().join(format!("moli-http-owner-mail-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let hub = Hub::new(HubOptions {
+        secrets: Some((
+            dir.join("secrets.enc"),
+            moli_runtime::MasterKey::generate().unwrap(),
+        )),
+        ..HubOptions::default()
+    })
+    .unwrap();
+    let options = moli_api::Options {
+        ui_pin: Some(moli_api::UiPin::new("482915")),
+        home_path: Some(dir.join("home.json")),
+        ..moli_api::Options::default()
+    };
+    let addr = serve(&hub, &options).await;
+    let pin = pin_session(&addr, "482915").await;
+    let (status, body) = request_with(
+        &addr,
+        "POST",
+        "/api/people",
+        Some(&json!({ "name": "Alex", "role": "owner", "emails": ["alex@example.org"] })),
+        &pin,
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    // Alex cannot sign in yet: the code still manages the people.
+    let (status, body) = request_with(
+        &addr,
+        "POST",
+        "/api/people",
+        Some(&json!({ "name": "Sam", "role": "member" })),
+        &pin,
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    let (status, body) = request_with(&addr, "POST", "/api/people/alex/invite", None, &pin).await;
+    assert_eq!(status, 200, "the code invites the owner: {body}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Élodie, from the Internet: nothing until she is invited, then the house.
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
@@ -1193,4 +1238,34 @@ async fn an_invited_person_reaches_the_house_from_the_internet() {
     .await;
     assert_eq!(status, 401);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn integration_inventory_is_read_only_and_separates_configuration_from_observation() {
+    let hub = lamp_hub().await;
+    let options = moli_api::Options {
+        integration_inventory: vec![
+            json!({"id":"fake","kind":"fake","compiled":true,"instances":[{"instance":"fake","enabled":true}]}),
+            json!({"id":"disabled","kind":"profile","compiled":true,"instances":[{"instance":"disabled","enabled":false}]}),
+            json!({"id":"unconfigured","kind":"profile","compiled":true,"instances":[]}),
+        ],
+        ..moli_api::Options::default()
+    };
+    let addr = serve(&hub, &options).await;
+    for _ in 0..2 {
+        let (status, body) = request(&addr, "GET", "/api/system", None).await;
+        assert_eq!(status, 200, "{body}");
+        let body: Json = serde_json::from_str(&body).unwrap();
+        let rows = body["integrations"].as_array().unwrap();
+        assert_eq!(rows[0]["instances"][0]["status"]["state"], "running");
+        assert_eq!(rows[1]["instances"][0]["enabled"], false);
+        assert!(rows[1]["instances"][0]["status"].is_null());
+        assert!(rows[2]["instances"].as_array().unwrap().is_empty());
+        assert!(rows.iter().all(|r| r["hardware_validation"].is_null()));
+    }
+    assert_eq!(
+        hub.state(&"fake:lamp/state".into()).unwrap().value,
+        Value::Bool(false)
+    );
+    assert_eq!(hub.snapshot().drivers.len(), 1);
 }

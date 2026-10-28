@@ -1,0 +1,25 @@
+{
+  "header": {
+    "method": "GETACK",
+    "namespace": "Appliance.System.All"
+  },
+  "payload": {
+    "all": {
+      "system": {
+        "hardware": {
+          "type": "mss310",
+          "version": "6.0.0",
+          "uuid": "00000000000000000000000000000001"
+        }
+      },
+      "digest": {
+        "togglex": [
+          {
+            "channel": 0,
+            "onoff": 1
+          }
+        ]
+      }
+    }
+  }
+}

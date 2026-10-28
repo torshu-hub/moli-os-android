@@ -9,6 +9,7 @@ pub mod lan;
 mod legacy;
 pub mod proto;
 pub mod upnp;
+pub mod web_diagnostics;
 pub mod wol;
 pub mod ws;
 pub mod wyoming;

@@ -207,6 +207,12 @@ dependencies = [
 
 [[package]]
 name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
+name = "base64"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
@@ -1153,8 +1159,17 @@ name = "moli-android"
 version = "0.1.0"
 dependencies = [
  "jni",
+ "moli-core",
+ "moli-net",
+ "moli-netatmo",
  "moli-os",
+ "moli-profile",
  "moli-runtime",
+ "ring",
+ "serde_json",
+ "tokio",
+ "toml",
+ "toml_edit",
 ]
 
 [[package]]
@@ -1299,6 +1314,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "moli-dirigera"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "http",
+ "http-body-util",
+ "hyper",
+ "jiff",
+ "moli-core",
+ "moli-i18n",
+ "moli-net",
+ "moli-runtime",
+ "ring",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "moli-energy"
 version = "0.1.0"
 dependencies = [
@@ -1329,6 +1365,8 @@ dependencies = [
  "moli-runtime",
  "ring",
  "serde",
+ "symphonia-bundle-flac",
+ "symphonia-core",
  "tokio",
  "tokio-util",
  "tracing",
@@ -1454,6 +1492,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "moli-izypower"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "http",
+ "http-body-util",
+ "moli-core",
+ "moli-i18n",
+ "moli-net",
+ "moli-runtime",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "moli-lights"
 version = "0.1.0"
 dependencies = [
@@ -1504,6 +1559,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "moli-netatmo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "http",
+ "http-body-util",
+ "httpdate",
+ "moli-core",
+ "moli-i18n",
+ "moli-net",
+ "moli-runtime",
+ "ring",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tower",
+]
+
+[[package]]
 name = "moli-os"
 version = "0.1.0"
 dependencies = [
@@ -1519,6 +1595,7 @@ dependencies = [
  "moli-bambu",
  "moli-core",
  "moli-demo",
+ "moli-dirigera",
  "moli-energy",
  "moli-esphome",
  "moli-frigate",
@@ -1529,15 +1606,19 @@ dependencies = [
  "moli-i18n",
  "moli-igd",
  "moli-ipp",
+ "moli-izypower",
  "moli-lights",
  "moli-moonraker",
  "moli-net",
+ "moli-netatmo",
  "moli-philips",
  "moli-phones",
  "moli-presence",
  "moli-profile",
  "moli-reolink",
  "moli-runtime",
+ "moli-shelly",
+ "moli-solarman",
  "moli-sonos",
  "moli-tapo",
  "moli-telegram",
@@ -1607,6 +1688,7 @@ name = "moli-profile"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "http",
  "http-body-util",
  "hyper",
@@ -1663,6 +1745,38 @@ dependencies = [
  "toml",
  "tracing",
  "unicode-normalization",
+]
+
+[[package]]
+name = "moli-shelly"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "moli-core",
+ "moli-i18n",
+ "moli-net",
+ "moli-runtime",
+ "ring",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "moli-solarman"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "jiff",
+ "moli-core",
+ "moli-i18n",
+ "moli-net",
+ "moli-runtime",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1955,7 +2069,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fae7019994ae0fe4ada40b732f798f3ff26f0f04facb1477f1bf37eb4f18a2d3"
 dependencies = [
  "async-trait",
- "base64",
+ "base64 0.23.1",
  "bytes",
  "chrono",
  "futures",
@@ -1996,8 +2110,6 @@ dependencies = [
 [[package]]
 name = "rumqttc"
 version = "0.25.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0feff8d882bff0b2fddaf99355a10336d43dd3ed44204f85ece28cf9626ab519"
 dependencies = [
  "bytes",
  "fixedbitset",
@@ -2006,7 +2118,7 @@ dependencies = [
  "log",
  "rustls-native-certs",
  "rustls-pemfile",
- "rustls-webpki 0.102.8",
+ "rustls-webpki",
  "thiserror 2.0.21",
  "tokio",
  "tokio-rustls",
@@ -2071,7 +2183,7 @@ dependencies = [
  "once_cell",
  "ring",
  "rustls-pki-types",
- "rustls-webpki 0.103.15",
+ "rustls-webpki",
  "subtle",
  "zeroize",
 ]
@@ -2108,20 +2220,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.102.8"
+version = "0.103.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64ca1bc8749bd4cf37b5ce386cc146580777b4e8572c7b97baf22c83f444bee9"
-dependencies = [
- "ring",
- "rustls-pki-types",
- "untrusted",
-]
-
-[[package]]
-name = "rustls-webpki"
-version = "0.103.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -2629,6 +2730,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "toml_edit"
+version = "0.25.15+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1340ea94a5856333492c9064b02c778b191dd2c853778d9609debdcdfea3a614"
+dependencies = [
+ "indexmap",
+ "toml_datetime",
+ "toml_parser",
+ "toml_writer",
+ "winnow",
+]
+
+[[package]]
 name = "toml_parser"
 version = "1.1.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2878,9 +2992,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.9"
+version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dcd9d09a39985f5344844e66b0c530a33843579125f23e21e9f0f220850f22a"
+checksum = "1c1c8e20c8a38fc7d65abfe74eb7280e4aa667e8eec8bc84996d2874810748d9"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -3106,6 +3220,9 @@ name = "winnow"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "zeroize"

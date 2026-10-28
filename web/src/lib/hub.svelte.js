@@ -1,13 +1,17 @@
 import { setLanguage, t } from './i18n.svelte.js';
+import { readJson, reportUi, UI_TOPIC, UI_STATE } from '../maison/lib/ui-diagnostics.js';
 
 // Live model of the hub, fed by /api/events (SSE) and /api/health.
 
 export const hub = $state({
   connected: false,
+  observedAt: 0, // Local receipt clock; never infer receipt from a remote sample timestamp.
   /** @type {Record<string, any>} device id → DeviceView */
   devices: {},
   /** @type {any[]} */
   drivers: [],
+  diagnostics: [],
+  snapshotStatus: 0,
   /** @type {any[]} most recent first */
   journal: [],
   /** @type {any} */
@@ -37,12 +41,29 @@ export const hub = $state({
 const JOURNAL_MAX = 60;
 
 function applySnapshot(snapshot) {
+  hub.observedAt=Date.now();
   const devices = {};
   for (const d of snapshot.devices) devices[d.id] = d;
   hub.devices = devices;
   hub.drivers = snapshot.drivers;
+  hub.diagnostics = Array.isArray(snapshot.diagnostics) ? snapshot.diagnostics : [];
+  hub.snapshotStatus = UI_STATE.ready;
   hub.approvals = snapshot.approvals ?? [];
   hub.guard = snapshot.guard ?? null;
+}
+
+/** Re-read sample timestamps: unchanged values intentionally produce no SSE event. */
+export async function refreshSnapshot() {
+  reportUi(UI_TOPIC.devices,UI_STATE.loading);
+  try {
+    const snapshot = await readJson('/api/devices',{timeout:5000,valid:s=>Array.isArray(s?.devices)&&Array.isArray(s?.drivers)});
+    applySnapshot(snapshot);
+    reportUi(UI_TOPIC.devices,UI_STATE.ready,snapshot.devices.length,snapshot.drivers.length);
+    return true;
+  } catch(error) {
+    hub.snapshotStatus=error.code;reportUi(UI_TOPIC.devices,error.code);
+    return false;
+  }
 }
 
 function splitPoint(point) {
@@ -66,6 +87,7 @@ function applyEvent(e) {
       delete hub.devices[e.device];
       break;
     case 'state': {
+      hub.observedAt=Date.now();
       const [id, key] = splitPoint(e.point);
       const device = hub.devices[id];
       if (!device) break;

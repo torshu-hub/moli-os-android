@@ -1,0 +1,51 @@
+Moli OS Android 0.11.0 — équipements et journal
+
+APK ARM64 pour Android 9+, Galaxy Tab S5e à confirmer par l’utilisateur.
+Une seule APK finale ; aucune commande ON/OFF, impression ou ouverture de port.
+
+Installation
+La signature debug temporaire de chaque CI ne garantit pas une mise à jour en place.
+L’identifiant distinct io.moli.android.app.preview.usability.v0110 évite d’écraser 0.10.0.
+Si 0.10.0 contient votre session et des réglages utiles : arrêtez son moteur, exportez
+une sauvegarde chiffrée depuis Sauvegarde, puis restaurez-la dans 0.11.0 VIERGE avant
+de créer un PIN. La session de compte et les clés sont dans le coffre sauvegardé ;
+le journal d’essai est séparé et s’exporte en TXT. Ne désinstallez pas une application
+contenant des données utiles avant d’avoir vérifié la restauration. Pas de migration
+imposée si les anciennes données sont jetables. N’utilisez qu’un moteur à la fois.
+
+Essai différé — cinq actions
+1. Ouvrez Journal d’essai depuis l’Accueil et commencez l’essai. Dans Équipements →
+   Compte Meross, vérifiez « Connecté » et l’inventaire en cache après restauration.
+   Quittez et revenez : aucun mot de passe ne doit être demandé pour ce cache.
+   Une connexion volontaire reste nécessaire si aucune session n’a été restaurée
+   ou si le serveur a réellement déclaré le jeton expiré.
+2. Choisissez une prise de l’inventaire puis « Choisir une IP depuis Réseau local ».
+   Recherchez volontairement, avec les sondes 80/631 si utile. Les résultats sont
+   regroupés par IP ; un port ouvert ne prouve ni modèle ni compatibilité.
+3. Proposez une IP connue, OU cochez jusqu’à 8 candidates avec port 80 puis validez
+   le choix et appuyez sur « Identifier les candidates » (moteur arrêté). Seule
+   l’identité est lue ; un UUID exact propose l’IP, sans enregistrer la prise.
+   Si non trouvée : choisissez d’autres candidates ou une IP connue de votre box.
+4. Vérifiez le nom, cochez l’autorisation de lecture, puis « Vérifier et enregistrer ».
+   Le succès signifie UUID vérifié + configuration sauvegardée, pas mesure reçue.
+   Démarrez et affichez les données. Vérifiez les cartes et leur fraîcheur sur
+   l’Accueil. En cas d’absence, le journal l’indique ; aucune commande électrique.
+5. Revenez au Journal d’essai, terminez et exportez le TXT via le sélecteur Android.
+   Joignez vous-même ce fichier au chat si souhaité ; aucune transmission automatique.
+
+IPP/IGD : la découverte qualifiée préremplit seulement les champs. Complétez le
+chemin manquant, cochez la lecture, enregistrez puis « Tester les lectures autorisées ».
+Une réponse TCP n’est pas une preuve de protocole ; aucune cause matérielle n’est
+inventée lorsqu’une lecture échoue. L’Accueil conserve les cartes et mesures natives.
+
+Limites
+Pas de MAC générale sous Android 10+ sans root ; aucune lecture de /proc/net/arp.
+Pas d’appel cloud en ouvrant une page ; inventaire manuel limité à 1/min et 20/h.
+Identification locale : 8 candidates maximum, 2,5 s chacune, 6 recherches/h et 10 s
+minimum ; identité et association UUID toujours vérifiées, aucune association par nom.
+Le code ne distingue pas une clé refusée d’une réponse locale absente/incompatible
+si le transport ne donne pas de preuve fiable. Aucun test physique réalisé par Codex.
+Journal : 256 événements maximum, anciennes lignes tronquées avec compteur visible,
+pseudonymes propres à la session, aucune IP/MAC, URL privée, nom, clé ou identifiant.
+La veille Samsung peut retarder les contrôles : pas de promesse de continuité 24/24.
+Les essais TOML, synthétiques et météo restent dans Outils de diagnostic → Avancé.

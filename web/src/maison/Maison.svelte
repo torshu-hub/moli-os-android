@@ -9,6 +9,7 @@
   import Setup from './ui/Setup.svelte';
   import Login from './ui/Login.svelte';
   import Accueil from './pages/Accueil.svelte';
+  import AndroidEquipment from './ui/AndroidEquipment.svelte';
   import Salon from './pages/Salon.svelte';
   import Pieces from './pages/Pieces.svelte';
   import Plan from './pages/Plan.svelte';
@@ -53,6 +54,7 @@
     { path: 'automatismes', label: 'commun.nav.automatismes', icon: 'robot' },
     { path: 'infra', label: 'commun.nav.infra', icon: 'server' },
   ];
+
 
   let moliOpen = $state(false);
   let prefersDark = $state(false);
@@ -106,7 +108,7 @@
   const page = $derived(route.split('/')[0] ?? '');
 </script>
 
-<div class="maison" data-theme={theme}>
+<div class="maison" data-theme={theme} data-moli-connected={hub.connected}>
   <nav class="rail" aria-label={t('commun.nav.aria')}>
     <a class="brand" href="#/" aria-label={t('commun.nav.logo')}>
       <svg viewBox="0 0 32 32" aria-hidden="true">
@@ -114,7 +116,15 @@
         <circle cx="16" cy="16" r="8.5" fill="none" stroke="#161512" stroke-width="4.3" />
       </svg>
     </a>
-    <ul>
+    <div class="rail-quick">
+      {#if home.platform==='android'||home.config?.android}<a href="#/appareils" class:active={page==='appareils'} aria-current={page==='appareils'?'page':undefined}><span class="glyph"><Icon name="light-group" size={24}/></span><span class="label">{t('maison.equipment.title')}</span></a>{/if}
+      <a href="#/systeme" class:active={page === 'systeme'} title={t('commun.nav.systeme_titre')}>
+        <Icon name="branch" size={20} />
+        <span class="label">{t('commun.nav.systeme')}</span>
+      </a>
+    </div>
+    <span class="nav-scroll-hint" aria-hidden="true">↔</span>
+    <ul aria-label={t('commun.nav.scroll')}>
       {#each NAV as item (item.path)}
         <li>
           <a href="#/{item.path}" class:active={page === item.path} aria-current={page === item.path ? 'page' : undefined}>
@@ -131,10 +141,6 @@
         <Icon name={theme === 'night' ? 'moon' : 'sun'} size={20} />
         <span class="label">{themeName}</span>
       </button>
-      <a href="#/systeme" class:active={page === 'systeme'} title={t('commun.nav.systeme_titre')}>
-        <Icon name="branch" size={20} />
-        <span class="label">{t('commun.nav.systeme')}</span>
-      </a>
       <a class="atelier" href="#/atelier" title={t('commun.nav.atelier_titre')}>
         <Icon name="atelier" size={20} />
         <span class="label">{t('commun.nav.atelier')}</span>
@@ -143,7 +149,9 @@
   </nav>
 
   <main class="content">
-    {#if page === 'salon'}
+    {#if page === 'appareils'}
+      <AndroidEquipment standalone/>
+    {:else if page === 'salon'}
       <Salon />
     {:else if page === 'pieces'}
       <Pieces />
@@ -244,6 +252,8 @@
     position: sticky;
     top: 0;
     height: 100dvh;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -258,6 +268,7 @@
   }
 
   .rail ul {
+    flex-shrink: 0;
     list-style: none;
     margin: 12px 0 0;
     padding: 0;
@@ -307,7 +318,11 @@
     font-weight: 600;
   }
 
+  .nav-scroll-hint{display:none;}
+  .rail-quick{display:grid;gap:4px;flex-shrink:0;}
+
   .rail-foot {
+    flex-shrink: 0;
     margin-top: auto;
     display: grid;
     gap: 4px;
@@ -470,8 +485,11 @@
       position: fixed;
       inset: auto 0 0 0;
       height: auto;
-      flex-direction: row;
-      justify-content: center;
+      overflow-y: visible;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 16px auto;
+      gap:6px;
+      align-items:center;
       padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
       background: var(--surface);
       box-shadow: var(--shadow-lift);
@@ -483,17 +501,24 @@
       display: none;
     }
 
+    .rail-quick{grid-column:3;grid-row:1;display:flex;gap:4px;}
+    .rail-quick a{width:64px;min-height:48px;align-content:center;}
+    .nav-scroll-hint{display:block;grid-column:2;grid-row:1;color:var(--ink-3);}
     .rail ul {
+      grid-column:1;grid-row:1;
       grid-auto-flow: column;
       grid-auto-columns: 62px;
       width: 100%;
       margin: 0;
       gap: 0;
       overflow-x: auto;
-      scrollbar-width: none;
+      scrollbar-width: thin;
+      scrollbar-color:var(--ink-3) transparent;
       justify-content: safe center;
     }
 
+    .rail ul::-webkit-scrollbar{height:3px;}
+    .rail ul::-webkit-scrollbar-thumb{background:var(--ink-3);border-radius:3px;}
     .rail a {
       width: auto;
       padding: 4px 0;

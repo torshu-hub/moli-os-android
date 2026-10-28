@@ -21,12 +21,28 @@ const WAN_IP: &str = "urn:schemas-upnp-org:service:WANIPConnection:";
 const WAN_COMMON: &str = "urn:schemas-upnp-org:service:WANCommonInterfaceConfig:";
 const IGD: &str = "urn:schemas-upnp-org:device:InternetGatewayDevice:";
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     /// Skip discovery: the box's description URL.
     #[serde(default)]
     pub location: Option<String>,
+    /// False limits all reads to the explicitly configured description URL.
+    #[serde(default = "discovery_default")]
+    pub discovery: bool,
+}
+
+fn discovery_default() -> bool {
+    true
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            location: None,
+            discovery: true,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -107,6 +123,18 @@ async fn find(
     known: Option<&KnownAddress>,
     expected: Option<&str>,
 ) -> Option<Found> {
+    if !config.discovery {
+        return first_box(
+            config
+                .location
+                .as_deref()
+                .and_then(Location::parse)
+                .into_iter()
+                .collect(),
+            None,
+        )
+        .await;
+    }
     let mut candidates: Vec<Location> = known
         .and_then(|k| Location::parse(&k.host))
         .into_iter()
@@ -246,9 +274,13 @@ async fn locate(
     ctx: &mut DriverCtx,
     known: Option<&KnownAddress>,
 ) -> Option<Found> {
-    let mut ear = upnp::Announcements::open()
-        .inspect_err(|e| tracing::debug!(error = %e, "announcements not heard"))
-        .ok();
+    let mut ear = if config.discovery {
+        upnp::Announcements::open()
+            .inspect_err(|e| tracing::debug!(error = %e, "announcements not heard"))
+            .ok()
+    } else {
+        None
+    };
     let mut heard: Option<Location> = None;
     let mut rounds = 0u32;
     loop {
@@ -359,10 +391,8 @@ async fn run(config: &Config, ctx: &mut DriverCtx) -> anyhow::Result<()> {
                             online = Some(true);
                             ctx.set_availability(&id, true);
                         }
-                        ctx.set_state(&id, "connected", Value::Bool(tag(&status, "NewConnectionStatus") == Some("Connected")));
-                        if let Some(up) = tag(&status, "NewUptime").and_then(|u| u.parse::<i64>().ok()) {
-                            ctx.set_state(&id, "uptime", Value::Int(up));
-                        }
+                        ctx.set_state(&id, "connected", tag(&status, "NewConnectionStatus").map_or(Value::Null, |v| Value::Bool(v == "Connected")));
+                        ctx.set_state(&id, "uptime", tag(&status, "NewUptime").and_then(|u| u.parse::<i64>().ok()).map_or(Value::Null, Value::Int));
                         if let Ok(ip) = call(&gw, &gw.ip, "GetExternalIPAddress").await
                             && let Some(ip) = tag(&ip, "NewExternalIPAddress").filter(|ip| !ip.is_empty())
                         {
@@ -371,16 +401,14 @@ async fn run(config: &Config, ctx: &mut DriverCtx) -> anyhow::Result<()> {
                         if let Some(common) = &gw.common
                             && let Ok(link) = call(&gw, common, "GetCommonLinkProperties").await
                         {
-                            ctx.set_state(&id, "line", Value::Bool(tag(&link, "NewPhysicalLinkStatus") == Some("Up")));
+                            ctx.set_state(&id, "line", tag(&link, "NewPhysicalLinkStatus").map_or(Value::Null, |v| Value::Bool(v == "Up")));
                             // Standard names, and the Livebox's (no « Max » downstream).
                             for (fields, key) in [
                                 (["NewLayer1DownstreamMaxBitRate", "NewLayer1DownstreamBitRate"], "line_down"),
                                 (["NewLayer1UpstreamMaxBitRate", "NewLayer1UpstreamBitRate"], "line_up"),
                             ] {
                                 let bits = fields.iter().find_map(|f| tag(&link, f)).and_then(|b| b.parse::<u64>().ok());
-                                if let Some(bits) = bits {
-                                    ctx.set_state(&id, key, Value::Float(mbps(bits)));
-                                }
+                                ctx.set_state(&id, key, bits.map_or(Value::Null, |bits| Value::Float(mbps(bits))));
                             }
                         }
                     }
@@ -416,7 +444,8 @@ mod tests {
 
     #[test]
     fn line_speeds_in_mbits() {
-        assert_eq!(mbps(1_048_576_000), 1048.6);
+        let mbits = mbps(1_048_576_000);
+        assert!((mbits - 1048.6).abs() < 1e-9, "mbits={mbits}");
     }
 
     #[test]

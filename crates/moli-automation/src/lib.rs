@@ -7,12 +7,26 @@
 //! creates, explains and writes messages; it never decides at run time.
 //! See `docs/AUTOMATIONS.md`.
 
+mod admission;
 mod check;
+pub use admission::CommandAdmission;
+/// Marker of a generic source → output link with a trusted live admission.
+pub const DEVICE_LINK: &str = "moli_device_link_v1";
+#[cfg(test)]
+mod daily_tests;
 mod engine;
 mod model;
 mod run;
 mod store;
 pub mod sun;
+
+/// Reserved node marking the daily heating candidate. This release cannot
+/// authorize it, including through generic REST/MCP approval or restored files.
+pub const DAILY_HEATING_LOCK: &str = "moli_daily_heating_locked_v1";
+
+fn heating_locked(graph: &Graph) -> bool {
+    graph.nodes.iter().any(|node| node.id == DAILY_HEATING_LOCK)
+}
 
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -142,6 +156,7 @@ struct Inner {
     /// serializes the graph). Forgotten at every write, under the list's
     /// write lock; approving and running always hash afresh.
     fingerprints: Mutex<HashMap<String, String>>,
+    admissions: Mutex<HashMap<String, admission::Admission>>,
     runs: Mutex<VecDeque<Run>>,
     next_run: AtomicU64,
     live: broadcast::Sender<Live>,
@@ -227,7 +242,14 @@ impl Automations {
         let tz = jiff::tz::TimeZone::get(&config.timezone)?;
         let path = data_dir.map(|d| d.join("automations.json"));
         let runs_path = data_dir.map(|d| d.join("automation-runs.jsonl"));
-        let list = store::load(path.as_deref()).await?;
+        let mut list = store::load(path.as_deref()).await?;
+        for a in &mut list {
+            if heating_locked(&a.graph) {
+                a.enabled = false;
+                a.approved = None;
+                a.approved_version = None;
+            }
+        }
         let runs = store::load_runs(runs_path.as_deref()).await;
         let next = runs.iter().map(|r| r.id).max().unwrap_or(0) + 1;
         let (live, _) = broadcast::channel(256);
@@ -242,6 +264,7 @@ impl Automations {
             )),
             list: RwLock::new(list),
             fingerprints: Mutex::default(),
+            admissions: Mutex::default(),
             runs: Mutex::new(runs),
             next_run: AtomicU64::new(next),
             live,
@@ -503,10 +526,25 @@ impl Automations {
         fingerprint: &str,
         by: Actor,
     ) -> Result<Automation, AutomationError> {
+        self.approve_as(id, fingerprint, by, true).await
+    }
+
+    async fn approve_as(
+        &self,
+        id: &str,
+        fingerprint: &str,
+        by: Actor,
+        enabled: bool,
+    ) -> Result<Automation, AutomationError> {
         if !by.human {
             return Err(AutomationError::NeedsHuman);
         }
         let current = self.get(id).ok_or(AutomationError::Unknown)?;
+        if heating_locked(&current.graph) {
+            return Err(AutomationError::Invalid(tr!(
+                "moteur.refus.chauffage_verrouille"
+            )));
+        }
         if current.fingerprint() != fingerprint {
             return Err(AutomationError::Conflict);
         }
@@ -520,15 +558,18 @@ impl Automations {
                     mode: a.mode,
                     graph: a.graph.clone(),
                 });
-                a.enabled = true;
+                a.enabled = enabled;
                 a.note = None;
             }
         })?;
-        if !a.is_live() {
+        if !a.is_approved() || a.enabled != enabled {
             return Err(AutomationError::Conflict);
         }
         // Timers of the previous version must not fire into this one.
         self.stop_holds(id);
+        if !enabled {
+            self.stop(id);
+        }
         self.persist().await?;
         self.changed(id);
         self.journal(&a, AutomationChange::Approved, by);
@@ -595,6 +636,7 @@ impl Automations {
                 .position(|a| a.id == id)
                 .ok_or(AutomationError::Unknown)?;
             lock(&self.0.fingerprints).remove(id);
+            lock(&self.0.admissions).remove(id);
             list.remove(i)
         };
         self.refresh_live();

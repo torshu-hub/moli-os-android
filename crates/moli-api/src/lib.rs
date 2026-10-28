@@ -19,6 +19,7 @@ mod assets;
 mod assistant;
 mod automations;
 mod caller;
+mod device_link;
 mod guard;
 mod integrations;
 mod limit;
@@ -98,6 +99,8 @@ pub struct EmbeddedClient;
 /// Surface settings.
 #[derive(Clone, Debug, Default)]
 pub struct Options {
+    /// Sanitized compiled catalogue and effective configured instances, supplied by the engine.
+    pub integration_inventory: Vec<serde_json::Value>,
     /// Host names (or IPs) this instance is reached by, besides localhost.
     pub allowed_hosts: Vec<String>,
     /// PIN that opens a human session in the dashboard. `None`: nobody is
@@ -242,6 +245,14 @@ fn people(
         },
         |h| h.0.clone(),
     );
+    persons.set_behind_access(options.access.is_some());
+    let unreachable = persons.email_only_owners();
+    if options.access.is_none() && unreachable > 0 {
+        tracing::warn!(
+            owners = unreachable,
+            "owners with an e-mail but no password cannot sign in without [server.access]:              the house's code manages the people (invite them so they set a password)"
+        );
+    }
     // The phone of someone no longer of the house hears nothing more of it.
     if let Some(phones) = &options.phones {
         let persons = Arc::clone(&persons);
@@ -305,6 +316,7 @@ pub fn router(hub: Hub, shutdown: CancellationToken, options: &Options) -> Route
         .route("/api/bench", get(rest::bench))
         .route("/api/home", get(rest::home))
         .merge(house_routes(&humans, options))
+        .merge(device_link::routes(options, &hub))
         .route("/api/system", get(system::system))
         .route("/api/energy", get(rest::energy))
         .route("/api/energy/series", get(rest::energy_series))
@@ -346,6 +358,9 @@ pub fn router(hub: Hub, shutdown: CancellationToken, options: &Options) -> Route
         )
         .fallback(assets::serve)
         .layer(Extension(shutdown))
+        .layer(Extension(system::IntegrationInventory(
+            options.integration_inventory.clone(),
+        )))
         .layer(Extension(sse::Streams::default()))
         .layer(Extension(rest::Recorded(options.history.clone())))
         .layer(Extension(rest::BenchFile(options.bench_path.clone())))

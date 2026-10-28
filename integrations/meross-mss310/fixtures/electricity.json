@@ -1,0 +1,14 @@
+{
+  "header": {
+    "method": "GETACK",
+    "namespace": "Appliance.Control.Electricity"
+  },
+  "payload": {
+    "electricity": {
+      "channel": 0,
+      "power": 123456,
+      "current": 789,
+      "voltage": 2314
+    }
+  }
+}

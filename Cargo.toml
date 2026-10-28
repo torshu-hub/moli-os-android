@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+exclude = ["vendor/rumqttc"]
 
 [workspace.package]
 version = "0.1.0"
@@ -16,6 +17,7 @@ moli-audio = { path = "crates/moli-audio" }
 moli-z2m = { path = "crates/moli-z2m" }
 moli-api = { path = "crates/moli-api" }
 moli-hue = { path = "crates/moli-hue" }
+moli-dirigera = { path = "crates/moli-dirigera" }
 moli-host = { path = "crates/moli-host" }
 moli-history = { path = "crates/moli-history" }
 moli-profile = { path = "crates/moli-profile" }
@@ -28,7 +30,11 @@ moli-bambu = { path = "crates/moli-bambu" }
 moli-frigate = { path = "crates/moli-frigate" }
 moli-philips = { path = "crates/moli-philips" }
 moli-tapo = { path = "crates/moli-tapo" }
+moli-shelly = { path = "crates/moli-shelly" }
+moli-izypower = { path = "crates/moli-izypower" }
+moli-solarman = { path = "crates/moli-solarman" }
 moli-igd = { path = "crates/moli-igd" }
+moli-netatmo = { path = "crates/moli-netatmo" }
 moli-ipp = { path = "crates/moli-ipp" }
 moli-assistant = { path = "crates/moli-assistant" }
 moli-automation = { path = "crates/moli-automation" }
@@ -57,6 +63,7 @@ symphonia-core = "0.6"
 clap = { version = "4", features = ["derive", "env"] }
 futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 http = "1"
+httpdate = "1"
 http-body-util = "0.1"
 hyper = { version = "1", default-features = false, features = ["client", "http1"] }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
@@ -81,7 +88,7 @@ tokio-util = "0.7"
 toml = "1"
 tower-http = { version = "0.7", features = ["compression-gzip", "compression-br", "trace"] }
 tracing = "0.1"
-webpki-roots = "1"
+webpki-roots = "1.0.10"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
 
 [workspace.lints.rust]
@@ -106,3 +113,7 @@ codegen-units = 1
 # Symbols stay (a backtrace from a frozen process is worth ~1 MB); debug info goes.
 strip = "debuginfo"
 # panic = "unwind" volontaire : le superviseur capture les panics des pilotes.
+
+# Minimal upstream 0.25.1 compatibility patch: drop the old webpki error-type dependency.
+[patch.crates-io]
+rumqttc = { path = "vendor/rumqttc" }

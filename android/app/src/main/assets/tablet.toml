@@ -1,0 +1,25 @@
+[profile]
+id = "android-tablet"
+name = "Tablette Android"
+identity = "s.id"
+[[request]]
+id = "s"
+path = "/tablet"
+format = "json"
+every = "30s"
+[[point]]
+key = "battery"
+label = "Batterie"
+from = "s.battery"
+kind = "numeric"
+unit = "%"
+[[point]]
+key = "charging"
+label = "Alimentation"
+from = "s.charging"
+kind = "binary"
+[[point]]
+key = "network"
+label = "Connexion réseau"
+from = "s.network"
+kind = "text"

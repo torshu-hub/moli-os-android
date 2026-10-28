@@ -1,0 +1,42 @@
+Moli OS Intégrations 0.5.1 — ARM64 — Android 9 minimum
+
+INSTALLATION SANS PERTE
+Installer moli-os-android-0.5.1-integrations-arm64.apk à côté de 0.5.0.
+La nouvelle app porte 0.5.1 dans son nom et utilise le paquet
+io.moli.android.app.preview.integrations.v051. Une nouvelle signature debug
+jetable ne peut pas mettre à jour l’ancien paquet ; aucune clé durable créée.
+NE PAS désinstaller les anciennes apps pour forcer une mise à jour.
+
+Pour conserver la configuration : dans l’ancienne app, arrêter son moteur,
+exporter une sauvegarde chiffrée et conserver son mot de passe. Dans 0.5.1
+encore vierge, utiliser Sauvegarde/restauration AVANT de créer un nouveau PIN.
+Restaurer, démarrer et vérifier les données ; conserver l’ancienne app et
+la sauvegarde jusqu’à vérification par le propriétaire. Rien n’est supprimé.
+Pour un essai entièrement fictif, créer simplement un PIN dans 0.5.1.
+Les anciennes apps peuvent rester installées ; arrêter leurs moteurs évite
+plusieurs notifications. Codex n’effectue aucune de ces opérations sur appareil.
+
+PARCOURS DANS L’APP
+Ouvrir Intégrations / données : le guide affiche actions, attendu et observé.
+Commencer un essai active seulement son journal borné. Arrêter avant tout ajout.
+Choisir synthetic-temperature.toml du ZIP, examiner et approuver ; Demo optionnel.
+Démarrer : confirmer une lecture 42,5 °C datée, pas seulement le nom du profil.
+Arrêter, ajouter et approuver Open-Meteo. « Contrôler la météo maintenant »
+interroge immédiatement HTTPS via Rust pour les coordonnées publiques de Paris,
+sans redémarrer le moteur. Le résultat ponctuel est affiché séparément ; il ne
+prouve pas l’activité continue du driver. Limite : une tentative/minute, dix/heure,
+y compris les échecs, conservée après réouverture. Le flux normal reste à 15 min.
+« Relire les données du moteur » actualise seulement l’affichage local (aussi
+relu automatiquement toutes les 5 s sur cette page). Le compteur confirme les
+lectures HTTP réussies ; une valeur météo identique peut avoir été renouvelée.
+Terminer l’essai puis Exporter le journal texte : choisir le fichier Android.
+Aucun envoi automatique. Journal limité à 256 événements codifiés, sans PIN,
+jeton, clé, nom/contenu de profil, adresse privée ou coordonnées personnelles.
+Pas d’enregistrement hors session explicitement activée.
+
+Signature temporaire : les futures mises à jour exigent même paquet ET certificat.
+Une distribution stable attend une décision du propriétaire sur la signature.
+Ne pas conclure au fonctionnement permanent en veille Samsung à partir de ce lot.
+Profils limités à la simulation interne et Open-Meteo public ; aucun appareil réel.
+Attribution météo : Open-Meteo.com (https://open-meteo.com/).
+SHA256SUMS et certificat public de cette APK sont inclus, ZIP sans sous-dossier.

@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use moli_core::{Device, DeviceId, DriverStatus, InstanceId, PointId, Value};
+use moli_core::{Device, DeviceId, DriverStatus, InstanceId, Origin, PointId, Value};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -33,6 +33,9 @@ pub trait Driver: Send + Sync + 'static {
 /// (state confirmation arrives later as a regular state update).
 #[derive(Debug)]
 pub struct CommandRequest {
+    /// Validated surface origin, preserved through routing and guard approval.
+    pub origin: Origin,
+    pub(crate) authority: Option<crate::CommandPermit>,
     pub point: PointId,
     pub device: Arc<Device>,
     pub key: Arc<str>,
@@ -48,7 +51,22 @@ impl CommandRequest {
     /// Nobody waits for the answer any more: the hub timed out or gave up.
     #[must_use]
     pub fn abandoned(&self) -> bool {
-        self.reply.is_closed() || Instant::now() >= self.deadline
+        self.reply.is_closed()
+            || Instant::now() >= self.deadline
+            || self
+                .authority
+                .as_ref()
+                .is_some_and(|a| !a.allows(&self.point, &self.value))
+    }
+
+    /// A live, exact, non-serializable grant accompanying this automation run.
+    #[must_use]
+    pub fn automation_authorized(&self) -> bool {
+        self.origin == Origin::Automation
+            && self
+                .authority
+                .as_ref()
+                .is_some_and(|a| a.allows(&self.point, &self.value))
     }
 
     /// Reports the outcome. Dropping the request without replying is
@@ -86,6 +104,15 @@ impl DriverCtx {
     #[must_use]
     pub fn instance(&self) -> &InstanceId {
         &self.instance
+    }
+
+    pub fn observe_read(&self, kind: &'static str, event: crate::ReadEvent) {
+        self.hub.observe_read(&self.instance, kind, event);
+    }
+
+    /// Register a bounded read-only wakeup on the existing driver loop.
+    pub fn read_refresh(&self) -> crate::ReadRefresh {
+        self.hub.register_read_refresh(&self.instance)
     }
 
     /// Builds a device id owned by this instance.

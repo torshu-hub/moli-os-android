@@ -11,3 +11,11 @@ web/dist
 
 # Generated APK deliveries and CI reports (never source files).
 /android-artifacts/
+
+# Signing material belongs outside this public repository, including temporary tests.
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+/tools/android-signing/__pycache__/

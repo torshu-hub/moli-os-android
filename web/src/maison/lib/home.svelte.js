@@ -1,14 +1,17 @@
 // The family dashboard's model: the hub's live state (SSE, shared with the
 // Atelier), the home layout (/api/home), and gentle helpers on top.
 
-import { hub, connect, login, decide, refreshSession } from '../../lib/hub.svelte.js';
+import { hub, connect, login, decide, refreshSession, refreshSnapshot } from '../../lib/hub.svelte.js';
 import { t, locale } from '../../lib/i18n.svelte.js';
+import { readJson, watchUiErrors } from './ui-diagnostics.js';
 
 export { hub };
 
 export const home = $state({
   /** @type {any} layout from /api/home ({} = automatic) */
   config: null,
+  platform: null,
+  snapshotHealthy: false,
   /** an order the guard held, waiting for « c'est moi » */
   held: null,
   /** the installation, put off for now (a house already in use) */
@@ -42,6 +45,7 @@ let started = false;
 export async function start() {
   if (started) return;
   started = true;
+  watchUiErrors();
   connect();
   setInterval(() => (home.now = Date.now()), 15_000);
   try {
@@ -49,6 +53,23 @@ export async function start() {
     home.config = res.ok ? await res.json() : {};
   } catch {
     home.config = {};
+  }
+  if (home.config?.android) home.platform='android';
+  else {
+    try { home.platform=(await readJson('/api/system',{timeout:3000,valid:s=>['android','other'].includes(s?.platform)})).platform; }
+    catch { home.platform='other'; }
+  }
+  if (home.platform==='android') {
+    let busy = false;
+    const read = async () => {
+      if (busy || document.hidden) return;
+      busy = true;
+      try { home.snapshotHealthy = await refreshSnapshot(); home.now = Date.now(); }
+      finally { busy = false; }
+    };
+    read();
+    setInterval(read, 15000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) read(); });
   }
 }
 
@@ -204,7 +225,7 @@ export function outletsOf(id) {
     .map(([key, name]) => ({ key, name }));
 }
 
-const LIGHTISH = /lumi|lamp|light|spot|plafon|applique|ampoule|globe|suspension|bureau|salon|cuisine|couloir|studio|véranda|veranda|entrée|chambre|toilette|combles|meuble|bulb|ceiling|desk|kitchen|hallway|bedroom|attic|fixture|lounge/i;
+const LIGHTISH = /lumi|lamp|light|spot|plafon|applique|ampoule|globe|suspension|bureau|salon|cuisine|couloir|studio|véranda|veranda|entrée|chambre|toilette|combles|meuble|bulb|ceiling|desk|kitchen|hallway|bedroom|attic|fixture|lounge|éclairage|eclairage|néon|neon|\bleds?\b|veilleuse|guirlande|phare/i;
 /** On/off things that are not lights, whatever their bridge calls them. */
 const NOT_LIGHT = /vmc|ventil|pompe|prise|chauffe|\bfan\b|pump|heater|outlet|socket/i;
 const has = (d, key, write = false) => d.points.some((p) => p.key === key && (!write || p.access?.write));
@@ -224,7 +245,8 @@ export function deviceKind(d) {
     if (isFixture(d)) return 'light';
     const name = d.label?.name || d.native_name;
     if (NOT_LIGHT.test(name) || /plug/i.test(d.model ?? '')) return 'plug';
-    if (d.id.startsWith('hue:') || LIGHTISH.test(name)) return 'light';
+    // Dimming or colour is what makes a light (a « Ruban led » is no plug, whatever its name).
+    if (d.id.startsWith('hue:') || LIGHTISH.test(name) || ['brightness', 'color_temp', 'color'].some((k) => has(d, k, true))) return 'light';
     return 'plug';
   }
   return 'sensor';
@@ -283,15 +305,18 @@ const headers = { 'content-type': 'application/json', 'x-moli-origin': 'ui' };
 
 /** Sends an order. Held by the guard (protected room, quiet hours): asks
  *  « c'est moi » through the PIN sheet, then approves it. */
-export async function act(point, val, label) {
+export async function act(point, val, label, options = {}) {
   hub.pending[point] = val;
+  const controller=options.timeout?new AbortController():null;
+  const deadline=controller?setTimeout(()=>controller.abort(),options.timeout):null;
   try {
     const res = await fetch('/api/command', {
       method: 'POST',
       headers,
+      ...(controller?{signal:controller.signal}:{}),
       body: JSON.stringify({ point, value: val }),
     });
-    const body = await res.json().catch(() => ({}));
+    const body = await res.json().catch((err) => { if(controller?.signal.aborted)throw err;return {}; });
     if (res.status === 202) {
       delete hub.pending[point];
       home.held = { id: body.pending, point, reason: body.reason, label };
@@ -306,7 +331,7 @@ export async function act(point, val, label) {
     delete hub.pending[point];
     note(t('commun.echec', { label: label ?? t('commun.commande'), error: humanError(err.message) }), 'error');
     return 'error';
-  }
+  } finally {if(deadline!==null)clearTimeout(deadline);}
 }
 
 // ---- ambiances -----------------------------------------------------------------
@@ -373,7 +398,13 @@ export async function confirmHeld(pin) {
   const held = home.held;
   if (!held) return null;
   const error = await login(pin);
-  if (error) return /verrou|locked/i.test(error) ? t('commun.trop_d_essais') : t('commun.code_incorrect');
+  // The server's words, told apart: a locked device must not read « incorrect code »
+  // (it refuses every attempt, the right code included), and any other failure
+  // is shown as it is.
+  if (error) {
+    if (/essais|attempts|verrou|locked/i.test(error)) return t('commun.trop_d_essais');
+    return /incorrect/i.test(error) ? t('commun.code_incorrect') : error;
+  }
   if (held.custom) {
     home.held = null;
     await held.custom();
@@ -392,7 +423,7 @@ export async function dismissHeld() {
   else if (held) await decide({ id: held.id, point: held.point }, false);
 }
 
-export { refreshSession };
+export { refreshSession, refreshSnapshot };
 
 // ---- formatting ----------------------------------------------------------------
 

@@ -1,0 +1,1147 @@
+use std::{collections::VecDeque, sync::Mutex};
+
+use http::{HeaderMap, Request, StatusCode};
+use http_body_util::{BodyExt as _, Full};
+use moli_core::{InstanceId, PointId};
+use moli_runtime::{Hub, HubOptions, MasterKey, spawn_driver};
+use serde_json::{Value as Json, json};
+use tokio_util::sync::CancellationToken;
+
+use super::*;
+use crate::client::{Response, Transport};
+
+const AT: u64 = 1_800_000_000_000;
+fn topology() -> Json {
+    serde_json::from_str(include_str!(
+        "../../../integrations/netatmo/fixtures/homesdata.json"
+    ))
+    .unwrap()
+}
+fn live_topology() -> Json {
+    let mut t = topology();
+    t["time_server"] = json!(now_ms() / 1000);
+    t
+}
+fn status() -> Json {
+    serde_json::from_str(include_str!(
+        "../../../integrations/netatmo/fixtures/homestatus.json"
+    ))
+    .unwrap()
+}
+fn parse(status: &Json, now: u64) -> Vec<Observation> {
+    model::parse(&topology(), status, "home-test", now, 300_000).unwrap()
+}
+fn thermostat(rows: &[Observation]) -> &Observation {
+    rows.iter().find(|o| o.model == "NATherm1").unwrap()
+}
+fn config() -> Config {
+    Config {
+        home_id: "home-test".into(),
+        client_id: Some("app-test".into()),
+        poll_seconds: 120,
+        max_age_seconds: 300,
+    }
+}
+#[test]
+fn demand_on_off_missing_and_percentage_are_distinct() {
+    let mut s = status();
+    for (field, expected) in [
+        (json!(true), "on"),
+        (json!(false), "off"),
+        (Json::Null, "missing"),
+    ] {
+        s["body"]["home"]["modules"][1]["boiler_status"] = field;
+        let rows = parse(&s, AT);
+        let t = thermostat(&rows);
+        assert!(t.current());
+        assert_eq!(t.readings["declared_demand"], Value::from(expected));
+        let valve = rows.iter().find(|r| r.model == "NRV").unwrap();
+        assert_eq!(valve.readings["declared_demand"], Value::from("missing"));
+        assert_eq!(
+            rows[0].readings["heating_power_request"],
+            Value::Float(42.0)
+        );
+    }
+    // A truthy string must not silently turn into a binary state.
+    s["body"]["home"]["modules"][1]["boiler_status"] = json!("true");
+    assert!(model::parse(&topology(), &s, "home-test", AT, 300_000).is_err());
+}
+#[test]
+fn timestamps_reachability_and_partial_errors_fail_closed() {
+    let mut s = status();
+    assert_eq!(thermostat(&parse(&s, AT + 300_001)).quality, "stale");
+    s["time_server"] = Json::Null;
+    assert_eq!(thermostat(&parse(&s, AT)).quality, "unconfirmed");
+    s["time_server"] = json!("1800000000"); // official schema also allows string
+    assert!(thermostat(&parse(&s, AT)).current());
+    assert_eq!(thermostat(&parse(&s, AT - 1)).quality, "unconfirmed");
+    s["body"]["home"]["modules"][1]["reachable"] = json!(false);
+    assert_eq!(thermostat(&parse(&s, AT)).quality, "offline");
+    s["body"]["errors"] = json!([{"id":"aa:bb:cc:dd:ee:01","code":6}]);
+    assert!(model::parse(&topology(), &s, "home-test", AT, 300_000).is_err());
+}
+#[test]
+fn identity_survives_reorder_rename_and_numeric_room_ids() {
+    let initial = parse(&status(), AT);
+    let mut t = topology();
+    let mut s = status();
+    t["body"]["homes"][0]["modules"]
+        .as_array_mut()
+        .unwrap()
+        .reverse();
+    s["body"]["home"]["modules"]
+        .as_array_mut()
+        .unwrap()
+        .reverse();
+    t["body"]["homes"][0]["modules"][1]["name"] = json!("Renamed thermostat");
+    let rows = model::parse(&t, &s, "home-test", AT, 300_000).unwrap();
+    assert_eq!(thermostat(&initial).native, thermostat(&rows).native);
+    assert_eq!(thermostat(&rows).name, "Renamed thermostat");
+    assert_eq!(initial[0].native, "home-test.room.101");
+    let duplicate = s["body"]["home"]["modules"][0].clone();
+    s["body"]["home"]["modules"]
+        .as_array_mut()
+        .unwrap()
+        .push(duplicate);
+    assert!(model::parse(&t, &s, "home-test", AT, 300_000).is_err());
+}
+#[test]
+fn bad_response_and_unknown_models_cannot_supply_demand() {
+    let mut s = status();
+    s["body"]["home"]["id"] = json!("different-home");
+    assert!(model::parse(&topology(), &s, "home-test", AT, 300_000).is_err());
+    let mut t = topology();
+    s = status();
+    t["body"]["homes"][0]["modules"][0]["type"] = json!("unknown-variant");
+    let rows = model::parse(&t, &s, "home-test", AT, 300_000).unwrap();
+    assert!(!rows.iter().any(|r| r.model == "unknown-variant"));
+    s["body"]["home"]["rooms"][0]["therm_measured_temperature"] = json!([20]);
+    assert!(model::parse(&t, &s, "home-test", AT, 300_000).is_err());
+}
+#[test]
+fn options_are_inert_bounded_and_have_no_secret_or_command_url() {
+    assert!(Netatmo::new(config()).is_ok());
+    let mut c = config();
+    c.poll_seconds = 10;
+    assert!(Netatmo::new(c).is_err());
+    let mut c = config();
+    c.home_id = "home?write=true".into();
+    assert!(Netatmo::new(c).is_err());
+    assert!(
+        serde_json::from_value::<Config>(json!({"home_id":"test", "access_token":"secret"}))
+            .is_err()
+    );
+    assert!(
+        serde_json::from_value::<Config>(json!({"home_id":"test", "url":"http://private"}))
+            .is_err()
+    );
+}
+
+#[derive(Default)]
+struct Mock {
+    replies: Mutex<VecDeque<Result<Response, Failure>>>,
+    requests: Mutex<Vec<(String, String, String, String)>>,
+    hang_at: Mutex<Option<usize>>,
+}
+impl Mock {
+    fn add(&self, status: u16, body: &Json) {
+        self.replies.lock().unwrap().push_back(Ok(Response {
+            status: StatusCode::from_u16(status).unwrap(),
+            headers: HeaderMap::new(),
+            body: body.to_string().into(),
+        }));
+    }
+}
+impl Transport for Mock {
+    fn send(
+        &self,
+        request: Request<Full<moli_net::Body>>,
+    ) -> BoxFuture<'_, Result<Response, Failure>> {
+        Box::pin(async move {
+            let (parts, body) = request.into_parts();
+            let body = body.collect().await.unwrap().to_bytes();
+            self.requests.lock().unwrap().push((
+                parts.method.to_string(),
+                parts.uri.to_string(),
+                parts
+                    .headers
+                    .get("authorization")
+                    .map_or("", |v| v.to_str().unwrap())
+                    .to_owned(),
+                String::from_utf8(body.to_vec()).unwrap(),
+            ));
+            let hang = *self.hang_at.lock().unwrap() == Some(self.requests.lock().unwrap().len());
+            if hang {
+                return std::future::pending().await;
+            }
+            self.replies
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("unexpected extra HTTP call")
+        })
+    }
+}
+#[tokio::test]
+async fn client_sends_only_allowlisted_reads_and_sanitizes_failures() {
+    let m = Mock::default();
+    m.add(200, &topology());
+    m.add(200, &status());
+    client::read(&m, "synthetic-access", "home-test", true)
+        .await
+        .unwrap();
+    client::read(&m, "synthetic-access", "home-test", false)
+        .await
+        .unwrap();
+    for (method, path, auth, body) in m.requests.lock().unwrap().iter() {
+        assert_eq!(method, "GET");
+        assert!(
+            path == "/api/homesdata?home_id=home-test"
+                || path == "/api/homestatus?home_id=home-test"
+        );
+        assert_eq!(auth, "Bearer synthetic-access");
+        assert!(body.is_empty());
+        assert!(!path.contains("synthetic-access"));
+    }
+    m.add(401, &json!({"error":"synthetic-secret-must-not-leak"}));
+    assert_eq!(
+        client::read(&m, "synthetic-access", "test", false)
+            .await
+            .unwrap_err(),
+        Failure::Unauthorized
+    );
+    m.replies.lock().unwrap().push_back(Err(Failure::Network));
+    assert_eq!(
+        client::read(&m, "synthetic-access", "test", false)
+            .await
+            .unwrap_err(),
+        Failure::Network
+    );
+    m.add(200, &json!("malformed"));
+    assert_eq!(
+        client::read(&m, "synthetic-access", "test", false)
+            .await
+            .unwrap_err(),
+        Failure::InvalidResponse
+    );
+    m.add(200, &json!({"status":"ok", "error":{"code":26}}));
+    assert_eq!(
+        client::read(&m, "synthetic-access", "test", false)
+            .await
+            .unwrap_err(),
+        Failure::RateLimited(3600)
+    );
+}
+#[tokio::test]
+async fn oauth_rotation_is_read_scope_only_encoded_and_redacted() {
+    let m = Mock::default();
+    let tokens = Tokens {
+        access_token: "old-access".into(),
+        refresh_token: "old-refresh+&".into(),
+        expires_at: 0,
+    };
+    m.add(200, &json!({"access_token":"next-access","refresh_token":"next-refresh","expires_in":10800,"scope":["read_thermostat"]}));
+    let next = client::refresh(&m, &tokens, "app-test", "synthetic-secret+&", 1000)
+        .await
+        .unwrap();
+    assert_eq!(next.expires_at, 11800);
+    assert_eq!(next.refresh_token, "next-refresh");
+    {
+        let reqs = m.requests.lock().unwrap();
+        assert_eq!((&*reqs[0].0, &*reqs[0].1), ("POST", "/oauth2/token"));
+        assert!(reqs[0].3.contains("old-refresh%2B%26"));
+        assert!(!reqs[0].3.contains("write_thermostat"));
+    }
+    assert_eq!(format!("{next:?}"), "Tokens(<redacted>)");
+    m.add(200, &json!({"access_token":"next-access","refresh_token":"next-refresh","expires_in":10800,"scope":["read_thermostat","write_thermostat"]}));
+    assert_eq!(
+        client::refresh(&m, &tokens, "app", "secret", 1000)
+            .await
+            .unwrap_err(),
+        Failure::Credentials
+    );
+}
+#[tokio::test]
+async fn rate_limit_honors_retry_after_and_response_bounds() {
+    let m = Mock::default();
+    let mut headers = HeaderMap::new();
+    headers.insert("retry-after", "7200".parse().unwrap());
+    m.replies.lock().unwrap().push_back(Ok(Response {
+        status: StatusCode::TOO_MANY_REQUESTS,
+        headers,
+        body: "not JSON".into(),
+    }));
+    let f = client::read(&m, "test", "test", false).await.unwrap_err();
+    assert_eq!(f.retry_seconds(120), 7200);
+    let mut headers = HeaderMap::new();
+    let until = std::time::SystemTime::now() + Duration::from_secs(7200);
+    headers.insert(
+        "retry-after",
+        httpdate::fmt_http_date(until).parse().unwrap(),
+    );
+    m.replies.lock().unwrap().push_back(Ok(Response {
+        status: StatusCode::TOO_MANY_REQUESTS,
+        headers,
+        body: "".into(),
+    }));
+    let Failure::RateLimited(secs) = client::read(&m, "test", "test", false).await.unwrap_err()
+    else {
+        panic!("quota expected");
+    };
+    assert!((7198..=7200).contains(&secs));
+    m.replies.lock().unwrap().push_back(Ok(Response {
+        status: StatusCode::OK,
+        headers: HeaderMap::new(),
+        body: vec![b' '; client::MAX_BODY + 1].into(),
+    }));
+    assert_eq!(
+        client::read(&m, "test", "test", false).await.unwrap_err(),
+        Failure::InvalidResponse
+    );
+}
+
+struct Harness {
+    hub: Hub,
+    cancel: CancellationToken,
+    task: tokio::task::JoinHandle<()>,
+    mock: Arc<Mock>,
+    data: std::path::PathBuf,
+}
+impl Harness {
+    async fn start(expired: bool) -> Self {
+        Self::start_with_broker(expired, None).await
+    }
+    async fn start_with_broker(expired: bool, broker: Option<Arc<dyn oauth::Broker>>) -> Self {
+        static SERIAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let data = std::env::temp_dir().join(format!(
+            "moli-netatmo-{}-{}",
+            std::process::id(),
+            SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&data).unwrap();
+        let hub = Hub::new(HubOptions {
+            secrets: Some((data.join("secrets.enc"), MasterKey::new("22".repeat(32)))),
+            ..HubOptions::default()
+        })
+        .unwrap();
+        let instance = InstanceId::from("energy-test");
+        let tokens = Tokens {
+            access_token: "test-access".into(),
+            refresh_token: "test-refresh".into(),
+            expires_at: if expired { 0 } else { now_ms() / 1000 + 3600 },
+        };
+        hub.store_secret(
+            &instance,
+            TOKEN_SECRET,
+            &serde_json::to_string(&tokens).unwrap(),
+        )
+        .await
+        .unwrap();
+        hub.store_secret(&instance, "client_secret", "test-client-secret")
+            .await
+            .unwrap();
+        let mock = Arc::new(Mock::default());
+        if expired && broker.is_none() {
+            mock.add(200, &json!({"access_token":"rotated-access","refresh_token":"rotated-refresh","expires_in":10800}));
+        }
+        let mut s = status();
+        s["time_server"] = json!(now_ms() / 1000);
+        mock.add(200, &live_topology());
+        mock.add(200, &s);
+        let mut d = Netatmo::new(config()).unwrap();
+        if let Some(broker) = broker {
+            d = d.with_broker(broker).unwrap();
+        }
+        d.transport = mock.clone();
+        let cancel = CancellationToken::new();
+        let task = spawn_driver(&hub, instance, Arc::new(d), cancel.clone());
+        for _ in 0..10000 {
+            if hub.stats().drivers_running == 1 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(hub.stats().drivers_running, 1);
+        Self {
+            hub,
+            cancel,
+            task,
+            mock,
+            data,
+        }
+    }
+    fn point(&self, key: &str) -> Option<Value> {
+        self.hub
+            .state(&PointId::from(format!(
+                "energy-test:home-test.module.aa:bb:cc:dd:ee:01/{key}"
+            )))
+            .map(|s| s.value)
+    }
+    async fn stop(self) {
+        self.cancel.cancel();
+        self.task.await.unwrap();
+        drop(self.hub);
+        std::fs::remove_dir_all(self.data).unwrap();
+    }
+}
+struct RenewalBroker {
+    policy: oauth::Policy,
+    renewals: std::sync::atomic::AtomicUsize,
+}
+impl oauth::Broker for RenewalBroker {
+    fn policy(&self) -> Option<&oauth::Policy> {
+        Some(&self.policy)
+    }
+    fn begin<'a>(&'a self, _: &'a str, _: &'a str) -> BoxFuture<'a, oauth::Result<String>> {
+        Box::pin(async { Err(oauth::Error::SetupRequired) })
+    }
+    fn poll<'a>(&'a self, _: &'a str, _: &'a str) -> BoxFuture<'a, oauth::Result<oauth::Reply>> {
+        Box::pin(async { Err(oauth::Error::SetupRequired) })
+    }
+    fn cancel<'a>(&'a self, _: &'a str) -> BoxFuture<'a, oauth::Result<()>> {
+        Box::pin(async { Ok(()) })
+    }
+    fn renew<'a>(
+        &'a self,
+        instance: &'a str,
+        previous: &'a oauth::Grant,
+        now: u64,
+    ) -> BoxFuture<'a, oauth::Result<oauth::Grant>> {
+        Box::pin(async move {
+            assert_eq!(instance, "energy-test");
+            assert_eq!(previous.tokens.refresh_token, "test-refresh");
+            self.renewals
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            oauth::Grant::from_broker(
+                &json!({"access_token":"broker-access","refresh_token":"broker-refresh","expires_at":now/1000+3600,"scope":oauth::SCOPE}),
+                now,
+            )
+        })
+    }
+}
+#[tokio::test(start_paused = true)]
+async fn driver_uses_the_bound_broker_and_commits_rotation_before_reading() {
+    let broker = Arc::new(RenewalBroker {
+        policy: oauth::Policy::new("app-test", "https://oauth.example.com/return").unwrap(),
+        renewals: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let h = Harness::start_with_broker(true, Some(broker.clone())).await;
+    assert_eq!(broker.renewals.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let bundle = h
+        .hub
+        .secret(&InstanceId::from("energy-test"), TOKEN_SECRET)
+        .unwrap();
+    assert_eq!(
+        Tokens::parse(&bundle).unwrap().refresh_token,
+        "broker-refresh"
+    );
+    assert!(
+        h.mock
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|r| r.0 == "GET" && r.2 == "Bearer broker-access")
+    );
+    assert_eq!(h.point("boiler_status"), Some(Value::Bool(true)));
+    assert!(
+        Netatmo::new(config())
+            .unwrap()
+            .with_broker(Arc::new(oauth::Unconfigured))
+            .is_err()
+    );
+    h.stop().await;
+}
+#[tokio::test(start_paused = true)]
+async fn driver_clears_old_demand_on_network_loss_retains_identity_then_recovers() {
+    let h = Harness::start(false).await;
+    assert_eq!(h.point("boiler_status"), Some(Value::Bool(true)));
+    for d in &h.hub.snapshot().devices {
+        assert!(d.device.points.iter().all(|p| !p.access.write));
+    }
+    let ids: Vec<_> = h
+        .hub
+        .snapshot()
+        .devices
+        .iter()
+        .map(|d| d.device.id.clone())
+        .collect();
+    h.mock
+        .replies
+        .lock()
+        .unwrap()
+        .push_back(Err(Failure::Network));
+    tokio::time::advance(Duration::from_secs(125)).await;
+    for _ in 0..20 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    assert!(
+        h.hub
+            .snapshot()
+            .devices
+            .iter()
+            .all(|d| d.online == Some(false))
+    );
+    h.mock.add(200, &live_topology());
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    s["body"]["home"]["modules"][1]["boiler_status"] = json!(false);
+    h.mock.add(200, &s);
+    tokio::time::advance(Duration::from_secs(125)).await;
+    for _ in 0..20 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(h.point("boiler_status"), Some(Value::Bool(false)));
+    assert_eq!(
+        ids,
+        h.hub
+            .snapshot()
+            .devices
+            .iter()
+            .map(|d| d.device.id.clone())
+            .collect::<Vec<_>>()
+    );
+    h.stop().await;
+}
+#[tokio::test(start_paused = true)]
+async fn rotated_credentials_are_persisted_together_before_reads() {
+    let h = Harness::start(true).await;
+    let stored = h
+        .hub
+        .secret(&InstanceId::from("energy-test"), TOKEN_SECRET)
+        .unwrap();
+    let tokens = Tokens::parse(&stored).unwrap();
+    assert_eq!(tokens.access_token, "rotated-access");
+    assert_eq!(tokens.refresh_token, "rotated-refresh");
+    {
+        let reqs = h.mock.requests.lock().unwrap();
+        assert_eq!(reqs[0].1, "/oauth2/token");
+        assert_eq!(reqs[1].2, "Bearer rotated-access");
+    }
+    h.stop().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn diagnostics_distinguish_received_parsed_and_published_without_device_values() {
+    let h = Harness::start(false).await;
+    let diagnostics = &h.hub.snapshot().diagnostics[0].read;
+    assert_eq!(diagnostics.stages[&ReadStage::Homesdata].successes, 1);
+    assert_eq!(diagnostics.stages[&ReadStage::Homestatus].successes, 1);
+    assert_eq!(diagnostics.stages[&ReadStage::Publication].successes, 1);
+    assert_eq!(diagnostics.summary.temperatures, 1);
+    assert_eq!(diagnostics.summary.demand_present, 1);
+    let text = serde_json::to_string(diagnostics).unwrap();
+    for private in [
+        "test-access",
+        "test-refresh",
+        "home-test",
+        "aa:bb:cc",
+        "19.5",
+    ] {
+        assert!(!text.contains(private));
+    }
+    h.mock.add(200, &live_topology());
+    let mut bad = status();
+    bad["body"]["home"]["rooms"][0]["therm_measured_temperature"] = json!("malformed");
+    h.mock.add(200, &bad);
+    advance_poll().await;
+    let diagnostics = &h.hub.snapshot().diagnostics[0].read;
+    assert_eq!(diagnostics.stages[&ReadStage::Homestatus].successes, 2);
+    assert_eq!(
+        diagnostics.stages[&ReadStage::Parsing].status,
+        ReadOutcome::InvalidResponse
+    );
+    assert_eq!(diagnostics.stages[&ReadStage::Publication].successes, 1);
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    h.stop().await;
+}
+
+async fn advance_poll() {
+    tokio::time::advance(Duration::from_secs(125)).await;
+    for _ in 0..30 {
+        tokio::task::yield_now().await;
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn consecutive_automatic_cycles_publish_changes_without_restarting() {
+    let h = Harness::start(false).await;
+    for wanted in [false, true, false] {
+        h.mock.add(200, &live_topology());
+        let mut next = status();
+        next["time_server"] = json!(now_ms() / 1000);
+        next["body"]["home"]["modules"][1]["boiler_status"] = json!(wanted);
+        h.mock.add(200, &next);
+        advance_poll().await;
+        assert_eq!(h.point("boiler_status"), Some(Value::Bool(wanted)));
+    }
+    assert_eq!(
+        h.hub.snapshot().diagnostics[0].read.stages[&ReadStage::Publication].successes,
+        4
+    );
+    let polling = &h.hub.snapshot().diagnostics[0].read.polling;
+    assert_eq!(polling.period_seconds, 120);
+    assert_eq!(polling.cycles, 4);
+    assert_eq!(polling.automatic_cycles, 3);
+    assert_eq!(polling.successes, 4);
+    assert_eq!(polling.reason, ReadOutcome::Ok);
+    assert!(!polling.in_flight);
+    assert!(polling.next_due_at >= polling.last_cycle_at + 120_000);
+    assert_eq!(
+        h.mock
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.0 == "GET")
+            .count(),
+        8
+    );
+    h.stop().await;
+}
+#[cfg(feature = "personal-oauth")]
+async fn wait_for_personal_poll(done: impl Fn() -> bool) {
+    // Vault commits await real filesystem work. A fixed number of yields is
+    // not a completion barrier, and depends on the unified Tokio features.
+    // Resume time while waiting so a blocked assertion has a real deadline.
+    tokio::time::resume();
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        while !done() {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await;
+    tokio::time::pause();
+    result.expect("personal poll did not finish");
+}
+#[cfg(feature = "personal-oauth")]
+#[tokio::test(start_paused = true)]
+async fn personal_rotation_survives_driver_restart_without_repeating_the_provider_refresh() {
+    let mut h = Harness::start(false).await;
+    let instance = InstanceId::from("energy-test");
+    let app =
+        oauth::personal::Application::new("app-test", "synthetic-personal-secret", true).unwrap();
+    h.hub
+        .store_secret(
+            &instance,
+            oauth::personal::APPLICATION_SECRET,
+            &app.bundle().unwrap(),
+        )
+        .await
+        .unwrap();
+    let mut tokens = Tokens::parse(&h.hub.secret(&instance, TOKEN_SECRET).unwrap()).unwrap();
+    tokens.expires_at = 0;
+    h.hub
+        .store_secret(
+            &instance,
+            TOKEN_SECRET,
+            &serde_json::to_string(&tokens).unwrap(),
+        )
+        .await
+        .unwrap();
+    h.mock.add(200,&json!({"access_token":"personal-access","refresh_token":"personal-refresh","expires_in":10800,"scope":["read_thermostat"]}));
+    h.mock.add(200, &live_topology());
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    h.mock.add(200, &s);
+    advance_poll().await;
+    wait_for_personal_poll(|| {
+        Tokens::parse(&h.hub.secret(&instance, TOKEN_SECRET).unwrap())
+            .unwrap()
+            .refresh_token
+            == "personal-refresh"
+            && h.mock.replies.lock().unwrap().is_empty()
+            && h.point("boiler_status") == Some(Value::Bool(true))
+    })
+    .await;
+    assert_eq!(
+        Tokens::parse(&h.hub.secret(&instance, TOKEN_SECRET).unwrap())
+            .unwrap()
+            .refresh_token,
+        "personal-refresh"
+    );
+    h.cancel.cancel();
+    let old = std::mem::replace(&mut h.task, tokio::spawn(async {}));
+    old.await.unwrap();
+    h.mock.add(200, &live_topology());
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    h.mock.add(200, &s);
+    let mut driver = Netatmo::new(config()).unwrap();
+    driver.transport = h.mock.clone();
+    h.cancel = CancellationToken::new();
+    h.task = spawn_driver(&h.hub, instance, Arc::new(driver), h.cancel.clone());
+    wait_for_personal_poll(|| {
+        h.hub.stats().drivers_running == 1 && h.point("boiler_status") == Some(Value::Bool(true))
+    })
+    .await;
+    assert_eq!(h.point("boiler_status"), Some(Value::Bool(true)));
+    assert_eq!(
+        h.mock
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.0 == "POST")
+            .count(),
+        1
+    );
+    h.stop().await;
+}
+#[cfg(feature = "personal-oauth")]
+#[tokio::test(start_paused = true)]
+async fn personal_ambiguous_refresh_keeps_its_durable_marker_and_never_replays() {
+    let h = Harness::start(false).await;
+    let instance = InstanceId::from("energy-test");
+    let app =
+        oauth::personal::Application::new("app-test", "synthetic-personal-secret", true).unwrap();
+    h.hub
+        .store_secret(
+            &instance,
+            oauth::personal::APPLICATION_SECRET,
+            &app.bundle().unwrap(),
+        )
+        .await
+        .unwrap();
+    let mut tokens = Tokens::parse(&h.hub.secret(&instance, TOKEN_SECRET).unwrap()).unwrap();
+    tokens.expires_at = 0;
+    h.hub
+        .store_secret(
+            &instance,
+            TOKEN_SECRET,
+            &serde_json::to_string(&tokens).unwrap(),
+        )
+        .await
+        .unwrap();
+    h.mock
+        .replies
+        .lock()
+        .unwrap()
+        .push_back(Err(Failure::Network));
+    advance_poll().await;
+    wait_for_personal_poll(|| {
+        h.hub
+            .secret(&instance, oauth::personal::ROTATION_SECRET)
+            .is_some()
+            && h.point("boiler_status") == Some(Value::Null)
+    })
+    .await;
+    assert!(
+        h.hub
+            .secret(&instance, oauth::personal::ROTATION_SECRET)
+            .is_some()
+    );
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    tokio::time::advance(Duration::from_secs(3605)).await;
+    for _ in 0..30 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        h.mock
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.0 == "POST")
+            .count(),
+        1
+    );
+    assert_eq!(
+        Tokens::parse(&h.hub.secret(&instance, TOKEN_SECRET).unwrap())
+            .unwrap()
+            .refresh_token,
+        "test-refresh"
+    );
+    h.stop().await;
+}
+#[tokio::test(start_paused = true)]
+async fn omitted_fields_clear_previous_values_without_erasing_devices() {
+    let h = Harness::start(false).await;
+    h.mock.add(200, &live_topology());
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    s["body"]["home"]["modules"][1]
+        .as_object_mut()
+        .unwrap()
+        .remove("boiler_status");
+    h.mock.add(200, &s);
+    advance_poll().await;
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    assert_eq!(h.point("declared_demand"), Some(Value::from("missing")));
+    assert_eq!(h.hub.snapshot().devices.len(), 3);
+    h.stop().await;
+}
+#[tokio::test(start_paused = true)]
+async fn failed_vault_rotation_stops_before_any_read_and_preserves_unrelated_secrets() {
+    let h = Harness::start(false).await;
+    let instance = InstanceId::from("energy-test");
+    h.hub
+        .store_secret(
+            &InstanceId::from("other-driver"),
+            "key",
+            "unrelated-test-key",
+        )
+        .await
+        .unwrap();
+    h.hub
+        .store_secret(
+            &instance,
+            TOKEN_SECRET,
+            &serde_json::to_string(&Tokens {
+                access_token: "old-access".into(),
+                refresh_token: "old-refresh".into(),
+                expires_at: 0,
+            })
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    // Simulate storage corruption after opening the synthetic vault. Do not
+    // overwrite this file with a partial/new bundle when rotation cannot commit.
+    let saved = std::fs::read(h.data.join("secrets.enc")).unwrap();
+    std::fs::write(h.data.join("secrets.enc"), b"synthetic damaged vault").unwrap();
+    h.mock.add(
+        200,
+        &json!({"access_token":"new-access","refresh_token":"new-refresh","expires_in":10800}),
+    );
+    advance_poll().await;
+    assert_eq!(h.mock.requests.lock().unwrap().len(), 3); // 2 initial reads + OAuth only
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    assert_eq!(
+        std::fs::read(h.data.join("secrets.enc")).unwrap(),
+        b"synthetic damaged vault"
+    );
+    assert_eq!(
+        h.hub
+            .secret(&InstanceId::from("other-driver"), "key")
+            .as_deref(),
+        Some("unrelated-test-key")
+    );
+    // Repair the synthetic vault and persist the pending pair without rotating again.
+    std::fs::write(h.data.join("secrets.enc"), saved).unwrap();
+    h.mock.add(200, &live_topology());
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    h.mock.add(200, &s);
+    tokio::time::advance(Duration::from_secs(3605)).await;
+    for _ in 0..10000 {
+        if h.point("boiler_status") == Some(Value::Bool(true)) {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(h.point("boiler_status"), Some(Value::Bool(true)));
+    {
+        let reqs = h.mock.requests.lock().unwrap();
+        assert_eq!(reqs.len(), 5);
+        assert_eq!(reqs[3].2, "Bearer new-access");
+    }
+    let stored = h.hub.secret(&instance, TOKEN_SECRET).unwrap();
+    assert_eq!(Tokens::parse(&stored).unwrap().refresh_token, "new-refresh");
+    assert_eq!(
+        h.hub
+            .secret(&InstanceId::from("other-driver"), "key")
+            .as_deref(),
+        Some("unrelated-test-key")
+    );
+    h.stop().await;
+}
+#[tokio::test(start_paused = true)]
+async fn premature_access_token_revocation_refreshes_once_on_the_next_poll() {
+    let h = Harness::start(false).await;
+    h.mock.add(401, &json!({"error":{"code":3}}));
+    advance_poll().await;
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    h.mock.add(
+        200,
+        &json!({"access_token":"next-access","refresh_token":"next-refresh","expires_in":10800}),
+    );
+    h.mock.add(200, &live_topology());
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    h.mock.add(200, &s);
+    advance_poll().await;
+    for _ in 0..10000 {
+        if h.point("boiler_status") == Some(Value::Bool(true)) {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(h.point("boiler_status"), Some(Value::Bool(true)));
+    assert_eq!(
+        h.mock
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.0 == "POST")
+            .count(),
+        1
+    );
+    h.stop().await;
+}
+#[tokio::test(start_paused = true)]
+async fn rate_limit_suspends_requests_and_demand_for_the_full_backoff() {
+    let h = Harness::start(false).await;
+    h.mock.add(429, &json!({}));
+    advance_poll().await;
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    tokio::time::advance(Duration::from_secs(3500)).await;
+    for _ in 0..30 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(h.mock.requests.lock().unwrap().len(), 3);
+    h.stop().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn stale_cloud_replies_never_publish_current_values_and_commands_are_refused() {
+    let h = Harness::start(false).await;
+    let command = h
+        .hub
+        .command(
+            &PointId::from("energy-test:home-test.module.aa:bb:cc:dd:ee:01/boiler_status"),
+            Value::Bool(false),
+            moli_core::Origin::Ui,
+            None,
+        )
+        .await;
+    assert!(matches!(command, Err(moli_runtime::CommandError::ReadOnly)));
+    assert_eq!(h.mock.requests.lock().unwrap().len(), 2);
+    h.mock.add(200, &live_topology());
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000 - 400);
+    h.mock.add(200, &s);
+    advance_poll().await;
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    assert_eq!(h.point("freshness"), Some(Value::from("stale")));
+    assert!(
+        h.hub
+            .snapshot()
+            .devices
+            .iter()
+            .all(|d| d.online == Some(false))
+    );
+    h.stop().await;
+}
+
+#[test]
+fn a_recent_status_cannot_refresh_an_old_or_undated_topology() {
+    let mut top = topology();
+    top["time_server"] = json!(AT / 1000 - 400);
+    let rows = model::parse(&top, &status(), "home-test", AT, 300_000).unwrap();
+    assert!(rows.iter().all(|o| !o.current()));
+    assert_eq!(thermostat(&rows).quality, "stale");
+    top["time_server"] = Json::Null;
+    let rows = model::parse(&top, &status(), "home-test", AT, 300_000).unwrap();
+    assert_eq!(thermostat(&rows).quality, "unconfirmed");
+    top["time_server"] = json!(AT / 1000 + 1);
+    let rows = model::parse(&top, &status(), "home-test", AT, 300_000).unwrap();
+    assert_eq!(thermostat(&rows).quality, "unconfirmed");
+}
+
+async fn advance_read(seconds: u64) {
+    tokio::time::advance(Duration::from_secs(seconds)).await;
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+}
+fn queue_recovery(mock: &Mock) {
+    mock.add(200, &live_topology());
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    s["body"]["home"]["modules"][1]["boiler_status"] = json!(false);
+    mock.add(200, &s);
+}
+#[tokio::test(start_paused = true)]
+async fn automatic_homesdata_failure_then_hung_retry_recovers_without_restart_or_reauthorization() {
+    let h = Harness::start(false).await;
+    let instance = InstanceId::from("energy-test");
+    let bundle = h.hub.secret(&instance, TOKEN_SECRET).unwrap();
+    h.mock.replies.lock().unwrap().push_back(Err(Failure::Dns));
+    advance_read(120).await;
+    let failed = h.hub.snapshot().diagnostics[0].read.clone();
+    assert_eq!(failed.polling.automatic_cycles, 1);
+    assert_eq!(failed.polling.reason, ReadOutcome::Dns);
+    assert_eq!(failed.polling.delay_seconds, 30);
+    assert_eq!(failed.stages[&ReadStage::Homestatus].attempts, 1);
+    assert_eq!(h.point("boiler_status"), Some(Value::Null));
+    *h.mock.hang_at.lock().unwrap() = Some(4);
+    advance_read(30).await;
+    let pending = h.hub.snapshot().diagnostics[0].read.clone();
+    assert!(pending.polling.in_flight);
+    assert_eq!(pending.polling.automatic_cycles, 2);
+    assert_eq!(
+        pending.stages[&ReadStage::Homesdata].status,
+        ReadOutcome::Pending
+    );
+    assert_eq!(
+        pending.stages[&ReadStage::Homesdata].last_error,
+        ReadOutcome::Dns
+    );
+    advance_read(15).await;
+    let timed_out = h.hub.snapshot().diagnostics[0].read.clone();
+    assert!(!timed_out.polling.in_flight);
+    assert_eq!(timed_out.polling.delay_seconds, 60);
+    assert_eq!(
+        timed_out.stages[&ReadStage::Homesdata].status,
+        ReadOutcome::Timeout
+    );
+    assert_eq!(
+        timed_out.stages[&ReadStage::Homesdata].last_duration_ms,
+        15_000
+    );
+    assert!(
+        timed_out
+            .stages
+            .values()
+            .all(|s| s.status != ReadOutcome::Pending)
+    );
+    queue_recovery(&h.mock);
+    advance_read(59).await;
+    assert_eq!(h.mock.requests.lock().unwrap().len(), 4);
+    advance_read(1).await;
+    assert_eq!(h.point("boiler_status"), Some(Value::Bool(false)));
+    let recovered = h.hub.snapshot().diagnostics[0].read.clone();
+    assert_eq!(recovered.polling.cycles, 4);
+    assert_eq!(recovered.polling.automatic_cycles, 3);
+    assert_eq!(recovered.polling.successes, 2);
+    assert_eq!(recovered.polling.failures, 2);
+    assert_eq!(recovered.polling.delay_seconds, 120);
+    assert_eq!(recovered.polling.last_error, ReadOutcome::Timeout);
+    assert_eq!(
+        recovered.stages[&ReadStage::Homesdata].errors[&ReadOutcome::Dns],
+        1
+    );
+    assert_eq!(
+        recovered.stages[&ReadStage::Homesdata].errors[&ReadOutcome::Timeout],
+        1
+    );
+    assert_eq!(bundle, h.hub.secret(&instance, TOKEN_SECRET).unwrap());
+    assert!(h.mock.requests.lock().unwrap().iter().all(|r| r.0 == "GET"));
+    h.stop().await;
+}
+#[tokio::test(start_paused = true)]
+async fn stopping_a_pending_automatic_read_closes_diagnostics_without_claiming_a_provider_failure()
+{
+    let h = Harness::start(false).await;
+    *h.mock.hang_at.lock().unwrap() = Some(3);
+    advance_read(120).await;
+    assert!(h.hub.snapshot().diagnostics[0].read.polling.in_flight);
+    h.cancel.cancel();
+    for _ in 0..100 {
+        tokio::task::yield_now().await;
+    }
+    let stopped = h.hub.snapshot().diagnostics[0].read.clone();
+    assert!(!stopped.driver_started);
+    assert!(!stopped.polling.in_flight);
+    assert_eq!(stopped.polling.next_due_at, 0);
+    assert_eq!(stopped.polling.automatic_cycles, 1);
+    assert_eq!(stopped.polling.interruptions, 1);
+    assert_eq!(stopped.polling.failures, 0);
+    assert_eq!(
+        stopped.stages[&ReadStage::Homesdata].status,
+        ReadOutcome::Cancelled
+    );
+    assert_eq!(stopped.stages[&ReadStage::Homesdata].failures, 0);
+    h.stop().await;
+}
+
+#[cfg(feature = "personal-oauth")]
+#[tokio::test]
+async fn categorized_renewal_network_errors_remain_ambiguous_instead_of_requesting_a_new_login() {
+    let app =
+        oauth::personal::Application::new("app-test", "synthetic-personal-secret", true).unwrap();
+    let previous = oauth::Grant {
+        tokens: Tokens {
+            access_token: "test-access".into(),
+            refresh_token: "test-refresh".into(),
+            expires_at: 0,
+        },
+    };
+    for failure in [
+        Failure::Timeout,
+        Failure::Dns,
+        Failure::Connect,
+        Failure::Tls,
+        Failure::Headers,
+        Failure::Body,
+        Failure::CycleTimeout,
+    ] {
+        let m = Mock::default();
+        m.replies.lock().unwrap().push_back(Err(failure));
+        assert!(matches!(
+            app.renew_with(&m, &previous, now_ms()).await,
+            Err(oauth::Error::Ambiguous)
+        ));
+        assert_eq!(m.requests.lock().unwrap().len(), 1);
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn manual_refresh_uses_existing_read_pair_without_burst_or_quota_bypass() {
+    use moli_runtime::ReadRefreshReply;
+    let h = Harness::start(false).await;
+    let instance = InstanceId::from("energy-test");
+    let initial = h.mock.requests.lock().unwrap().len();
+    assert_eq!(initial, 2);
+    assert!(matches!(
+        h.hub.request_read_refresh(&instance),
+        ReadRefreshReply::Limited { .. }
+    ));
+    advance_read(60).await;
+    queue_recovery(&h.mock);
+    assert_eq!(
+        h.hub.request_read_refresh(&instance),
+        ReadRefreshReply::Queued
+    );
+    assert_eq!(
+        h.hub.request_read_refresh(&instance),
+        ReadRefreshReply::Busy
+    );
+    advance_read(0).await;
+    assert_eq!(h.mock.requests.lock().unwrap().len(), initial + 2);
+    assert_eq!(
+        h.hub.snapshot().diagnostics[0].read.polling.manual_cycles,
+        1
+    );
+    assert_eq!(
+        h.hub.snapshot().diagnostics[0]
+            .read
+            .polling
+            .automatic_cycles,
+        0
+    );
+    advance_read(60).await;
+    let mut headers = HeaderMap::new();
+    headers.insert("retry-after", "7200".parse().unwrap());
+    h.mock.replies.lock().unwrap().push_back(Ok(Response {
+        status: StatusCode::TOO_MANY_REQUESTS,
+        headers,
+        body: "".into(),
+    }));
+    assert_eq!(
+        h.hub.request_read_refresh(&instance),
+        ReadRefreshReply::Queued
+    );
+    advance_read(0).await;
+    advance_read(120).await;
+    assert!(matches!(
+        h.hub.request_read_refresh(&instance),
+        ReadRefreshReply::Limited { .. }
+    ));
+    assert_eq!(h.mock.requests.lock().unwrap().len(), initial + 3);
+    assert!(
+        h.hub
+            .journal(100)
+            .iter()
+            .all(|e| !matches!(e.action, moli_core::Action::Command { .. }))
+    );
+    let hub = h.hub.clone();
+    h.stop().await;
+    assert_eq!(
+        hub.request_read_refresh(&instance),
+        ReadRefreshReply::Unavailable
+    );
+}

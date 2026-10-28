@@ -1,0 +1,42 @@
+[package]
+name = "moli-netatmo"
+description = "Portable, read-only Netatmo Energy cloud observations for Moli OS."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+# Code exchange with a confidential client is never compiled into Android.
+confidential-oauth = ["dep:axum"]
+# Explicit personal prototype; never embeds a registration or client secret.
+personal-oauth = []
+
+[dependencies]
+moli-core.workspace = true
+moli-runtime.workspace = true
+moli-net.workspace = true
+moli-i18n.workspace = true
+anyhow.workspace = true
+ring.workspace = true
+http.workspace = true
+httpdate.workspace = true
+http-body-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+axum = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tokio-util.workspace = true
+tower = { version = "0.5", features = ["util"] }
+
+[[example]]
+name = "netatmo-broker"
+required-features = ["confidential-oauth"]
+
+[lints]
+workspace = true

@@ -264,7 +264,7 @@ impl Config {
         }
     }
 
-    fn check(&self) -> anyhow::Result<()> {
+    pub(crate) fn check(&self) -> anyhow::Result<()> {
         if !moli_i18n::languages().contains(&self.server.language.as_str()) {
             bail!(
                 "[server] language = {:?}: Moli speaks {}",
@@ -303,6 +303,7 @@ impl Config {
                 "assistant",
                 "automations",
                 moli_energy::points::INSTANCE,
+                moli_energy::load::INSTANCE,
                 moli_lights::INSTANCE,
                 moli_api::PEOPLE_INSTANCE,
             ]

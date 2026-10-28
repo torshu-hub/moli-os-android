@@ -1,0 +1,45 @@
+Moli OS 0.9.0 — ARM64 — découverte réseau sur demande
+
+Installer moli-os-android-0.9.0-arm64.apk. Signature debug temporaire : installation
+.preview.network.v090 distincte des versions précédentes ; aucune mise à jour en place
+ni reprise automatique des données promise. Garder l’ancienne app si ses réglages servent.
+Récupération facultative : export chiffré depuis l’ancienne app, restauration dans la
+nouvelle installation vierge avant création du PIN. Ne rien désinstaller pour cet essai.
+Signature permanente toujours en attente, sans nouvelle clé créée.
+
+ESSAI DIFFÉRÉ — aucun essai physique demandé maintenant
+1. Connecter la tablette à votre Wi-Fi, sans VPN actif. Depuis Outils ou Équipements,
+   ouvrir Réseau local. Le serveur peut rester dans son état courant pour la recherche.
+2. Appuyer sur Rechercher puis confirmer votre autorisation sur ce réseau. Attendre
+   au maximum 20 s, ou Arrêter la recherche. Rien ne tourne en arrière-plan.
+3. Les annonces mDNS (IPP, HTTP, Google Cast) et SSDP/UPnP sont recherchées. Au besoin,
+   cocher les sondes complémentaires puis relancer : ports TCP 80 et 631 uniquement,
+   au plus 253 autres adresses du sous-réseau Wi-Fi réel, et seulement si son préfixe
+   est /24 à /30. Aucun balayage d’un grand réseau ni d’Internet. Pas de requête admin.
+4. Chaque résultat précise IP/port, nom annoncé et provenance. Un port ouvert reste un
+   protocole probable, pas une compatibilité certifiée. Certains appareils restent invisibles.
+   Copier l’adresse, ou Utiliser pour configurer. Une description XML lue avec un service
+   WANIPConnection est nécessaire pour proposer la configuration IGD.
+5. Vérifier la suggestion dans Équipements. La nouvelle cible reste désactivée et non
+   enregistrée : compléter notamment le chemin IPP s’il n’a pas été annoncé. Arrêter le
+   moteur avant de modifier la configuration, autoriser la lecture puis Enregistrer.
+   Démarrer seulement pour lancer volontairement les lectures déjà approuvées.
+6. « Utiliser cette IP pour une MSS310 » est un CHOIX MANUEL, pas une reconnaissance.
+   Seule l’IP est proposée ; aucun nom ou port d’un autre service n’est attribué à Meross.
+   Vérifier la prise, renseigner nom, port (80 habituellement) et clé locale connue, puis
+   autoriser la lecture. Jusqu’à huit prises. Pas de commande ON/OFF ou d’automatisme.
+
+LIMITES
+Les annonces et manipulations d’écran sont vérifiées avec des fixtures fictives ; la
+présence réelle des prises MSS310 6.0.0, de la Canon et de la box reste à confirmer.
+Pas de connexion au compte Meross dans cette version. Le compte pourra faciliter
+l’inventaire et la récupération de clés ; il ne remplace pas la recherche d’IP locale.
+Pas d’IPv6, de découverte par table ARP Android ou de détection garantie de tous les appareils.
+Le Wi-Fi invité/isolation peut empêcher les réponses. Les réponses hors sous-réseau,
+les URL externes/redirections et les descriptions ambiguës sont écartées.
+Sur Android ancien, une résolution mDNS déjà confiée au système peut finir après Arrêter ;
+aucun résultat tardif n’est affiché ni utilisé. Les sockets applicatifs sont fermés.
+Les résultats restent en mémoire et s’effacent en quittant la page ; seule la date de la
+recherche est conservée. Un changement de réseau annule et efface immédiatement la liste.
+Aucun résultat réseau n’est inclus dans le journal exportable ni envoyé automatiquement.
+Les données/configurations déjà sauvegardées et les coffres chiffrés restent inchangés.

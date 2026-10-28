@@ -1,0 +1,8 @@
+Moli OS Bêta 0.17.0-beta.1 — inventaire des intégrations
+
+Mise à jour de la bêta 0.16.0 : même application et même certificat.
+Arrêter le moteur, puis installer cette APK par-dessus Moli OS Bêta.
+Ne pas désinstaller et ne pas effacer les données. Conserver une sauvegarde chiffrée par précaution.
+Rouvrir, démarrer le moteur, puis Ouvrir Moli OS → Système → Inventaire des intégrations.
+Vérifier les intégrations/instances, les états et les associations déjà présentes.
+L’inventaire est en lecture seule ; une intégration compilée n’est pas une preuve d’essai réel ni de compatibilité Android.

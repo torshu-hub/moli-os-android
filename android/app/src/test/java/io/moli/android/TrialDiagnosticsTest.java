@@ -1,0 +1,84 @@
+package io.moli.android;
+import org.json.*;import org.junit.Test;import static org.junit.Assert.*;
+import static io.moli.android.TrialDiagnostics.*;
+public final class TrialDiagnosticsTest {
+ @Test public void pendingAndRecoveryRetainFailureCauseAcrossMissedSnapshotsAndRestart()throws Exception{
+  long now=System.currentTimeMillis();TrialDiagnostics d=TrialDiagnostics.empty();
+  java.util.EnumMap<Reason,Long> errors=new java.util.EnumMap<>(Reason.class);errors.put(Reason.DNS,1L);
+  // The monitor missed the failed state: the next snapshot is already pending.
+  d.observe(now,Topic.NETATMO_HOMESDATA,State.PENDING,Reason.NONE,0,0,1000,3,1,1,now,now-1000,now-500);
+  d.detail(Topic.NETATMO_HOMESDATA,1000,Reason.DNS,0,0,errors);
+  d=TrialDiagnostics.parse(d.json());
+  assertTrue(d.text(now).contains("dernière_cause_erreur=DNS"));assertTrue(d.text(now).contains("erreurs_DNS=1"));
+  d.observe(now+1,Topic.NETATMO_HOMESDATA,State.OK,Reason.NONE,0,0,1000,3,2,1,now,now+1,now-500);
+  d.detail(Topic.NETATMO_HOMESDATA,1000,Reason.DNS,25,0,errors);
+  assertEquals(Long.valueOf(1),d.entries.get(Topic.NETATMO_HOMESDATA).errors.get(Reason.DNS));
+  d.observe(now+2,Topic.NETATMO_HOMESDATA,State.PENDING,Reason.NONE,0,0,2000,1,0,0,now+2,0,0);
+  d.detail(Topic.NETATMO_HOMESDATA,2000,Reason.NONE,0,0,new java.util.EnumMap<>(Reason.class));
+  d.engineStopped(now+3);String text=d.text(now+4);
+  assertTrue(text.contains("NETATMO_HOMESDATA : CANCELLED cause=ENGINE_STOPPED"));assertTrue(text.contains("dernière_cause_erreur=DNS"));assertFalse(text.contains("CHARGEMENT_NON_TERMINE"));
+ }
+ @Test public void pollingTotalsSurviveEngineReplacementAndDoNotDoubleCountSnapshots()throws Exception{
+  long now=System.currentTimeMillis();TrialDiagnostics d=TrialDiagnostics.empty();
+  JSONObject first=new JSONObject().put("generation",1000).put("observed_at",now).put("cycles",2).put("automatic_cycles",1).put("failures",1).put("last_automatic_at",now-500).put("last_error_at",now-500).put("last_error","TIMEOUT");
+  d.polling=Polling.merge(d.polling,first);d.polling=Polling.merge(d.polling,first);
+  assertEquals(2,d.polling.values.getLong("total_cycles"));
+  d=TrialDiagnostics.parse(d.json());
+  JSONObject restarted=new JSONObject().put("generation",2000).put("observed_at",now).put("cycles",1).put("automatic_cycles",0).put("in_flight",true).put("trigger","INITIAL");
+  d.polling=Polling.merge(d.polling,restarted);
+  String text=d.text(now);assertTrue(text.contains("cycles_moteur=1 cycles_automatiques=0 total_cycles_observés=3 total_automatiques_observés=1"));assertTrue(text.contains("dernière_cause_erreur=TIMEOUT"));
+  d.engineStopped(now+1);assertFalse(d.polling.inFlight);assertEquals(1,d.polling.values.getLong("total_interruptions"));
+  assertFalse(d.text(now+90000).contains("CYCLE_NON_TERMINE"));
+ }
+ @Test public void pollingDeadlineAndQuotaSurviveRoundTripWithoutPrivateFields()throws Exception{
+  long now=System.currentTimeMillis();JSONObject raw=new JSONObject().put("period_min",120).put("period_max",120).put("cycles",4).put("automatic_cycles",3).put("next_due_at",now+3600000).put("last_cycle_at",now).put("last_automatic_at",now).put("last_gap_ms",120000).put("reason","RATE_LIMIT").put("trigger","DEADLINE").put("observed_at",now).put("private","secret@example.com");
+  TrialDiagnostics d=TrialDiagnostics.empty();d.polling=Polling.parse(raw);
+  TrialDiagnostics read=TrialDiagnostics.parse(d.json());assertEquals(now+3600000,read.polling.values.getLong("next_due_at"));
+  assertTrue(read.text(now).contains("cycles_automatiques=3"));assertTrue(read.text(now).contains("report=RATE_LIMIT"));assertFalse(read.json().toString().contains("secret@example.com"));
+ }
+ @Test public void flappingDiagnosticsCoalesceTraceButKeepCounters()throws Exception{
+  TrialDiagnostics d=TrialDiagnostics.empty();int traces=0;
+  for(int i=1;i<=500;i++){State s=i%2==0?State.OK:State.FAILED;
+   if(d.observe(i*100,Topic.UI_SCRIPT,s,Reason.RENDER,0,0,-1,0,0,0,0,0,0)&&d.trace(Topic.UI_SCRIPT,s,i*100))traces++;
+  }
+  assertEquals(1,traces);assertEquals(250,d.entries.get(Topic.UI_SCRIPT).failures);assertTrue(d.entries.get(Topic.UI_SCRIPT).coalesced>400);
+ }
+ @Test public void repeatedPollsKeepCountersAndLastTimesWithoutRepeatingTransitions()throws Exception{
+  TrialDiagnostics d=TrialDiagnostics.empty();int transitions=0;
+  for(int i=1;i<=500;i++){
+   if(d.observe(i*1000,Topic.UI_SYSTEM,State.PENDING,Reason.NONE,0,0,-1,0,0,0,0,0,0))transitions++;
+   if(d.observe(i*1000+1,Topic.UI_SYSTEM,State.OK,Reason.NONE,3,0,-1,0,0,0,0,0,0))transitions++;
+  }
+  assertEquals(2,transitions);Entry e=d.entries.get(Topic.UI_SYSTEM);assertEquals(500,e.attempts);assertEquals(500,e.successes);
+  assertTrue(d.observe(600000,Topic.UI_SYSTEM,State.FAILED,Reason.TIMEOUT,0,0,-1,0,0,0,0,0,0));
+  for(int i=0;i<10;i++){d.observe(600001+i,Topic.UI_SYSTEM,State.PENDING,Reason.NONE,0,0,-1,0,0,0,0,0,0);assertFalse(d.observe(600002+i,Topic.UI_SYSTEM,State.FAILED,Reason.TIMEOUT,0,0,-1,0,0,0,0,0,0));}
+  assertEquals(11,d.entries.get(Topic.UI_SYSTEM).failures);
+ }
+ @Test public void summariesSurviveEventTruncationAndOnlyAcceptFixedFields()throws Exception{
+  TrialJournal j=new TrialJournal();
+  j.diagnostics.observe(10000,Topic.NETATMO_HOMESTATUS,State.OK,Reason.NONE,0,0,9000,8,7,1,9990,10000,9500);
+  for(int i=0;i<400;i++)j.add(10001+i,TrialJournal.Event.ENGINE_READ_OK,i,0);
+  JSONObject root=new JSONObject(j.json());root.getJSONObject("diagnostics").getJSONObject("NETATMO_HOMESTATUS").put("raw","secret@example.com callback=private-token");
+  root.getJSONObject("diagnostics").put("private-house",new JSONObject().put("payload","secret@example.com"));
+  TrialJournal restored=TrialJournal.parse(root.toString());String text=restored.text();
+  assertEquals(144,restored.dropped);assertTrue(text.contains("NETATMO_HOMESTATUS : OK"));assertTrue(text.contains("tentatives=8 succès=7 échecs=1"));
+  assertFalse(restored.json().contains("secret@example.com"));assertFalse(text.contains("private-house"));assertFalse(text.contains("private-token"));
+  restored.diagnostics.observe(20000,Topic.NETATMO_HOMESTATUS,State.OK,Reason.NONE,0,0,19000,1,1,0,20000,20000,0);
+  assertEquals(9,restored.diagnostics.entries.get(Topic.NETATMO_HOMESTATUS).attempts);
+ }
+ @Test public void exportDistinguishesHungUiAndPublishedButUnobservedTile(){
+  TrialDiagnostics d=TrialDiagnostics.empty();d.observe(1000,Topic.UI_SYSTEM,State.PENDING,Reason.NONE,0,0,-1,0,0,0,0,0,0);
+  d.observe(1000,Topic.NETATMO_PUBLICATION,State.OK,Reason.NONE,2,2,1,1,1,0,1000,1000,0);
+  String text=d.text(30000);assertTrue(text.contains("CHARGEMENT_NON_TERMINE"));assertTrue(text.contains("NETATMO_VISIBILITE"));
+ }
+ @Test public void dailyObservationReportHasClosedCategoriesWithoutDemandDirectionOrPrivateFields()throws Exception{
+  long now=System.currentTimeMillis();TrialDiagnostics d=TrialDiagnostics.empty();
+  d.observe(now,Topic.UI_DAILY_HEATING,State.OK,Reason.NONE,DailyObservationReason.SIMULATED.ordinal(),12,-1,0,0,0,0,0,0);
+  JSONObject stored=d.json();stored.getJSONObject("UI_DAILY_HEATING").put("private","synthetic-private-payload");
+  String text=TrialDiagnostics.parse(stored).text(now);
+  assertTrue(text.contains("observation_à_blanc=SIMULATED événements_natifs_bornés=12 aucune_preuve_de_commande_physique"));
+  assertFalse(text.contains("synthetic-private-payload"));assertFalse(text.contains("WOULD_ON"));assertFalse(text.contains("WOULD_OFF"));
+  d.observe(now,Topic.UI_DAILY_HEATING,State.OK,Reason.NONE,999,4096,-1,0,0,0,0,0,0);
+  assertTrue(d.text(now).contains("observation_à_blanc=UNOBSERVED"));
+ }
+}

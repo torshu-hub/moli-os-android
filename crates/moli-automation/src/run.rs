@@ -182,23 +182,29 @@ pub(crate) async fn execute(
         };
     }
     run.ended = Some(moli_core::now_ms());
-    let recent: Vec<Run> = {
-        let mut runs = lock(&autos.0.runs);
-        runs.push_back(run.clone());
-        while runs.len() > store::KEEP_RUNS {
-            runs.pop_front();
-        }
-        runs.iter().cloned().collect()
-    };
-    {
-        let _one = autos.0.runs_writing.lock().await;
-        store::append_run(autos.0.runs_path.as_deref(), &run, recent).await;
-    }
+    remember(autos, &run).await;
     let _ = autos
         .0
         .live
         .send(crate::Live::RunEnded { run: run.clone() });
     run
+}
+
+async fn remember(autos: &Automations, run: &Run) {
+    {
+        let recent: Vec<Run> = {
+            let mut runs = lock(&autos.0.runs);
+            runs.push_back(run.clone());
+            while runs.len() > store::KEEP_RUNS {
+                runs.pop_front();
+            }
+            runs.iter().cloned().collect()
+        };
+        {
+            let _one = autos.0.runs_writing.lock().await;
+            store::append_run(autos.0.runs_path.as_deref(), run, recent).await;
+        }
+    }
 }
 
 fn log(autos: &Automations, run: &mut Run, node: &str, status: StepStatus, detail: Option<String>) {
@@ -263,7 +269,9 @@ async fn step(
                 (StepStatus::No, None, Some("no"))
             }
         }
-        Step::Set { point, value } => act(autos, a, point, Value::from_json(value), dry).await,
+        Step::Set { point, value } => {
+            act(autos, a, point, Value::from_json(value), dry, token).await
+        }
         Step::Toggle { point } => {
             let pid = PointId::from(point.as_str());
             let next = match hub.state(&pid).map(|s| s.value) {
@@ -278,7 +286,7 @@ async fn step(
                     );
                 }
             };
-            act(autos, a, point, next, dry).await
+            act(autos, a, point, next, dry, token).await
         }
         Step::Wait { seconds } => {
             if dry {
@@ -388,7 +396,20 @@ async fn act(
     point: &str,
     value: Value,
     dry: bool,
+    token: &CancellationToken,
 ) -> (StepStatus, Option<String>, Option<&'static str>) {
+    let pid = PointId::from(point);
+    if (!dry && crate::heating_locked(&a.graph)) || !autos.admits(a, &pid, &value) {
+        return (
+            StepStatus::Failed,
+            Some(if crate::heating_locked(&a.graph) {
+                tr!("moteur.refus.chauffage_verrouille")
+            } else {
+                tr!("moteur.refus.regle_indisponible")
+            }),
+            None,
+        );
+    }
     if dry {
         return (
             StepStatus::Simulated,
@@ -396,18 +417,31 @@ async fn act(
             Some("out"),
         );
     }
-    let pid = PointId::from(point);
-    match autos
-        .0
-        .hub
-        .command(
-            &pid,
-            value.clone(),
-            Origin::Automation,
-            Some(a.name.clone()),
-        )
-        .await
-    {
+    let authority = autos.command_authority(a, &pid, &value, token);
+    let result = if let Some(authority) = &authority {
+        autos
+            .0
+            .hub
+            .command_scoped(
+                &pid,
+                value.clone(),
+                Some(a.name.clone()),
+                authority.0.clone(),
+            )
+            .await
+    } else {
+        autos
+            .0
+            .hub
+            .command(
+                &pid,
+                value.clone(),
+                Origin::Automation,
+                Some(a.name.clone()),
+            )
+            .await
+    };
+    match result {
         Ok(()) => (
             StepStatus::Done,
             Some(format!("→ {}", show(&value))),
@@ -505,6 +539,14 @@ pub(crate) fn holds(autos: &Automations, rule: &Rule) -> bool {
         Rule::Sun { is } => {
             let day = autos.is_day();
             if *is == DayNight::Day { day } else { !day }
+        }
+        Rule::Stale { point, for_s } => {
+            let Some(sample) = autos.0.hub.state(&PointId::from(point.as_str())) else {
+                // Nothing ever arrived: nothing to trust.
+                return true;
+            };
+            let now = moli_core::now_ms();
+            sample.ts == 0 || sample.ts > now || now - sample.ts >= for_s.saturating_mul(1000)
         }
     }
 }

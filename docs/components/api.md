@@ -803,3 +803,12 @@ Restent ouverts (non urgents) :
 - le commentaire de `crates/moli-api/src/lib.rs` ne liste ni `/api/system`, ni
   `/api/home`, `/api/bench`, `/api/history`, `/api/devices/{id}/snapshot` ; la plupart des
   handlers de `rest.rs` et `automations.rs` n'ont pas de commentaire de documentation.
+
+### Règle simple source → prise
+
+`GET/PUT /api/device-link` configure le thermostat, la prise et l’activation via
+un scénario Moli ordinaire. La modification exige une session humaine et la version
+exacte ; l’approbation se fait une fois à l’activation, pas à chaque publication.
+`POST /api/device-link/refresh` demande une vraie lecture Netatmo bornée.
+Les anciennes API de démonstration `/api/observations/netatmo-meross` sont retirées.
+Voir [règle, persistance et journal général](device-link.md).

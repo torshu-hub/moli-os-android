@@ -52,11 +52,22 @@ téléphones passent sans Access, avec leur propre jeton.
 | Doc | Contenu |
 |---|---|
 | [coeur.md](components/coeur.md) | vocabulaire, hub, bus, garde et approbations, sessions PIN, journal, étiquettes, coffre des secrets, superviseur |
+| [netatmo-oauth-android.md](components/netatmo-oauth-android.md) | Connexion Netatmo Android préparatoire ; service confidentiel requis |
+| [oauth-common.md](components/oauth-common.md) | Proposition OAuth Rust commune Android/Linux ; comparaison des forks et contrats |
+| [netatmo-local-options.md](components/netatmo-local-options.md) | Android local prioritaire ; exigences fournisseur, variantes Linux et code préparatoire |
+| [netatmo-personal-android.md](components/netatmo-personal-android.md) | Prototype personnel Android local : provisioning, retour manuel, renouvellement et essai bêta |
+| [read-diagnostics.md](components/read-diagnostics.md) | Netatmo visible dans l’accueil, reprise Système et résumé compact dans le rapport d’essai existant |
+| [netatmo-polling.md](components/netatmo-polling.md) | Relecture Netatmo bornée, reprise après échec, diagnostics durables et âge compact code29 |
+| [netatmo-energy.md](components/netatmo-energy.md) | Netatmo Energy portable en lecture seule, fraîcheur et prérequis OAuth |
 | [pilotes.md](components/pilotes.md) | trait `Driver`, chaque pilote natif, `moli-net` |
 | [profils.md](components/profils.md) | moteur de profils déclaratifs, format TOML, ajouter un appareil sans code |
+| [meross-set-simulation.md](components/meross-set-simulation.md) | Lot SET ToggleX simulé sur boucle locale, avec garde et confirmation |
+| [meross-manual-beta.md](components/meross-manual-beta.md) | MSS310 : une prise autorisée manuellement, relecture, diagnostics et essai S5e |
+| [device-link.md](components/device-link.md) | Règle Netatmo ON/OFF → Meross, moteur natif et journal général TXT |
 | [historique-energie.md](components/historique-energie.md) | historique SQLite, SQL pour agents, énergie (kWh, €, Tempo), import HA |
 | [automatismes.md](components/automatismes.md) | modèle de graphe, validation humaine, moteur, éditeur, import HA |
 | [moli.md](components/moli.md) | l'assistant : conversation, outils, garde, création d'automatismes, filtres |
+| [satellite-vocal.md](components/satellite-vocal.md) | l'appareil qui écoute et parle : firmware ESPHome validé, configuration, et pourquoi un seul cerveau à la fois |
 | [api.md](components/api.md) | REST, SSE, MCP, CLI, sécurité des routes |
 | [dashboard.md](components/dashboard.md) | interface Maison et Atelier (Svelte 5), carte vivante |
 | [exploitation.md](components/exploitation.md) | image Docker, clé maître, sauvegarde, mise à jour, développement |

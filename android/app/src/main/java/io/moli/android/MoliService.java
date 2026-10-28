@@ -6,6 +6,8 @@ import android.os.*;
 
 /** Android foreground lifetime around a process-wide, serialized native host. */
 public final class MoliService extends Service {
+    static final String RESTART = "io.moli.android.RESTART";
+    private boolean restarting;
     static final String STOP = "io.moli.android.STOP";
     private final LocalBinder binder = new LocalBinder();
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -22,6 +24,9 @@ public final class MoliService extends Service {
     private final Runnable monitor = new Runnable() {
         @Override public void run() {
             EngineHost.State state = EngineHost.state();
+            if(state==EngineHost.State.STOPPED && restarting) {
+                restarting=false;lease=EngineHost.start(MoliService.this);state=EngineHost.state();
+            }
             if (state == EngineHost.State.STOPPED || state == EngineHost.State.ERROR || state == EngineHost.State.MAINTENANCE) {
                 stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return;
             }
@@ -30,6 +35,7 @@ public final class MoliService extends Service {
                 startForeground(1, notification(state)); notified = state; notifiedHealthy = healthy;
             }
             if (state == EngineHost.State.RUNNING) EngineHealth.check();
+            if(TrialLog.active())EquipmentMonitor.poll(MoliService.this,null,false);
             handler.postDelayed(this, state == EngineHost.State.RUNNING ? EngineHealth.INTERVAL : 250);
         }
     };
@@ -51,9 +57,15 @@ public final class MoliService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         commandReceived = true;
         if (intent != null && STOP.equals(intent.getAction())) {
+            restarting=false;
             getSharedPreferences("host", MODE_PRIVATE).edit().putBoolean("wanted", false).apply();
             lease = EngineHost.currentLease();
             EngineHost.stop(lease);
+        } else if(intent!=null && RESTART.equals(intent.getAction())) {
+            if(EngineHost.state()==EngineHost.State.MAINTENANCE)return START_NOT_STICKY;
+            getSharedPreferences("host",MODE_PRIVATE).edit().putBoolean("wanted",true).apply();
+            startForeground(1,notification(EngineHost.State.STOPPING));
+            restarting=true;lease=EngineHost.currentLease();EngineHost.stop(lease);
         } else {
             // Required immediately even when a duplicate start is being rejected.
             startForeground(1, notification(EngineHost.State.STARTING));

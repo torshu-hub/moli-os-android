@@ -1,0 +1,40 @@
+Moli OS Intégrations 0.5.0 — ARM64 — Android 9 minimum
+
+1. Installer moli-os-android-0.5.0-integrations-arm64.apk. Ne pas désinstaller
+   Aperçu ou Diagnostic pour forcer une mise à jour : la signature est temporaire.
+   Cette livraison rassemble moteur, diagnostic, sauvegarde et intégrations.
+2. Ouvrir Moli OS Intégrations, créer un PIN fictif, puis arrêter le moteur.
+3. Ouvrir « Intégrations / données » et « Choisir un profil TOML ».
+   Sélectionner synthetic-temperature.toml présent dans ce ZIP.
+4. Lire les accès et l’empreinte, puis « Approuver explicitement ».
+   Ajouter aussi Demo native si souhaité, puis « Démarrer » : voir 42,5 °C
+   (simulation), humidité, dates de réception et capteur Demo dans les données.
+5. Arrêter, ajouter Open-Meteo et accepter la lecture HTTPS pour les coordonnées
+   publiques de test Paris, puis démarrer. Internet est nécessaire ; les valeurs
+   météo sont des prévisions actualisées, pas des mesures du domicile.
+6. Fermer/rouvrir l’interface puis arrêter/démarrer : les sélections persistent.
+   Un profil incorrect ou modifié doit être refusé. Retirer/revenir à la sélection
+   précédente se fait moteur arrêté. Aucun équipement réel n’est configuré.
+
+Les profils importables de ce premier lot sont volontairement limités à la source
+fictive interne /status sans hôte et au profil Open-Meteo fourni. Aucun secret,
+GET vers un autre hôte, écriture, commande Meross ou scan réseau n’est accepté.
+
+Installation : paquet io.moli.android.app.preview.integrations. Signature debug
+jetable, nouvelle installation séparée nécessaire puisque le certificat privé
+utilisé par les anciennes CI n’est pas disponible. Aucune clé durable créée.
+Les futures mises à jour en place exigent le même paquet ET la même signature.
+
+Nettoyage facultatif, après vérification par le propriétaire : Diagnostic 0.4.0
+peut être retiré s’il ne contient que les essais fictifs et si ses relevés sont
+conservés. Même condition pour les anciennes apps de récupération/restauration.
+Conserver Aperçu 0.3.1 ou le prototype s’ils contiennent une configuration utile,
+ou exporter puis vérifier une restauration dans la nouvelle app AVANT de les
+supprimer. Désinstaller efface les données privées de cette application.
+Aucune désinstallation n’est nécessaire pour cet essai.
+
+Ne pas déduire une continuité en veille d’un succès au réveil. Aucun wake lock,
+exemption de batterie ou démarrage au boot ajouté. ZIP install sans sous-dossier ;
+les rapports CI sont proposés dans une archive distincte. SHA256SUMS permet de
+vérifier le fichier téléchargé. Licence et attribution Moli incluses dans l’APK.
+Météo : Open-Meteo.com (https://open-meteo.com/), données et attribution fournisseur.

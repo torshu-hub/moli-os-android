@@ -4,8 +4,19 @@ mod backup;
 mod catalogue;
 mod config;
 mod embedded;
+mod inventory;
 
 pub use embedded::EmbeddedEngine;
+
+/// Validate a proposed host configuration in memory before any persistence.
+/// This performs the same structural/policy checks as loading `moli.toml`.
+///
+/// # Errors
+/// Returns an error for invalid syntax, duplicate IDs or invalid engine settings.
+pub fn validate_configuration(text: &str) -> anyhow::Result<()> {
+    let config: config::Config = toml::from_str(text)?;
+    config.check()
+}
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -391,6 +402,7 @@ async fn serve(
         phones: gates.phones,
         machines: gates.machines,
         weather: weather(&config),
+        integration_inventory: inventory::inventory(&config),
     };
     // Client addresses matter: human sessions are bound to them.
     let is_embedded = embedded.is_some();
@@ -821,7 +833,14 @@ fn print_profile(compiled: &moli_profile::Compiled, file: Option<&moli_profile::
     }
     println!("  writes (each one is a command: guard and journal apply):");
     for w in &compiled.writes {
-        println!("  write   {:<20} GET {}", w.key, w.path);
+        let transport = if w.meross && compiled.source == moli_profile::Source::Builtin {
+            moli_i18n::tr!("pilotes.profile.meross_manual_transport")
+        } else if w.meross {
+            moli_i18n::tr!("pilotes.profile.meross_transport")
+        } else {
+            "GET".to_owned()
+        };
+        println!("  write   {:<20} {transport} {}", w.key, w.path);
         if let Some(i) = w.refresh {
             println!("          then reads {}", compiled.requests[i].id);
         }
@@ -889,8 +908,13 @@ fn start_history(
 const KINDS: &[&str] = &[
     "z2m",
     "hue",
+    "dirigera",
     "igd",
+    "netatmo",
     "tapo",
+    "shelly",
+    "izypower",
+    "solarman",
     "philips",
     "frigate",
     "bambu",
@@ -939,6 +963,22 @@ fn spawn_house_drivers(
             Arc::new(moli_energy::points::Points::new(energy.clone())),
             cancel.clone(),
         ));
+        let energy_config = energy.config();
+        if !energy_config.loads.is_empty()
+            && let Ok(tz) = jiff::tz::TimeZone::get(&energy_config.timezone)
+        {
+            tasks.push(spawn_driver(
+                hub,
+                InstanceId::from(moli_energy::load::INSTANCE),
+                Arc::new(moli_energy::load::Loads::new(
+                    hub.clone(),
+                    energy_config.loads.clone(),
+                    tz,
+                    energy_config.tariff.as_ref().map(|t| t.period.clone()),
+                )),
+                cancel.clone(),
+            ));
+        }
     }
     tasks
 }
@@ -982,6 +1022,23 @@ fn spawn_drivers(
 ) -> anyhow::Result<(Vec<tokio::task::JoinHandle<()>>, Gateways)> {
     let mut tasks = Vec::new();
     let mut gates = Gateways::default();
+    for driver in config.drivers.iter().filter(|d| d.kind == "netatmo") {
+        hub.observe_read(
+            &driver.id.clone().into(),
+            "netatmo",
+            moli_runtime::ReadEvent::Configuration {
+                enabled: driver.enabled != Some(false),
+                credential_present: hub
+                    .secret(&driver.id.clone().into(), "oauth_tokens")
+                    .is_some(),
+                target_selected: driver
+                    .options
+                    .get("home_id")
+                    .and_then(toml::Value::as_str)
+                    .is_some_and(|s| !s.is_empty()),
+            },
+        );
+    }
     for driver in config.drivers.iter().filter(|d| d.enabled != Some(false)) {
         let context = || format!("driver {:?} options", driver.id);
         let built: Arc<dyn Driver> = match driver.kind.as_str() {
@@ -1029,10 +1086,25 @@ fn build_driver(
         "hue" => Arc::new(moli_hue::Hue::new(
             config.options.clone().try_into().with_context(context)?,
         )),
+        "dirigera" => Arc::new(moli_dirigera::Dirigera::new(
+            config.options.clone().try_into().with_context(context)?,
+        )),
+        "netatmo" => Arc::new(moli_netatmo::Netatmo::new(
+            config.options.clone().try_into().with_context(context)?,
+        )?),
         "igd" => Arc::new(moli_igd::Igd::new(
             config.options.clone().try_into().with_context(context)?,
         )),
         "tapo" => Arc::new(moli_tapo::Tapo::new(
+            config.options.clone().try_into().with_context(context)?,
+        )),
+        "shelly" => Arc::new(moli_shelly::Shelly::new(
+            config.options.clone().try_into().with_context(context)?,
+        )),
+        "izypower" => Arc::new(moli_izypower::Izypower::new(
+            config.options.clone().try_into().with_context(context)?,
+        )),
+        "solarman" => Arc::new(moli_solarman::Solarman::new(
             config.options.clone().try_into().with_context(context)?,
         )),
         "philips" => Arc::new(moli_philips::Philips::new(

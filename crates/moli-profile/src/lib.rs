@@ -12,6 +12,9 @@
 //! on the same network, checks its identity there, and talks to it at its
 //! new address, journaled and remembered (`data/addresses.json`).
 
+pub mod meross_cloud;
+mod meross_set;
+mod mss310;
 mod profile;
 mod trust;
 
@@ -35,7 +38,7 @@ pub use profile::{
     Answer, BUILTIN, Call, Compiled, CompiledWrite, Format, Profile, ProfileError, Source, builtin,
     parse_every,
 };
-pub use trust::{ProfileFile, Recorded, TRUST_FILE, record as trust, sha256};
+pub use trust::{ProfileFile, Recorded, TRUST_FILE, is_trusted, record as trust, sha256};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 /// Consecutive failed polls before the device is shown offline.
@@ -62,6 +65,16 @@ pub struct Config {
     /// Values for the profile's `{placeholders}` (`lat`, `lon`…).
     #[serde(default)]
     pub vars: std::collections::BTreeMap<String, String>,
+    /// Explicit destinations only when false; preserves Linux discovery by default.
+    #[serde(default = "discovery_default")]
+    pub discovery: bool,
+    /// Human label; identity continues to come from the device.
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+fn discovery_default() -> bool {
+    true
 }
 
 /// Where and how to reach the device.
@@ -135,6 +148,88 @@ pub fn open(profile: &str) -> Result<(Compiled, Option<ProfileFile>), ProfileErr
         sha256: sha256(&text),
     };
     Ok((Profile::parse(&text)?.compile(Source::File)?, Some(file)))
+}
+
+/// One explicit read through the normal transport and point conversions.
+/// The caller must approve the exact compiled bytes and restrict destinations.
+/// No driver schedule, hub state, secret, discovery or write is involved.
+pub async fn read_only_once(
+    profile: &Compiled,
+    config: &Config,
+) -> anyhow::Result<std::collections::BTreeMap<String, Value>> {
+    anyhow::ensure!(
+        profile.writes.is_empty() && profile.meta.secret.is_none(),
+        "read only"
+    );
+    anyhow::ensure!(profile.requests.len() == 1, "one request required");
+    let request = &profile.requests[0];
+    anyhow::ensure!(
+        matches!(request.call, Call::Get) && request.headers.is_empty(),
+        "GET only"
+    );
+    let target = Target::of(config, profile)?;
+    let answer = fetch(&target, request, None).await?;
+    Ok(profile
+        .points
+        .iter()
+        .filter_map(|point| {
+            point
+                .read(&answer)
+                .map(|value| (point.spec.key.to_string(), value))
+        })
+        .collect())
+}
+
+#[derive(Debug)]
+struct MerossKeyRejected;
+impl std::fmt::Display for MerossKeyRejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Meross key rejected")
+    }
+}
+impl std::error::Error for MerossKeyRejected {}
+
+/// Safe classification only; never copy a transport error containing an address into diagnostics.
+#[must_use]
+pub fn mss310_identity_error(error: &anyhow::Error) -> &'static str {
+    if error.is::<MerossKeyRejected>() {
+        "account_key"
+    } else if error.is::<std::io::Error>() || error.is::<tokio::time::error::Elapsed>() {
+        "account_local"
+    } else {
+        "account_protocol"
+    }
+}
+
+/// One signed GET to verify an MSS310's hardware UUID before account-assisted provisioning.
+/// Callers must approve the private numeric destination; no discovery or write is performed.
+pub async fn mss310_identity(host: &str, port: u16, key: &str) -> anyhow::Result<String> {
+    anyhow::ensure!(
+        host.parse::<Ipv4Addr>().is_ok() && port != 0,
+        "numeric destination required"
+    );
+    let (profile, _) = open("meross-mss310")?;
+    let config = Config {
+        profile: "meross-mss310".into(),
+        host: Some(host.into()),
+        port: Some(port),
+        vars: std::collections::BTreeMap::default(),
+        discovery: false,
+        name: None,
+    };
+    let target = Target::of(&config, &profile)?;
+    let request = profile
+        .requests
+        .iter()
+        .find(|r| r.id == "all")
+        .context("identity request missing")?;
+    let Answer::Json(body) = mss310::fetch(&target, request, Some(key), &profile).await? else {
+        bail!("identity response rejected");
+    };
+    Ok(body["payload"]["all"]["system"]["hardware"]["uuid"]
+        .as_str()
+        .context("identity missing")?
+        .to_ascii_lowercase())
 }
 
 #[derive(Debug)]
@@ -236,7 +331,8 @@ enum Ended {
 /// built-in profile that says who the device is. A profile file reaches
 /// only the host a person gave it.
 fn followable(config: &Config, profile: &Compiled, lan: Lan) -> bool {
-    profile.source == Source::Builtin
+    config.discovery
+        && profile.source == Source::Builtin
         && profile.meta.identity.is_some()
         && profile.meta.host.is_none()
         && config
@@ -289,7 +385,16 @@ impl ProfileDriver {
     /// Given by the host program, never by the driver options: the driver
     /// and `moli-os profile trust` must read the same list.
     pub fn new(config: Config, trust_file: PathBuf) -> Result<Self, ProfileError> {
-        let (profile, file) = open(&config.profile)?;
+        let (mut profile, file) = open(&config.profile)?;
+        if let Some(name) = &config.name {
+            if name.trim().is_empty() || name.len() > 160 || name.chars().any(char::is_control) {
+                return Err(ProfileError {
+                    profile: config.profile.clone(),
+                    message: "invalid display name".into(),
+                });
+            }
+            profile.meta.name.clone_from(name);
+        }
         Target::of(&config, &profile)?;
         Ok(Self {
             config,
@@ -581,8 +686,15 @@ async fn fetch(
         .with_context(|| format!("{}: unreadable {:?} answer", request.path, request.format))?;
     if let (Call::Meross { namespace, .. }, Answer::Json(json)) = (&request.call, &answer) {
         let method = json["header"]["method"].as_str().unwrap_or_default();
+        // Public Meross protocol: ERROR 5001 explicitly means invalid key. Other errors are not guessed.
+        if method == "ERROR"
+            && json["header"]["namespace"] == *namespace
+            && json["payload"]["error"]["code"] == 5001
+        {
+            return Err(MerossKeyRejected.into());
+        }
         if method != "GETACK" {
-            bail!("{namespace}: device answered {method:?} (wrong key or namespace?)");
+            bail!("{namespace}: Meross response rejected (key or protocol)");
         }
     }
     Ok(answer)
@@ -591,6 +703,15 @@ async fn fetch(
 /// A signed Meross local-API `GET` message:
 /// `sign = md5(messageId ‖ key ‖ timestamp)`.
 fn meross_message(namespace: &str, payload: &serde_json::Value, key: &str) -> serde_json::Value {
+    meross_message_method("GET", namespace, payload, key)
+}
+
+fn meross_message_method(
+    method: &str,
+    namespace: &str,
+    payload: &serde_json::Value,
+    key: &str,
+) -> serde_json::Value {
     use md5::{Digest as _, Md5};
     static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let now = std::time::SystemTime::now()
@@ -603,14 +724,12 @@ fn meross_message(namespace: &str, payload: &serde_json::Value, key: &str) -> se
     );
     let message_id = hex(&Md5::digest(unique.as_bytes()));
     let timestamp = now.as_secs();
-    let sign = hex(&Md5::digest(
-        format!("{message_id}{key}{timestamp}").as_bytes(),
-    ));
+    let sign = meross_signature(&message_id, key, timestamp);
     serde_json::json!({
         "header": {
             "from": "/appliance/moli/subscribe",
             "messageId": message_id,
-            "method": "GET",
+            "method": method,
             "namespace": namespace,
             "payloadVersion": 1,
             "sign": sign,
@@ -618,6 +737,13 @@ fn meross_message(namespace: &str, payload: &serde_json::Value, key: &str) -> se
         },
         "payload": payload,
     })
+}
+
+fn meross_signature(message_id: &str, key: &str, timestamp: u64) -> String {
+    use md5::{Digest as _, Md5};
+    hex(&Md5::digest(
+        format!("{message_id}{key}{timestamp}").as_bytes(),
+    ))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -717,7 +843,7 @@ impl<'a> Session<'a> {
         let profile = self.profile;
         let needed = identity_requests(profile);
         for (i, request) in profile.requests.iter().enumerate() {
-            match fetch(self.target, request, self.secret).await {
+            match mss310::fetch(self.target, request, self.secret, self.profile).await {
                 Ok(answer) => {
                     self.answers.insert(request.id.clone(), answer);
                     self.due[i] = Instant::now() + request.every;
@@ -746,7 +872,7 @@ impl<'a> Session<'a> {
     async fn poll(&mut self, ctx: &DriverCtx, device: &DeviceId, i: usize) -> anyhow::Result<()> {
         let profile = self.profile;
         let request = &profile.requests[i];
-        let result = match fetch(self.target, request, self.secret).await {
+        let result = match mss310::fetch(self.target, request, self.secret, self.profile).await {
             Ok(answer) => {
                 self.failures[i] = 0;
                 self.silent = 0;
@@ -772,6 +898,17 @@ impl<'a> Session<'a> {
                 Err(e)
             }
         };
+        if profile
+            .writes
+            .iter()
+            .any(|w| w.meross && w.refresh == Some(i))
+        {
+            // A simulated writable target is available only after its strict
+            // identity read succeeds; ordinary profile retry policy is unchanged.
+            self.offline = result.is_err();
+            ctx.set_availability(device, !self.offline);
+            return result;
+        }
         // Offline only when nothing answers any more.
         let all_failing = self.failures.iter().all(|f| *f >= OFFLINE_AFTER);
         if all_failing != self.offline {
@@ -789,6 +926,10 @@ impl<'a> Session<'a> {
             command.reply(Err(moli_i18n::tr!("pilotes.profile.lecture_seule")));
             return;
         };
+        if write.meross {
+            self.meross_command(ctx, device, write, command).await;
+            return;
+        }
         let deadline = Instant::from_std(command.deadline);
         let outcome =
             tokio::time::timeout_at(deadline, self.write(ctx, device, write, &command.value))
@@ -868,6 +1009,16 @@ async fn run(driver: &ProfileDriver, ctx: &mut DriverCtx) -> anyhow::Result<()> 
         && !approved(ctx, driver, file).await
     {
         return Ok(()); // waiting for a human, then shut down
+    }
+    if meross_set::manual(profile) {
+        ctx.observe_read(
+            "meross",
+            moli_runtime::ReadEvent::Configuration {
+                enabled: true,
+                credential_present: false,
+                target_selected: configured.vars.contains_key("manual_uuid"),
+            },
+        );
     }
     let Some(secret) = required_secret(profile, ctx).await else {
         return Ok(()); // waiting for a human, then shut down
@@ -1057,7 +1208,24 @@ async fn serve(
 ) -> anyhow::Result<Ended> {
     let profile = &*driver.profile;
     let mut session = Session::new(target, profile, secret);
-    session.first_round().await?;
+    if meross_set::manual(profile) {
+        ctx.observe_read(
+            "meross",
+            moli_runtime::ReadEvent::Configuration {
+                enabled: true,
+                credential_present: secret.is_some(),
+                target_selected: target.vars.contains_key("manual_uuid"),
+            },
+        );
+    }
+    if meross_set::manual(profile) {
+        session.meross_first_round(ctx).await?;
+    } else {
+        session.first_round().await?;
+    }
+    if meross_set::manual(profile) {
+        ctx.observe_read("meross", moli_runtime::ReadEvent::Started);
+    }
     let lookup = |reference: &Option<String>| read(&session.answers, reference.as_deref());
     // A declared identity is mandatory: falling back to the address would
     // split one device in two the day the identity comes back.
@@ -1188,6 +1356,49 @@ mod tests {
     use md5::{Digest as _, Md5};
     use moli_core::DriverStatus;
 
+    #[tokio::test]
+    async fn one_shot_uses_normal_transport_and_point_conversion() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = server.local_addr().unwrap().port();
+        let task = tokio::spawn(async move {
+            let (mut socket, _) = server.accept().await.unwrap();
+            let mut request = [0_u8; 2048];
+            let n = socket.read(&mut request).await.unwrap();
+            assert!(
+                std::str::from_utf8(&request[..n])
+                    .unwrap()
+                    .starts_with("GET /status HTTP/1.1")
+            );
+            let body = r#"{"temperature":42.5,"humidity":67}"#;
+            socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+        });
+        let text = "[profile]\nid='test'\nname='test'\n[[request]]\nid='r'\npath='/status'\nformat='json'\nevery='15m'\n[[point]]\nkey='temperature'\nlabel='temperature'\nfrom='r.temperature'\nkind='numeric'\n";
+        let mut compiled = Profile::parse(text).unwrap().compile(Source::File).unwrap();
+        let config = Config {
+            profile: "test".into(),
+            host: Some("127.0.0.1".into()),
+            port: Some(port),
+            vars: std::collections::BTreeMap::new(),
+            discovery: true,
+            name: None,
+        };
+        let result = read_only_once(&compiled, &config).await.unwrap();
+        assert_eq!(result["temperature"].as_f64(), Some(42.5));
+        task.await.unwrap();
+        compiled.meta.secret = Some("not-a-real-secret".into());
+        assert!(read_only_once(&compiled, &config).await.is_err());
+    }
+
     /// `get_control_info` of a real BRP069, switched off in auto mode.
     /// Each mode remembers its set point (`dt<mode>`), humidity (`dh<mode>`)
     /// and fan speed (`dfr<mode>`); fan-only (6) has no set point.
@@ -1201,6 +1412,8 @@ mod tests {
             host: Some("192.0.2.1".into()),
             port: None,
             vars: std::collections::BTreeMap::new(),
+            discovery: true,
+            name: None,
         }
     }
 
@@ -1478,6 +1691,8 @@ mod tests {
                 host: Some(CONFIGURED.to_string()),
                 port: Some(port),
                 vars: std::collections::BTreeMap::new(),
+                discovery: true,
+                name: None,
             };
             let driver = ProfileDriver {
                 lan,
@@ -1653,6 +1868,12 @@ mod tests {
             ..config("daikin-brp069")
         };
         assert!(followable(&home, &daikin, Lan::REAL));
+        home.discovery = false;
+        assert!(
+            !followable(&home, &daikin, Lan::REAL),
+            "explicit destination disables neighbour lookup and relocation"
+        );
+        home.discovery = true;
         let file = Profile::parse(builtin("daikin-brp069").unwrap())
             .unwrap()
             .compile(Source::File)

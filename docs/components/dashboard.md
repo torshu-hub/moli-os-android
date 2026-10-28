@@ -115,3 +115,38 @@ session ; `chrome --screenshot` ne rend jamais la main à cause du flux SSE.
 - Télé : applis et clavier non disponibles (JointSpace ne le permet pas ; protocole
   Android TV Remote v2 à faire).
 - Clims : lecture seule tant que les écritures Daikin n'ont pas été testées physiquement.
+
+## Inventaire des intégrations (Système)
+
+La page Système consulte `GET /api/system` : `integrations` contient le catalogue
+embarqué, recoupé avec le registre des pilotes du binaire et les profils intégrés.
+La présence d’un manifeste ne suffit pas à rendre un pilote disponible. Deux
+implémentations portant le même identifiant (native/profil) restent distinctes.
+Les instances viennent de la configuration effective au démarrage, y compris les
+entrées désactivées ; les pilotes internes observés sont signalés séparément.
+`instances[].status` reste nul sans observation runtime, et ne prouve jamais la
+fraîcheur des mesures. `hardware_validation` est nul : le moteur ne tient pas de
+registre de preuves matérielles. Les profils externes ne sont ni lus ni approuvés
+par cette consultation ; leurs chemins/options/secrets ne sont pas exposés.
+
+Cet écran n’active aucun pilote, ne modifie aucun fichier et ne déclenche aucune
+authentification cloud. Il ne garantit pas la compatibilité Android. Les formulaires
+existants et le générateur Android restent inchangés. Vérification synthétique du
+rendu FR/EN : `cd web && node scripts/integration-inventory.check.mjs`.
+
+## Android : réception discrète dans les cartes
+
+Les cartes IPP, IGD, MSS310, météo et tablette placent uniquement l'âge en
+haut à droite (`Receipt.svelte`), sans heure absolue. Une horloge d'affichage
+partagée actualise ces cartes chaque seconde, s'arrête en arrière-plan et quand
+elles sont démontées, et recalcule l'âge au retour. Elle ne déclenche aucune
+lecture réseau et ne modifie ni le timestamp du relevé ni les seuils de fraîcheur. Les états anciens,
+indisponibles, à confirmer, non reçus et heure inconnue restent textuels ; une date
+future n'affiche pas un âge nul. Les dates et âges individuels restent sous Détails.
+Ce composant ne s'applique pas aux dates cloud/physiques Netatmo et ne touche pas
+au bandeau Android natif, aux pilotes ou à la persistance.
+
+Vérifications ciblées : `cd web && node scripts/receipt.check.mjs` (rendu FR/EN)
+et `python3 scripts/receipt-browser.check.py` (Chromium + Python Playwright,
+FR/EN, portrait 360/800 px, frais/ancien/inconnu/hors ligne/non reçu, débordement
+et progression de l'âge à timestamp constant). Les fixtures sont synthétiques.

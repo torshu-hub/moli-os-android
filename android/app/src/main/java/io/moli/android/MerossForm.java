@@ -1,0 +1,139 @@
+package io.moli.android;
+
+import android.app.Activity;
+import android.text.*;
+import android.view.*;
+import android.view.inputmethod.EditorInfo;
+import android.widget.*;
+import org.json.*;
+import java.util.*;
+
+/** Bounded multi-device editor. Passwords are never saved by Android view state. */
+final class MerossForm {
+    private final Activity activity;
+    private final LinearLayout rows;
+    private final Runnable changed;
+    final ArrayList<Row> entries = new ArrayList<>();
+    final Button add;
+    android.app.AlertDialog controlDialog;
+    private boolean loading, enabled;
+    MerossForm(Activity a, LinearLayout body, Runnable changed) {
+        activity=a; this.changed=changed;
+        text(body,R.string.meross_title); text(body,R.string.meross_help);
+        rows=new LinearLayout(a); rows.setOrientation(LinearLayout.VERTICAL); body.addView(rows);
+        add=new Button(a); add.setText(R.string.meross_add); body.addView(add);
+        add.setOnClickListener(v -> { if(entries.size()<8) { append(new JSONObject()); changed.run(); setEnabled(enabled); } });
+    }
+    void load(JSONArray selected) throws Exception {
+        loading=true; entries.clear(); rows.removeAllViews();
+        if(selected!=null) for(int i=0;i<selected.length();i++) append(selected.getJSONObject(i));
+        loading=false;
+        // Loaded Views default to enabled. Apply the current lock immediately,
+        // rather than exposing editable rows until the next activity refresh.
+        setEnabled(enabled);
+    }
+    private void append(JSONObject input) {
+        Row row=new Row(input); entries.add(row); rows.addView(row.body);
+    }
+    boolean suggest(String host) {
+        if(entries.size()>=8) return false;
+        for(Row row:entries) if(row.host.getText().toString().trim().equals(host)) return false;
+        JSONObject input=new JSONObject();
+        try { input.put("host",host).put("enabled",false); } catch(JSONException impossible) { return false; }
+        append(input); edited(); setEnabled(enabled); return true;
+    }
+    JSONArray settings() throws Exception {
+        JSONArray result=new JSONArray();
+        for(Row r:entries) { JSONObject entry=new JSONObject().put("id",r.id).put("name",r.name.getText().toString().trim())
+                .put("host",r.host.getText().toString().trim()).put("port",Integer.parseInt(r.port.getText().toString().trim())).put("enabled",r.read.isChecked()).put("manual_control",r.control.isChecked()).put("critical_load",r.critical.isChecked()).put("critical_ack_uuid",r.criticalAck.isEmpty()?JSONObject.NULL:r.criticalAck); if(!r.uuid.isEmpty())entry.put("uuid",r.uuid);if(r.control.isChecked()||r.hadManualIdentity)entry.put("manual_uuid",r.manualUuid); result.put(entry); }
+        return result;
+    }
+    JSONArray keys() throws Exception {
+        JSONArray result=new JSONArray();
+        for(Row r:entries) result.put(new JSONObject().put("id",r.id).put("key",r.key.getText().toString().trim()).put("required",r.read.isChecked()));
+        return result;
+    }
+    void clearKeys() { boolean before=loading; loading=true; for(Row r:entries) r.key.setText(""); loading=before; }
+    void setEnabled(boolean value) {
+        enabled=value; add.setEnabled(value && entries.size()<8);
+        for(Row r:entries) for(View v:new View[]{r.name,r.host,r.port,r.key,r.read,r.critical,r.remove}) v.setEnabled(value);
+        for(Row r:entries)r.control.setEnabled(value&&r.read.isChecked()&&r.manualUuid.matches("[a-fA-F0-9]{32}"));
+    }
+    private void edited() { if(!loading) changed.run(); }
+    private void text(LinearLayout body,int id) { TextView t=new TextView(activity); t.setText(id); body.addView(t); }
+    private EditText field(LinearLayout body,int label,boolean password) {
+        text(body,label); EditText f=new EditText(activity); f.setSingleLine(true); body.addView(f);
+        f.setFilters(new InputFilter[]{new InputFilter.LengthFilter(password?32:160)});
+        if(password) {
+            f.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            f.setSaveEnabled(false); f.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+            f.setImeOptions(EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
+            // Keep explicit Paste available; masked password fields already
+            // suppress copying the secret. The app never writes a key to clipboard.
+            f.setLongClickable(true);
+        }
+        return f;
+    }
+    final class Row {
+        final String id,uuid;
+        final String manualUuid;final boolean hadManualIdentity;
+        final LinearLayout body=new LinearLayout(activity);
+        final CheckBox read=new CheckBox(activity);
+        final CheckBox control=new CheckBox(activity);
+        final CheckBox critical=new CheckBox(activity);
+        String criticalAck;
+        final EditText name,host,port,key;
+        final Button remove=new Button(activity);
+        Row(JSONObject input) {
+            id=input.optString("id",UUID.randomUUID().toString().replace("-","")); uuid=input.optString("uuid","");
+            manualUuid=input.optString("manual_uuid",uuid.isEmpty()?EquipmentMonitor.identity(id):uuid);hadManualIdentity=input.has("manual_uuid");
+            body.setOrientation(LinearLayout.VERTICAL); body.setPadding(0,16,0,16);
+            name=field(body,R.string.meross_name,false); name.setText(input.optString("name",""));
+            read.setText(R.string.meross_read); read.setChecked(input.optBoolean("enabled")); body.addView(read);
+            LinearLayout connection=new LinearLayout(activity);connection.setOrientation(LinearLayout.VERTICAL);connection.setVisibility(View.GONE);
+            host=field(connection,R.string.equipment_host,false);host.setText(input.optString("host",""));
+            port=field(connection,R.string.equipment_port,false);port.setInputType(InputType.TYPE_CLASS_NUMBER);port.setText(input.optString("port","80"));
+            key=field(connection,R.string.meross_key,true);key.setHint(R.string.meross_key_hint);
+            if(!uuid.isEmpty()){TextView bound=new TextView(activity);bound.setText(activity.getString(R.string.account_uuid_bound,uuid));connection.addView(bound);}
+            criticalAck=input.optString("critical_ack_uuid","");if("null".equals(criticalAck))criticalAck="";
+            critical.setText(R.string.meross_critical_load);critical.setSaveEnabled(false);critical.setChecked(input.optBoolean("critical_load",false));body.addView(critical);
+            control.setText(R.string.meross_manual_enable);control.setSaveEnabled(false);control.setChecked(input.optBoolean("manual_control",false));body.addView(control);
+            text(body,R.string.meross_manual_help);
+            if(!manualUuid.matches("[a-fA-F0-9]{32}"))text(body,R.string.meross_manual_identity_required);
+            Button details=new Button(activity);details.setText(R.string.meross_connection_details);body.addView(details);
+            details.setOnClickListener(v->connection.setVisibility(connection.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
+            body.addView(connection);
+            remove.setText(R.string.meross_remove); connection.addView(remove);
+            TextWatcher watcher=new TextWatcher() {
+                public void beforeTextChanged(CharSequence s,int a,int c,int after) {}
+                public void onTextChanged(CharSequence s,int a,int b,int c) { edited(); }
+                public void afterTextChanged(Editable e) {}
+            };
+            for(EditText f:new EditText[]{name,host,port,key}) f.addTextChangedListener(watcher);
+            read.setOnCheckedChangeListener((v,c) -> {if(!c)control.setChecked(false);setEnabled(enabled);edited();});
+            critical.setOnCheckedChangeListener((v,c)->{if(!loading){criticalAck="";control.setChecked(false);edited();}});
+            control.setOnCheckedChangeListener((v,c)->{
+                if(loading)return;
+                if(!c){edited();return;}
+                loading=true;control.setChecked(false);loading=false;
+                controlDialog=new android.app.AlertDialog.Builder(activity).setTitle(R.string.meross_manual_confirm_title)
+                    .setMessage(activity.getString(R.string.meross_manual_confirm,name.getText().toString(),host.getText().toString(),manualUuid))
+                    .setNegativeButton(android.R.string.cancel,null)
+                    .setPositiveButton(R.string.meross_manual_confirm_action,(d,w)->{
+                        if(critical.isChecked()) {
+                            controlDialog=new android.app.AlertDialog.Builder(activity).setTitle(R.string.meross_critical_title)
+                                .setMessage(activity.getString(R.string.meross_critical_confirm,name.getText().toString()))
+                                .setNegativeButton(android.R.string.cancel,null)
+                                .setPositiveButton(R.string.meross_critical_action,(dialog,which)->authorize()).show();
+                        } else authorize();
+                    }).show();
+            });
+            remove.setOnClickListener(v -> { key.setText(""); entries.remove(this); rows.removeView(body); edited(); setEnabled(enabled); });
+        }
+        private void authorize(){
+            if(!enabled || !read.isChecked() || EngineHost.state()!=EngineHost.State.STOPPED)return;
+            criticalAck=critical.isChecked()?manualUuid:"";
+            loading=true;control.setChecked(true);loading=false;edited();
+        }
+    }
+}

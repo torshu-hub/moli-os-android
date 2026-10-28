@@ -10,7 +10,7 @@ final class BackupStorage {
     private BackupStorage() {}
     static void exportTo(Context context, char[] password, OutputStream output) throws Exception {
         JSONObject keys = ProtectedKey.open(context);
-        BackupArchive.exportTo(ProtectedKey.dataDirectory(context, keys), keys, password, output);
+        BackupArchive.exportTo(ProfileStore.data(context), keys, password, output);
     }
     static void restoreFresh(Context context, InputStream input, char[] password) throws Exception {
         File legacy = new File(context.getFilesDir(), "moli");

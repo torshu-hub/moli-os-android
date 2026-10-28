@@ -8,7 +8,8 @@ use std::time::{Duration, Instant};
 
 use moli_core::{
     Action, ApprovalRequest, Decision, Device, DeviceId, DriverStatus, Event, InstanceId,
-    JournalEntry, Label, Origin, Outcome, PointId, Sample, Value, ValueError, now_ms, validate,
+    JournalEntry, Label, Origin, Outcome, PointId, PointSpec, Sample, Value, ValueError, now_ms,
+    validate,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -20,6 +21,9 @@ use crate::journal_log::JournalLog;
 use crate::secrets::{self, MasterKey, SecretStore};
 use crate::state_cache::{self, States};
 use crate::{Stats, labels};
+
+mod refresh;
+pub use refresh::{ReadRefresh, ReadRefreshReply};
 
 const COMMAND_QUEUE: usize = 64;
 /// Secret namespace of the hub itself; reserved as a driver id.
@@ -212,6 +216,15 @@ pub struct Snapshot {
     pub drivers: Vec<DriverView>,
     pub approvals: Vec<Arc<ApprovalRequest>>,
     pub guard: GuardStatus,
+    /// Read progress remains visible with zero devices or a disabled instance.
+    pub diagnostics: Vec<IntegrationReadView>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct IntegrationReadView {
+    pub instance: InstanceId,
+    #[serde(flatten)]
+    pub read: crate::ReadDiagnostics,
 }
 
 /// Cheap, clonable handle to the hub.
@@ -221,6 +234,7 @@ pub struct Hub(Arc<Inner>);
 #[derive(Debug)]
 struct Inner {
     model: RwLock<Model>,
+    read_refresh: Mutex<HashMap<InstanceId, Arc<refresh::Control>>>,
     journal: Mutex<Journal>,
     approvals: Mutex<Approvals>,
     events: broadcast::Sender<Event>,
@@ -259,6 +273,7 @@ type LastImage = Arc<tokio::sync::Mutex<Option<(Instant, crate::media::Image)>>>
 
 #[derive(Debug, Default)]
 struct Model {
+    read_diagnostics: BTreeMap<InstanceId, crate::ReadDiagnostics>,
     devices: BTreeMap<DeviceId, Arc<Device>>,
     states: States,
     /// Cached values not yet claimed by a device (its driver has not
@@ -339,6 +354,7 @@ impl Hub {
         };
         let (events, _) = broadcast::channel(opts.event_capacity.max(16));
         Ok(Self(Arc::new(Inner {
+            read_refresh: Mutex::default(),
             model: RwLock::new(Model {
                 restored,
                 labels,
@@ -395,6 +411,14 @@ impl Hub {
         let approvals = self.approvals();
         let model = self.read();
         Snapshot {
+            diagnostics: model
+                .read_diagnostics
+                .iter()
+                .map(|(instance, read)| IntegrationReadView {
+                    instance: instance.clone(),
+                    read: read.clone(),
+                })
+                .collect(),
             devices: model.devices.values().map(|d| model.view(d)).collect(),
             drivers: model
                 .drivers
@@ -415,6 +439,15 @@ impl Hub {
     pub fn device(&self, id: &DeviceId) -> Option<DeviceView> {
         let model = self.read();
         model.devices.get(id).map(|d| model.view(d))
+    }
+
+    /// Observations use a closed vocabulary; no provider text can reach this API.
+    pub fn observe_read(&self, instance: &InstanceId, kind: &'static str, event: crate::ReadEvent) {
+        self.write()
+            .read_diagnostics
+            .entry(instance.clone())
+            .or_insert_with(|| crate::ReadDiagnostics::new(kind))
+            .observe(event, moli_core::now_ms());
     }
 
     /// A device's description and label, without copying its state: for
@@ -475,6 +508,30 @@ impl Hub {
         origin: Origin,
         actor: Option<String>,
     ) -> Result<(), CommandError> {
+        self.command_authorized(point, value, origin, actor, None)
+            .await
+    }
+
+    /// Same guard, validation, deadline and journal, with volatile authority.
+    pub async fn command_scoped(
+        &self,
+        point: &PointId,
+        value: Value,
+        actor: Option<String>,
+        authority: crate::CommandPermit,
+    ) -> Result<(), CommandError> {
+        self.command_authorized(point, value, Origin::Automation, actor, Some(authority))
+            .await
+    }
+
+    async fn command_authorized(
+        &self,
+        point: &PointId,
+        value: Value,
+        origin: Origin,
+        actor: Option<String>,
+        authority: Option<crate::CommandPermit>,
+    ) -> Result<(), CommandError> {
         let started = Instant::now();
         // Absurd inputs are refused before anything, and journaled without
         // their bulk (the journal is not a place to store what an agent sent).
@@ -495,15 +552,24 @@ impl Hub {
             );
             return Err(error);
         }
-        let result = match self.prepare(point, &value) {
-            Err(e) => Err(e),
-            Ok(prepared) => match self.verdict(point, origin) {
-                Verdict::Allow => self.send(prepared).await,
-                Verdict::Approval(reason) => {
-                    let id = self.hold(point, &value, origin, actor.clone(), &reason);
-                    Err(CommandError::NeedsApproval { id, reason })
-                }
-            },
+        let result = if authority.as_ref().is_some_and(|a| !a.allows(point, &value)) {
+            Err(CommandError::Driver(
+                "scoped authority expired or revoked".into(),
+            ))
+        } else {
+            match self.prepare(point, &value) {
+                Err(e) => Err(e),
+                Ok(prepared) => match self.verdict_for(point, &value, origin) {
+                    Verdict::Allow => self.send(prepared, origin, authority.clone()).await,
+                    Verdict::Approval(_) if authority.is_some() => {
+                        Err(CommandError::Driver("scoped order cannot be queued".into()))
+                    }
+                    Verdict::Approval(reason) => {
+                        let id = self.hold(point, &value, origin, actor.clone(), &reason);
+                        Err(CommandError::NeedsApproval { id, reason })
+                    }
+                },
+            }
         };
         let outcome =
             match &result {
@@ -530,8 +596,21 @@ impl Hub {
     /// origin: the reason it would be held, or `None` if it would go
     /// through. Nothing is sent.
     #[must_use]
-    pub fn would_hold(&self, point: &PointId, origin: Origin) -> Option<String> {
-        match self.verdict(point, origin) {
+    pub fn would_hold(
+        &self,
+        point: &PointId,
+        value: Option<&Value>,
+        origin: Origin,
+    ) -> Option<String> {
+        let verdict = match value {
+            Some(value) => self.verdict_for(point, value, origin),
+            // No value (a toggle): what may open is held, whichever way it goes.
+            None if is_agent(origin) && self.opener_of(point) != Opener::None => {
+                Verdict::Approval(moli_i18n::tr!("serveur.garde.ouverture"))
+            }
+            None => self.verdict(point, origin),
+        };
+        match verdict {
             Verdict::Allow => None,
             Verdict::Approval(reason) => Some(reason),
         }
@@ -555,6 +634,45 @@ impl Hub {
             .opts
             .guard
             .check(&rooms, origin, jiff::Timestamp::now())
+    }
+
+    /// The verdict on this very order: opening a lock, a garage door or a gate is a
+    /// person's call, whatever the room (closing is not); then the point's verdict.
+    fn verdict_for(&self, point: &PointId, value: &Value, origin: Origin) -> Verdict {
+        if is_agent(origin) && self.opens(point, value) {
+            return Verdict::Approval(moli_i18n::tr!("serveur.garde.ouverture"));
+        }
+        self.verdict(point, origin)
+    }
+
+    /// What the device of `point` is to the guard (see [`opener`]).
+    fn opener_of(&self, point: &PointId) -> Opener {
+        let Some((device, _)) = point.split() else {
+            return Opener::None;
+        };
+        let model = self.read();
+        let Some(d) = model.devices.get(&device) else {
+            return Opener::None;
+        };
+        // The name it came with and the name it was given: a new name never hides what it is.
+        let label = model.labels.get(&device).and_then(|l| l.name.clone());
+        let names: Vec<&str> = std::iter::once(&*d.native_name)
+            .chain(label.as_deref())
+            .collect();
+        opener(&names, &d.points)
+    }
+
+    /// Whether an order opens the way into the house (see [`opening`]).
+    fn opens(&self, point: &PointId, value: &Value) -> bool {
+        let Some((device, key)) = point.split() else {
+            return false;
+        };
+        let semantic = self
+            .read()
+            .devices
+            .get(&device)
+            .and_then(|d| d.point(key).map(|p| p.semantic));
+        opening(self.opener_of(point), semantic, value)
     }
 
     /// Whether the point is an order to a machine at work.
@@ -769,7 +887,7 @@ impl Hub {
         }
         let (decision, outcome, result) = if approve {
             let sent = match self.prepare(&request.point, &request.value) {
-                Ok(prepared) => self.send(prepared).await,
+                Ok(prepared) => self.send(prepared, origin, None).await,
                 Err(e) => Err(e),
             };
             match sent {
@@ -1133,7 +1251,12 @@ impl Hub {
     }
 
     /// Hands a prepared order to its driver and waits for the answer.
-    async fn send(&self, prepared: Prepared) -> Result<(), CommandError> {
+    async fn send(
+        &self,
+        prepared: Prepared,
+        origin: Origin,
+        authority: Option<crate::CommandPermit>,
+    ) -> Result<(), CommandError> {
         let Prepared {
             point,
             device,
@@ -1144,6 +1267,8 @@ impl Hub {
         let (reply, answer) = oneshot::channel();
         commands
             .try_send(CommandRequest {
+                origin,
+                authority,
                 point,
                 device,
                 key,
@@ -1293,6 +1418,11 @@ impl Hub {
     pub(crate) fn set_driver_status(&self, instance: &InstanceId, status: DriverStatus) {
         let (changed, back) = {
             let mut model = self.write();
+            if matches!(status, DriverStatus::Stopped | DriverStatus::Backoff { .. })
+                && let Some(read) = model.read_diagnostics.get_mut(instance)
+            {
+                read.observe(crate::ReadEvent::Stopped, moli_core::now_ms());
+            }
             let changed = match model.drivers.get_mut(instance) {
                 Some(slot) if slot.status != status => {
                     slot.status = status.clone();
@@ -1668,5 +1798,241 @@ impl Model {
             camera: self.snapshots.contains_key(&device.id),
             printer: self.printers.contains_key(&device.id),
         }
+    }
+}
+
+/// Whether an order opens a lock, a garage door or a gate. A lock's state (`Semantic::Lock`) opens on
+/// `false`; a lock known by its name only, on any change (its true/false is not the same everywhere); a
+/// garage door or a gate on `true`, a position above zero, « open », « unlock ». A light named after the
+/// Who may open from the guard's point of view: a person (a code session), Moli
+/// itself and an automation a person approved; everyone else asks.
+fn is_agent(origin: Origin) -> bool {
+    !matches!(origin, Origin::Ui | Origin::System | Origin::Automation)
+}
+
+/// What a device is to the guard.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Opener {
+    /// A lock: a point says so (`Semantic::Lock`), or, failing that, its name.
+    Lock,
+    /// A garage door or a gate, by its name (no semantic tells it from a shutter).
+    Gate,
+    None,
+}
+
+/// What a device is to the guard, from its points first and its names after. Names
+/// are read in whole words (« Clock » is no lock), and « garage » alone is not enough
+/// (« Prise garage », « Lumière garage »): it takes « porte de garage » or « garage door ».
+/// A light (a brightness or a colour) opens nothing.
+#[must_use]
+pub fn opener(names: &[&str], points: &[PointSpec]) -> Opener {
+    use moli_core::Semantic;
+    const LOCKS: [&str; 6] = ["serrure", "verrou", "lock", "cadenas", "gache", "gâche"];
+    const GATES: [&str; 3] = ["portail", "portillon", "gate"];
+    const GARAGE_DOORS: [&str; 4] = [
+        " porte de garage ",
+        " porte du garage ",
+        " porte garage ",
+        " garage door ",
+    ];
+    if points.iter().any(|p| p.semantic == Semantic::Lock) {
+        return Opener::Lock;
+    }
+    if points.iter().any(|p| {
+        matches!(
+            p.semantic,
+            Semantic::Brightness | Semantic::Color | Semantic::ColorTemp
+        )
+    }) {
+        return Opener::None;
+    }
+    let mut opener = Opener::None;
+    for name in names {
+        let words: Vec<String> = name
+            .to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(str::to_owned)
+            .collect();
+        let spaced = format!(" {} ", words.join(" "));
+        if words.iter().any(|w| LOCKS.contains(&w.as_str())) {
+            return Opener::Lock;
+        }
+        if words.iter().any(|w| GATES.contains(&w.as_str()))
+            || GARAGE_DOORS.iter().any(|d| spaced.contains(d))
+        {
+            opener = Opener::Gate;
+        }
+    }
+    opener
+}
+
+/// Whether writing `value` (on a point of `semantic`) opens what `opener` is.
+pub(crate) fn opening(
+    opener: Opener,
+    semantic: Option<moli_core::Semantic>,
+    value: &Value,
+) -> bool {
+    let opening_word = |t: &str| {
+        let t = t.to_lowercase();
+        [
+            "open",
+            "unlock",
+            "ouvr",
+            "ouvert",
+            "deverrouill",
+            "déverrouill",
+            "toggle",
+        ]
+        .iter()
+        .any(|w| t.contains(w))
+    };
+    match opener {
+        Opener::None => false,
+        // The point says it: `true` is locked.
+        Opener::Lock if semantic == Some(moli_core::Semantic::Lock) => match value {
+            Value::Bool(locked) => !locked,
+            Value::Text(t) => opening_word(t),
+            _ => false,
+        },
+        // A lock known by its name only (a strike on a relay): either way of a switch may open it.
+        Opener::Lock => match value {
+            Value::Bool(_) => true,
+            Value::Text(t) => opening_word(t),
+            _ => false,
+        },
+        Opener::Gate => match value {
+            Value::Bool(on) => *on,
+            Value::Text(t) => opening_word(t),
+            Value::Int(n) => *n > 0,
+            Value::Float(n) => *n > 0.0,
+            Value::Null => false,
+        },
+    }
+}
+
+#[cfg(test)]
+mod opening_tests {
+    use super::*;
+    use moli_core::{Access, Kind, Semantic};
+
+    fn point(key: &str, semantic: Semantic, kind: Kind) -> PointSpec {
+        PointSpec {
+            key: key.into(),
+            label: key.into(),
+            kind,
+            access: Access {
+                read: true,
+                write: true,
+            },
+            unit: None,
+            semantic,
+        }
+    }
+
+    fn switch() -> Vec<PointSpec> {
+        vec![point("state", Semantic::OnOff, Kind::Binary)]
+    }
+
+    #[test]
+    fn a_lock_is_known_by_its_point_first_and_opens_on_false() {
+        let lock = vec![point("state", Semantic::Lock, Kind::Binary)];
+        // Named like nothing in particular: the point says it.
+        assert_eq!(opener(&["Porte d'entrée"], &lock), Opener::Lock);
+        let o = Opener::Lock;
+        assert!(opening(o, Some(Semantic::Lock), &Value::Bool(false)));
+        assert!(
+            !opening(o, Some(Semantic::Lock), &Value::Bool(true)),
+            "locking goes through"
+        );
+        assert!(opening(
+            o,
+            Some(Semantic::Lock),
+            &Value::Text("UNLOCK".into())
+        ));
+        assert!(!opening(
+            o,
+            Some(Semantic::Lock),
+            &Value::Text("LOCK".into())
+        ));
+    }
+
+    #[test]
+    fn names_are_whole_words_and_garage_alone_is_not_a_gate() {
+        for (name, points, expected) in [
+            ("Clock", switch(), Opener::None),
+            ("Prise garage", switch(), Opener::None),
+            ("Lumière garage", switch(), Opener::None),
+            (
+                "Radiateur garage",
+                vec![point(
+                    "target",
+                    Semantic::Temperature,
+                    Kind::Numeric {
+                        min: None,
+                        max: None,
+                        step: None,
+                    },
+                )],
+                Opener::None,
+            ),
+            (
+                "Spot portail",
+                vec![point("brightness", Semantic::Brightness, Kind::Binary)],
+                Opener::None,
+            ),
+            ("Porte de garage", switch(), Opener::Gate),
+            ("Garage door", switch(), Opener::Gate),
+            ("Portail", switch(), Opener::Gate),
+            ("Serrure entrée", switch(), Opener::Lock),
+            ("Gâche du portillon", switch(), Opener::Lock),
+        ] {
+            assert_eq!(opener(&[name], &points), expected, "{name}");
+        }
+    }
+
+    #[test]
+    fn a_new_name_never_hides_what_a_device_came_as() {
+        // Z2M calls it « Portail », an agent named it « Prise »: still a gate.
+        assert_eq!(opener(&["Portail", "Prise"], &switch()), Opener::Gate);
+        assert_eq!(
+            opener(&["0x00124b0000000001", "Serrure"], &switch()),
+            Opener::Lock
+        );
+    }
+
+    #[test]
+    fn a_gate_opens_on_true_an_open_word_or_a_position_above_zero() {
+        let g = Opener::Gate;
+        assert!(opening(g, Some(Semantic::OnOff), &Value::Bool(true)));
+        assert!(!opening(g, Some(Semantic::OnOff), &Value::Bool(false)));
+        assert!(opening(
+            g,
+            Some(Semantic::Other),
+            &Value::Text("OPEN".into())
+        ));
+        assert!(!opening(
+            g,
+            Some(Semantic::Other),
+            &Value::Text("CLOSE".into())
+        ));
+        assert!(opening(g, Some(Semantic::Other), &Value::Int(40)));
+        assert!(!opening(g, Some(Semantic::Other), &Value::Int(0)));
+        // A lock known by its name only: either way of its switch may open it.
+        assert!(opening(
+            Opener::Lock,
+            Some(Semantic::OnOff),
+            &Value::Bool(true)
+        ));
+        assert!(opening(
+            Opener::Lock,
+            Some(Semantic::OnOff),
+            &Value::Bool(false)
+        ));
+        assert!(!opening(
+            Opener::None,
+            Some(Semantic::OnOff),
+            &Value::Bool(true)
+        ));
     }
 }

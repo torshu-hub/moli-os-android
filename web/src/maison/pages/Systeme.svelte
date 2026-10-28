@@ -1,6 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import Icon from '../ui/Icon.svelte';
+  import IntegrationInventory from '../ui/IntegrationInventory.svelte';
   import TuyaCloudKeys from '../ui/TuyaCloudKeys.svelte';
   import AssistantSettings from '../ui/AssistantSettings.svelte';
   import AssistantExchanges from '../ui/AssistantExchanges.svelte';
@@ -9,12 +10,16 @@
   import PeopleCard from '../ui/PeopleCard.svelte';
   import { hub, home } from '../lib/home.svelte.js';
   import { t, locale } from '../../lib/i18n.svelte.js';
+  import { readJson, ReadFailure, reportUi, UI_TOPIC, UI_STATE } from '../lib/ui-diagnostics.js';
+  import { systemFacts, validSystem } from '../lib/system-status.js';
 
   // « Comment ça marche » : the system as it runs, drawn from /api/system and
   // the live event stream. Nothing here is written by hand: a new driver or
   // brick shows up by itself.
   let sys = $state(null);
   let error = $state('');
+  let busy = $state(false);
+  let renderFailed=false;
   let chosen = $state(null);
   let active = $state({});
   let perMinute = $state(0);
@@ -23,16 +28,18 @@
   let links = $state([]);
 
   async function load() {
+    if(busy)return;busy=true;reportUi(UI_TOPIC.system,UI_STATE.loading);
     try {
-      const res = await fetch('/api/system');
-      if (!res.ok) throw new Error(res.statusText);
-      sys = await res.json();
+      sys = await readJson('/api/system',{valid:validSystem});
       error = '';
       await tick();
       measure();
+      if(!map&&!renderFailed)throw new ReadFailure(UI_STATE.render);
+      if(!renderFailed)reportUi(UI_TOPIC.system,UI_STATE.ready,sys.drivers.length);
     } catch (err) {
-      error = err.message;
-    }
+      error = err.code===UI_STATE.timeout?'timeout':err.code===UI_STATE.render?'render':'unavailable';
+      reportUi(UI_TOPIC.system,err.code??UI_STATE.render);
+    } finally {busy=false;}
   }
 
   onMount(() => {
@@ -96,13 +103,16 @@
   // ---- words ------------------------------------------------------------------
   // Driver kinds: their name and description are in the catalog
   // (systeme.pilotes.<kind>.nom / .desc); a kind not listed shows as it is.
-  const KINDS = ['z2m', 'hue', 'tuya', 'reolink', 'sonos', 'helpers', 'philips', 'frigate', 'bambu', 'tapo', 'igd', 'presence', 'telegram', 'phones', 'profile'];
+  const KINDS = ['z2m', 'hue', 'tuya', 'reolink', 'sonos', 'helpers', 'philips', 'frigate', 'bambu', 'tapo', 'shelly', 'igd', 'presence', 'telegram', 'phones', 'profile', 'izypower', 'solarman'];
   const kindWord = (kind, part) => (KINDS.includes(kind) ? t(`systeme.pilotes.${kind}.${part}`) : null);
-  const driverName = (d) => (d.kind === 'profile' ? d.instance.charAt(0).toUpperCase() + d.instance.slice(1) : (kindWord(d.kind, 'nom') ?? d.kind));
+  const driverName = (d) => {
+    const devices=Object.values(hub.devices).filter(x=>x.instance===d.instance);
+    return devices.length===1?(devices[0].label?.name||devices[0].native_name):(kindWord(d.kind,'nom')??d.kind);
+  };
 
   // Bricks: their icon here, their description in the catalog (systeme.briques.<id>.desc).
   const BRICKS = { guard: 'shield', history: 'history', energy: 'bolt', automations: 'robot', assistant: 'sparkles', cameras: 'cctv' };
-  const brickWord = (id) => (Object.hasOwn(BRICKS, id) ? t(`systeme.briques.${id}.desc`) : '');
+  const brickWord = (id) => (Object.prototype.hasOwnProperty.call(BRICKS, id) ? t(`systeme.briques.${id}.desc`) : '');
   const SURFACES = { maison: 'home', atelier: 'atelier', mcp: 'robot', rest: 'branch' };
 
   // Commandable devices in no room: nobody can tell whether they sit in a
@@ -135,9 +145,9 @@
     }
   };
 
-  const last = $derived(sys?.perf?.at(-1));
+  const last = $derived(systemFacts(sys).last);
   // Idle CPU is only measured idle: a dashboard showing a camera live is use, not rest.
-  const idle = $derived(sys?.perf?.findLast((p) => !p.clients?.total));
+  const idle = $derived(systemFacts(sys).idle);
   const mem = (side) => side?.mem_mib ?? side?.cgroup_mib;
   const num = (n, d = 0) => Number(n).toLocaleString(locale(), { maximumFractionDigits: d });
   const fmtMem = (mib) => (mib == null ? '—' : mib >= 1024 ? t('systeme.format.go', { value: num(mib / 1024, 2) }) : t('systeme.format.mo', { value: Math.round(mib) }));
@@ -156,7 +166,13 @@
     <p class="page-sub">{t('systeme.page.sous_titre')}</p>
   </header>
 
-  {#if error}<p class="muted">{error}</p>{/if}
+  {#if error}<p role="status" data-system-error>{t('systeme.diagnostic.'+error)}</p><button data-system-retry disabled={busy} onclick={load}>{t('systeme.diagnostic.retry')}</button>{/if}
+
+  <svelte:boundary onerror={()=>{renderFailed=true;reportUi(UI_TOPIC.system,UI_STATE.render);}}>
+
+  {#if sys?.platform==='android'||home.platform==='android'||home.config?.android}<a class="devices-link" href="#/appareils">{t('maison.equipment.title')} · {t('maison.android.settings')}</a>{/if}
+
+  <IntegrationInventory rows={sys?.integrations} platform={sys?.platform} />
 
   <PeopleCard />
 
@@ -206,6 +222,8 @@
       {/if}
     </section>
 
+  {/if}
+  {#if sys}
     {#if roomless.length}
       <section class="roomless">
         <p><Icon name="info" size={16} /><b>{t('systeme.page.sans_piece', { count: roomless.length })}</b>
@@ -216,7 +234,7 @@
       </section>
     {/if}
 
-    <div class="map" bind:this={map}>
+    <div class="map" data-system-graph bind:this={map}>
       <svg class="links" aria-hidden="true">
         {#each links as l (l.id)}
           <path d={path(l)} class:hot={l.driver && active[l.driver]} class:off={l.off} />
@@ -281,7 +299,8 @@
         <button class="x" onclick={() => (chosen = null)} aria-label={t('commun.fermer')}><Icon name="close" size={18} /></button>
         {#if chosen.kind === 'driver'}
           {@const d = chosen.item}
-          <h3>{driverName(d)} <small class="muted">({d.instance})</small></h3>
+          <h3>{driverName(d)}</h3><details><summary>{t('maison.equipment.details')}</summary><code>{d.instance}</code></details>
+          {#if sys.platform==='android'&&d.instance.startsWith('android-meross-')}<a href="#/appareils">{t('maison.equipment.title')}</a>{/if}
           <p>{kindWord(d.kind, 'desc') ?? t('systeme.pilotes.defaut')}</p>
           <p class="muted">{d.status?.reason ? t('systeme.page.publie_raison', { points: d.points, devices: d.devices, status: statusText(d.status), reason: d.status.reason }) : t('systeme.page.publie', { points: d.points, devices: d.devices, status: statusText(d.status) })}</p>
           <p class="how">{t('systeme.page.entre_sort')}</p>
@@ -304,6 +323,10 @@
   {:else if !error}
     <p class="muted">{t('systeme.chargement')}</p>
   {/if}
+  {#snippet failed(_error,reset)}
+    <p role="alert" data-system-render-error>{t('systeme.diagnostic.render')}</p><button onclick={()=>{renderFailed=false;reset();load();}}>{t('systeme.diagnostic.retry')}</button>
+  {/snippet}
+  </svelte:boundary>
 </div>
 
 <style>
@@ -468,6 +491,7 @@
   }
 
   .col {
+    min-width:0;
     display: grid;
     gap: 8px;
     align-content: center;
@@ -506,6 +530,9 @@
     display: grid;
     min-width: 0;
   }
+
+  .devices-link{display:inline-flex;align-items:center;min-height:48px;overflow-wrap:anywhere;}
+  .node b,.node small,.explain{overflow-wrap:anywhere;}
 
   .node b {
     font-weight: 700;
@@ -668,7 +695,7 @@
 
   @media (max-width: 1100px) {
     .map {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(2,minmax(0,1fr));
       gap: 24px;
     }
 

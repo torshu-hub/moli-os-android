@@ -11,6 +11,9 @@
   import AmbiancePicker from '../ui/AmbiancePicker.svelte';
   import Routines from '../ui/Routines.svelte';
   import SkyHero from '../ui/SkyHero.svelte';
+  import AndroidSources from '../ui/AndroidSources.svelte';
+  import AndroidEquipment from '../ui/AndroidEquipment.svelte';
+  import NetatmoOverview from '../ui/NetatmoOverview.svelte';
 
   const cfg = $derived(home.config ?? {});
   const out = $derived(cfg.outdoor ?? {});
@@ -170,10 +173,14 @@
     {#each notices as n (n.text)}
       <a class="chip {n.tone}" href={n.href}><Icon name={n.icon} size={16} />{n.text}</a>
     {:else}
-      <span class="chip good"><Icon name="leaf" size={16} />{t('maison.accueil.calme')}</span>
+      {#if !cfg.android}<span class="chip good"><Icon name="leaf" size={16} />{t('maison.accueil.calme')}</span>{/if}
     {/each}
   </section>
 
+  {#if cfg.android}<AndroidSources />{/if}
+  {#if cfg.android||home.platform==='android'}<AndroidEquipment />{/if}
+  {#if cfg.android || hub.drivers.some(d=>d.kind==='netatmo') || hub.diagnostics.some(d=>d.kind==='netatmo')}<NetatmoOverview />{/if}
+  {#if !cfg.android || cfg.favorites}
   <div class="grid">
     <section class="card lights">
       <div class="card-head">
@@ -205,14 +212,16 @@
       <Routines />
     </div>
 
-    <section class="card climate">
-      <div class="card-head"><h2><Icon name="air-conditioner" size={18} />{t('maison.accueil.clim')}</h2></div>
-      <div class="clims">
-        {#each cfg.favorites?.climate ?? [] as c (c.id)}
-          <ClimateCard id={c.id} name={c.name} />
-        {/each}
-      </div>
-    </section>
+    {#if (cfg.favorites?.climate ?? []).length}
+      <section class="card climate">
+        <div class="card-head"><h2><Icon name="air-conditioner" size={18} />{t('maison.accueil.clim')}</h2></div>
+        <div class="clims">
+          {#each cfg.favorites?.climate ?? [] as c (c.id)}
+            <ClimateCard id={c.id} name={c.name} />
+          {/each}
+        </div>
+      </section>
+    {/if}
 
     {#if bell}
       <section class="card doorbell">
@@ -243,10 +252,13 @@
         <div><small>{t('maison.accueil.air')}</small><b>{aqiWord}</b></div>
         <div><small>UV</small><b class="num">{num(value(out.air, 'uv_index'), 0)}</b></div>
         <div><small>{t('maison.accueil.humidite')}</small><b class="num">{value(out.weather, 'humidity') != null ? `${num(value(out.weather, 'humidity'))} %` : '—'}</b></div>
-        <div><small>{t('maison.accueil.piscine')}</small><b class="num">{value(out.pool, 'temperature') != null ? `${num(value(out.pool, 'temperature'), 1)}°` : '—'}</b></div>
+        {#if out.pool}
+          <div><small>{t('maison.accueil.piscine')}</small><b class="num">{value(out.pool, 'temperature') != null ? `${num(value(out.pool, 'temperature'), 1)}°` : '—'}</b></div>
+        {/if}
       </div>
     </a>
   </div>
+  {/if}
 </div>
 
 <style>

@@ -26,7 +26,10 @@ AEAD memory use, without relying on provider buffering an entire archive.
 Record plaintext concatenates to a UTF-8-named ZIP. First entry `manifest.json`
 (max 4 MiB) contains JSON `format: 1`, `engine: "0.1.0"`, `recovery: {master, pin}`
 and `files: {relativePath: {size, sha256}}`. Master is the original lowercase
-64-hex Moli key, PIN 4–32 digits. Hashes are lowercase SHA-256. Remaining entries
+64-hex Moli key. Legacy recovery credentials have a 4–32 digit PIN.
+Fresh 0.13 previews add `recovery.format: 2` and use an independent random
+64-hex bootstrap credential in `pin`; the authenticated envelope and manifest
+versions stay at 1. Restoring legacy archives keeps their existing key and PIN. Hashes are lowercase SHA-256. Remaining entries
 are exactly `data/<relativePath>`, once each; no directory entries. The credentials
 are only in the encrypted manifest; no standalone plaintext key file is written.
 
