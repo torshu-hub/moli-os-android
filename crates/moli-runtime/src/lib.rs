@@ -27,7 +27,7 @@ pub use addresses::KnownAddress;
 pub use driver::{BoxFuture, CommandRequest, Driver, DriverCtx, MediaPublisher};
 pub use hub::{
     ApprovalError, CORE_NAMESPACE, CommandError, DeviceView, DriverView, Hub, HubOptions,
-    IntegrationReadView, LabelError, LabelPatch, MAX_LABEL, Snapshot,
+    IntegrationReadView, LabelError, LabelPatch, MAX_LABEL, Opener, Snapshot, opener,
 };
 pub use read_diagnostics::{
     ReadDiagnostics, ReadEvent, ReadOutcome, ReadPolling, ReadStage, ReadStep, ReadSummary,
