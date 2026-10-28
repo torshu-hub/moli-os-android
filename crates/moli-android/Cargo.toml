@@ -1,0 +1,24 @@
+[package]
+name = "moli-android"
+description = "Isolated Android host for the official Moli engine."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version = "1.95"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+moli-os = { path = "../moli-os" }
+moli-runtime.workspace = true
+jni = "0.21.1"
+toml_edit = "0.25"
+serde_json.workspace = true
+toml.workspace = true
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

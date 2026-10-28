@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Moli OS Android Beta 2</string>
+    <string name="moli_os">Moli OS</string>
+    <string name="management">Android management</string>
+    <string name="spaces">Home</string>
+    <string name="service_running">Local Moli engine</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="restart">Restart</string>
+    <string name="running">Running</string>
+    <string name="stopped">Stopped</string>
+    <string name="working">Working…</string>
+    <string name="integrations">Integrations</string>
+    <string name="parameters">Parameters</string>
+    <string name="instance">Integration identifier</string>
+    <string name="manual_variables">Enter the parameters manually.</string>
+    <string name="save">Save</string>
+    <string name="saved">Configuration saved.</string>
+    <string name="export">Export TXT journal</string>
+    <string name="exported">Journal exported.</string>
+    <string name="choose_pin">Choose your Moli OS code</string>
+    <string name="pin_invalid">Enter 6 to 32 digits.</string>
+    <string name="operation_failed">Operation failed. Rejected configuration does not replace the previous file. Start the engine before configuring an integration.</string>
+    <string name="display_failed">Display unavailable. Return home and reopen Moli OS.</string>
+    <string name="configuration_rejected">Moli OS rejected this configuration. The previous file is kept. Check the parameters.</string>
+    <string name="configuration_conflict">Configuration changed. Reopen Integrations before trying again.</string>
+    <string name="start_first">Start the engine once, then open Integrations.</string>
+    <string name="busy">An operation is in progress. Try again when it finishes.</string>
+    <string name="catalogue_entry">%1$s — %2$s</string>
+</resources>
