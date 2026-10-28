@@ -64,9 +64,20 @@ public final class Beta2JourneyTest {
         instrumentation.runOnMainSync(()->activity.web.postVisualStateCallback(1,new WebView.VisualStateCallback(){@Override public void onComplete(long request){visual.countDown();}}));
         assertTrue("WebView did not commit its visual state",visual.await(5,TimeUnit.SECONDS));
         instrumentation.waitForIdleSync();Thread.sleep(500);
+        String[] geometry={""};CountDownLatch details=new CountDownLatch(1);
+        instrumentation.runOnMainSync(()->activity.web.evaluateJavascript("JSON.stringify({viewport:[innerWidth,innerHeight],visibility:document.visibilityState,body:document.body.innerText.slice(0,200),maison:document.querySelector('.maison')?.getBoundingClientRect().toJSON(),bg:getComputedStyle(document.querySelector('.maison')).backgroundColor})",value->{geometry[0]=value;details.countDown();}));
+        assertTrue(details.await(3,TimeUnit.SECONDS));
+        android.graphics.Rect rectangle=new android.graphics.Rect();String[] nativeView={""};
+        instrumentation.runOnMainSync(()->{activity.web.getGlobalVisibleRect(rectangle);nativeView[0]="width="+activity.web.getWidth()+" height="+activity.web.getHeight()+" shown="+activity.web.isShown()+" alpha="+activity.web.getAlpha()+" hardware="+activity.web.isHardwareAccelerated()+" rect="+rectangle;});
         android.graphics.Bitmap screenshot=instrumentation.getUiAutomation().takeScreenshot();
         File captures=new File(app.getFilesDir(),"screenshots");captures.mkdirs();
         try(FileOutputStream out=new FileOutputStream(new File(captures,"official-dashboard.png"))){assertTrue(screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));}
+        int painted=0;
+        for(int y=Math.max(0,rectangle.top+2);y<Math.min(screenshot.getHeight(),rectangle.bottom-2);y+=4)
+            for(int x=Math.max(0,rectangle.left+2);x<Math.min(screenshot.getWidth(),rectangle.right-2);x+=4){int color=screenshot.getPixel(x,y);if(android.graphics.Color.red(color)<200||android.graphics.Color.green(color)<200||android.graphics.Color.blue(color)<200)painted++;}
+        String diagnostic=nativeView[0]+" painted="+painted+"\n"+geometry[0]+"\n"+errors;
+        try(FileOutputStream out=new FileOutputStream(new File(captures,"render.txt"))){out.write(diagnostic.getBytes(StandardCharsets.UTF_8));}
+        assertTrue("Official WebView is not visibly painted: "+diagnostic,rectangle.width()>100 && rectangle.height()>100 && painted>20);
         instrumentation.runOnMainSync(activity::finish);
         app.startForegroundService(new Intent(app,MoliService.class).setAction(MoliService.STOP));waitState(EngineHost.State.STOPPED);
         app.startForegroundService(new Intent(app,MoliService.class));waitState(EngineHost.State.RUNNING);

@@ -18,8 +18,10 @@ mkdir -p app/build/reports/beta2/screenshots
 runner="$app.test/androidx.test.runner.AndroidJUnitRunner"
 adb shell am instrument -w -r -e class io.moli.android.Beta2JourneyTest#nativeLifecycleConfigurationAuthAndOfficialDashboard "$runner" > app/build/reports/beta2/journey.txt
 cat app/build/reports/beta2/journey.txt
-grep -Fq 'OK (1 test)' app/build/reports/beta2/journey.txt
 adb exec-out run-as "$app" cat files/screenshots/official-dashboard.png > app/build/reports/beta2/screenshots/official-dashboard.png
+adb exec-out run-as "$app" cat files/screenshots/render.txt > app/build/reports/beta2/render.txt
+cat app/build/reports/beta2/render.txt
+grep -Fq 'OK (1 test)' app/build/reports/beta2/journey.txt
 adb shell am force-stop "$app"
 ./gradlew --no-daemon -PmoliAbis=x86_64 -PmoliFixtureVersionCode=2 :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
