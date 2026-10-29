@@ -6,8 +6,6 @@ app=io.moli.android.app.beta2.test
 if adb shell pm path "$app" | grep -q '^package:'; then
     echo 'Fresh emulator required; existing installation is left untouched' >&2; exit 1
 fi
-adb shell wm size 1600x2560
-adb shell wm density 320
 adb shell settings put secure show_ime_with_hard_keyboard 1
 adb shell settings put system screen_off_timeout 1800000
 adb shell svc power stayon true

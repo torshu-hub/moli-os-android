@@ -32,6 +32,8 @@ jobs:
           rustup toolchain install 1.99.1 --profile minimal --target aarch64-linux-android,x86_64-linux-android
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.2.13676358" "platforms;android-35" "build-tools;35.0.0"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          cache-on-failure: true
       - name: Build original dashboard
         working-directory: web
         run: npm ci --no-audit --no-fund && npm run build
@@ -51,6 +53,7 @@ jobs:
       - uses: ReactiveCircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
         with:
           api-level: 35
+          profile: pixel_c
           arch: x86_64
           target: google_apis
           disable-animations: true

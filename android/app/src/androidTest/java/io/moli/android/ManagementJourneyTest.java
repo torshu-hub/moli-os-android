@@ -37,13 +37,13 @@ public final class ManagementJourneyTest {
     }
     private <T extends View> T view(int id) { return activity.findViewById(id); }
     private void tap(int id) throws Exception {
-        waitFor(()->view(id)!=null && view(id).isShown() && view(id).isEnabled(),"Action unavailable: "+id);
+        waitFor(()->activity.hasWindowFocus() && view(id)!=null && view(id).isShown() && view(id).isEnabled() && !view(id).isLayoutRequested(),"Action unavailable: "+id);
         Rect box=new Rect(); main(()->assertTrue(view(id).getGlobalVisibleRect(box)));
         assertTrue("Tap target clipped",box.width()>30 && box.height()>30);
         long now=SystemClock.uptimeMillis();
         MotionEvent down=MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,box.centerX(),box.centerY(),0);
         MotionEvent up=MotionEvent.obtain(now,now+60,MotionEvent.ACTION_UP,box.centerX(),box.centerY(),0);
-        try { instrumentation.sendPointerSync(down); instrumentation.sendPointerSync(up); }
+        try { assertTrue(instrumentation.getUiAutomation().injectInputEvent(down,true)); assertTrue(instrumentation.getUiAutomation().injectInputEvent(up,true)); }
         finally { down.recycle(); up.recycle(); }
         instrumentation.waitForIdleSync();
     }
@@ -77,6 +77,8 @@ public final class ManagementJourneyTest {
             return false;
         },"Orientation not applied");
         instrumentation.waitForIdleSync();
+        instrumentation.getUiAutomation().waitForIdle(500,5000);
+        Thread.sleep(700); // Display rotation can still hold the old surface after Activity recreation.
     }
     private void capture(String name) throws Exception {
         CountDownLatch frame=new CountDownLatch(1);
@@ -152,7 +154,7 @@ public final class ManagementJourneyTest {
             return window!=null && window.getPackageName()!=null && window.getPackageName().toString().contains("documentsui");
         },"System export picker did not open");
         capture("journal-export-picker");
-        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+        assertTrue(instrumentation.getUiAutomation().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK));
         waitFor(()->{
             for(Activity current:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)) {
                 if(current instanceof ManagementActivity) {activity=(ManagementActivity)current;return true;}
