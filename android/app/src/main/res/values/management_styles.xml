@@ -1,0 +1,10 @@
+<resources>
+    <style name="ManagementTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">@color/management_blue</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:statusBarColor">@color/management_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">@color/management_navy</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

@@ -114,21 +114,26 @@ public final class ManagementJourneyTest {
         activity=(ManagementActivity)instrumentation.startActivitySync(new Intent(app,ManagementActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         orientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         waitFor(()->((Button)view(R.id.engine_action)).getText().toString().equals(activity.getString(R.string.start)),"Stopped control missing");
+        assertNavigation(false);
         capture("landscape-home-stopped");
         tap(R.id.engine_action); Beta2JourneyTest.waitState(EngineHost.State.RUNNING);
         waitFor(()->((TextView)view(R.id.engine_status)).getText().toString().equals(activity.getString(R.string.running)) && view(R.id.engine_action).isEnabled(),"Real running state missing");
         capture("landscape-home-running");
-        textButton(R.string.integrations);
+        tap(R.id.navigation_integrations);
         tap(R.id.catalogue_entry);
         waitFor(()->view(R.id.variable_lat)!=null,"Catalogue selection did not immediately open parameters");
         assertNull("Catalogue list remains above form",view(R.id.catalogue_entry));
+        main(()->assertFalse("Identifier must start in collapsed advanced options",view(R.id.integration_instance).isShown()));
         String initial=config();
         CountDownLatch release=new CountDownLatch(1);
         Future<Void> maintenance=EngineHost.maintain(app,()->{if(!release.await(10,TimeUnit.SECONDS))throw new IOException("fixture timeout");return null;});
         try {
-            waitFor(()->((TextView)view(R.id.engine_status)).getText().toString().equals(activity.getString(R.string.maintenance)) && !view(R.id.engine_action).isEnabled() && !view(R.id.save_configuration).isEnabled(),"Maintenance did not disable inappropriate commands");
+            waitFor(()->!view(R.id.save_configuration).isEnabled(),"Maintenance did not disable Save");
+            tap(R.id.navigation_home);
+            waitFor(()->((TextView)view(R.id.engine_status)).getText().toString().equals(activity.getString(R.string.maintenance)) && !view(R.id.engine_action).isEnabled(),"Maintenance did not disable inappropriate engine commands");
         } finally {release.countDown();}
         maintenance.get(30,TimeUnit.SECONDS); Beta2JourneyTest.waitState(EngineHost.State.RUNNING);
+        tap(R.id.navigation_integrations); tap(R.id.catalogue_entry);
         main(()->{
             EditText lat=view(R.id.variable_lat); lat.setText("-1.25"); lat.requestFocus();
             activity.getSystemService(InputMethodManager.class).showSoftInput(lat,InputMethodManager.SHOW_IMPLICIT);
@@ -140,9 +145,11 @@ public final class ManagementJourneyTest {
         waitFor(()->visibleWithLabel(R.id.variable_lon),"Longitude or its label hidden by landscape IME");
         assertSaveAboveKeyboard(); capture("landscape-ime-longitude");
         orientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-        assertDraft("-1.25","-2.5"); capture("portrait-draft");
+        assertDraft("-1.25","-2.5"); assertNavigation(true); capture("portrait-draft");
         orientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         assertDraft("-1.25","-2.5"); assertEquals("Rotation saved implicitly",initial,config());
+        tap(R.id.advanced_options);
+        waitFor(()->view(R.id.integration_instance).isShown(),"Advanced identifier not accessible");
         // Invalid native driver ID: unchanged Rust validation and transaction, surfaced by the new form.
         main(()->((EditText)view(R.id.integration_instance)).setText("bad:id"));
         tap(R.id.save_configuration);
@@ -157,7 +164,7 @@ public final class ManagementJourneyTest {
         capture("landscape-saved");
         tap(R.id.catalogue_entry); assertDraft("-1.25","-2.5");
         tap(R.id.management_back); waitFor(()->view(R.id.catalogue_entry)!=null,"Back did not return to integrations");
-        textButton(R.string.journal); capture("landscape-journal");
+        tap(R.id.navigation_journal); capture("landscape-journal");
         textButton(R.string.export);
         waitFor(()->{
             android.view.accessibility.AccessibilityNodeInfo window=instrumentation.getUiAutomation().getRootInActiveWindow();
@@ -171,10 +178,17 @@ public final class ManagementJourneyTest {
             }
             return false;
         },"Management not resumed after export picker");
-        textButton(R.string.overview); tap(R.id.engine_action); Beta2JourneyTest.waitState(EngineHost.State.STOPPED);
+        tap(R.id.navigation_home); tap(R.id.engine_action); Beta2JourneyTest.waitState(EngineHost.State.STOPPED);
         tap(R.id.engine_action); Beta2JourneyTest.waitState(EngineHost.State.RUNNING); assertEquals(next,config());
         // The original WebView is still reached through the existing space selector.
-        MainActivity dashboard=(MainActivity)instrumentation.startActivitySync(new Intent(app,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        tap(R.id.navigation_moli);
+        MainActivity[] opened={null};
+        waitFor(()->{
+            for(Activity current:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))
+                if(current instanceof MainActivity) {opened[0]=(MainActivity)current;return true;}
+            return false;
+        },"Moli OS destination did not open the official space selector");
+        MainActivity dashboard=opened[0];
         main(dashboard::showDashboard);
         long deadline=SystemClock.uptimeMillis()+30000;boolean displayed=false;
         while(SystemClock.uptimeMillis()<deadline) {
@@ -188,6 +202,22 @@ public final class ManagementJourneyTest {
         app.startForegroundService(new Intent(app,MoliService.class).setAction(MoliService.STOP)); Beta2JourneyTest.waitState(EngineHost.State.STOPPED);
         String report=GeneralJournal.export(app); assertTrue(report.contains("CONFIGURATION_SAVED"));
         assertFalse(report.contains("-1.25")); assertFalse(report.contains("-2.5"));
+    }
+    private void assertNavigation(boolean portrait) {
+        main(()->{
+            LinearLayout nav=view(R.id.management_navigation);
+            int buttons=0;
+            for(int i=0;i<nav.getChildCount();i++) if(nav.getChildAt(i) instanceof Button) buttons++;
+            assertEquals("Exactly four navigation destinations",4,buttons);
+            for(int id:new int[]{R.id.navigation_home,R.id.navigation_integrations,R.id.navigation_journal,R.id.navigation_moli})
+                assertTrue("Navigation destination missing",view(id).isShown());
+            if(portrait) {
+                assertEquals(LinearLayout.HORIZONTAL,nav.getOrientation());
+                Rect navRect=new Rect(),bodyRect=new Rect();
+                assertTrue(nav.getGlobalVisibleRect(navRect)); assertTrue(view(R.id.management_scroll).getGlobalVisibleRect(bodyRect));
+                assertTrue("Portrait navigation must be below content",navRect.top>=bodyRect.bottom);
+            } else assertEquals(LinearLayout.VERTICAL,nav.getOrientation());
+        });
     }
     private boolean visibleWithLabel(int id) {
         View edit=view(id); Rect editBox=new Rect(),labelBox=new Rect();

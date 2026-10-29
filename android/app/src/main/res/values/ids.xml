@@ -10,4 +10,11 @@
     <item name="variable_lat" type="id" />
     <item name="variable_lon" type="id" />
     <item name="save_configuration" type="id" />
+    <item name="management_navigation" type="id" />
+    <item name="navigation_home" type="id" />
+    <item name="navigation_integrations" type="id" />
+    <item name="navigation_journal" type="id" />
+    <item name="navigation_moli" type="id" />
+    <item name="engine_card" type="id" />
+    <item name="advanced_options" type="id" />
 </resources>

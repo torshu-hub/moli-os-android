@@ -29,14 +29,13 @@
     <string name="busy">Une opération est en cours. Réessayez une fois terminée.</string>
     <string name="catalogue_entry">%1$s — %2$s</string>
     <string name="overview">Accueil</string>
-    <string name="journal">Journal</string>
+    <string name="journal">Journal TXT</string>
     <string name="back">Retour</string>
     <string name="starting">Démarrage…</string>
     <string name="stopping">Arrêt en cours…</string>
     <string name="engine_error">Erreur du moteur</string>
     <string name="maintenance">Maintenance…</string>
     <string name="engine_state">Moteur : %1$s</string>
-    <string name="management_intro">Gérez le moteur et ses intégrations. Le tableau de bord reste dans Moli OS.</string>
     <string name="journal_help">Exportez le journal TXT pour partager les événements de fonctionnement.</string>
     <string name="integrations_help">Sélectionnez une intégration pour ouvrir ses paramètres.</string>
     <string name="select_instance">Choisissez la configuration à modifier.</string>
@@ -44,4 +43,9 @@
     <string name="longitude">Longitude</string>
     <string name="coordinate_hint">Décimale, par exemple -1.25 (point)</string>
     <string name="saving">Enregistrement…</string>
+    <string name="engine_card_title">État du moteur</string>
+    <string name="memory_tile">Mémoire</string>
+    <string name="storage_tile">Stockage</string>
+    <string name="device_tile">Appareil</string>
+    <string name="advanced_options">Options avancées</string>
 </resources>
