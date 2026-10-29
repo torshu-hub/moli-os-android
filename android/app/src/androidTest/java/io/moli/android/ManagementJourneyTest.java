@@ -130,8 +130,18 @@ public final class ManagementJourneyTest {
         tap(R.id.management_back); waitFor(()->view(R.id.catalogue_entry)!=null,"Back did not return to integrations");
         textButton(R.string.journal); capture("landscape-journal");
         textButton(R.string.export);
-        instrumentation.getUiAutomation().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
-        waitFor(()->ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).contains(activity),"Management not resumed after export picker");
+        waitFor(()->{
+            android.view.accessibility.AccessibilityNodeInfo window=instrumentation.getUiAutomation().getRootInActiveWindow();
+            return window!=null && window.getPackageName()!=null && window.getPackageName().toString().contains("documentsui");
+        },"System export picker did not open");
+        capture("journal-export-picker");
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+        waitFor(()->{
+            for(Activity current:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)) {
+                if(current instanceof ManagementActivity) {activity=(ManagementActivity)current;return true;}
+            }
+            return false;
+        },"Management not resumed after export picker");
         textButton(R.string.overview); tap(R.id.engine_action); Beta2JourneyTest.waitState(EngineHost.State.STOPPED);
         tap(R.id.engine_action); Beta2JourneyTest.waitState(EngineHost.State.RUNNING); assertEquals(next,config());
         // The original WebView is still reached through the existing space selector.
