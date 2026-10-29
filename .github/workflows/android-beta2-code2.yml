@@ -7,7 +7,7 @@ permissions:
   actions: read
 concurrency:
   group: beta2-code2-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   candidate:
     runs-on: ubuntu-24.04

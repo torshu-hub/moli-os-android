@@ -81,7 +81,10 @@ public final class ManagementJourneyTest {
     private void capture(String name) throws Exception {
         CountDownLatch frame=new CountDownLatch(1);
         main(()->{
-            View decor=activity.getWindow().getDecorView();
+            java.util.Collection<Activity> active=ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED);
+            // An external system picker has no Activity in this process.
+            if(active.isEmpty()) {frame.countDown();return;}
+            View decor=active.iterator().next().getWindow().getDecorView();
             decor.getViewTreeObserver().registerFrameCommitCallback(frame::countDown);
             decor.invalidate();
         });
