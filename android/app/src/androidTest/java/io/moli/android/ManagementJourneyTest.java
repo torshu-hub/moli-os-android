@@ -61,11 +61,17 @@ public final class ManagementJourneyTest {
     }
     private void orientation(int orientation) throws Exception {
         ManagementActivity before=activity;
+        int wanted=orientation==ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE ? android.content.res.Configuration.ORIENTATION_LANDSCAPE : android.content.res.Configuration.ORIENTATION_PORTRAIT;
+        boolean changed=before.getResources().getConfiguration().orientation!=wanted;
         main(()->before.setRequestedOrientation(orientation));
         waitFor(()->{
             for(Activity current:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))
-                if(current instanceof ManagementActivity && current.getResources().getConfiguration().orientation==
-                    (orientation==ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE ? android.content.res.Configuration.ORIENTATION_LANDSCAPE : android.content.res.Configuration.ORIENTATION_PORTRAIT)) {
+                if(current instanceof ManagementActivity && (!changed || current!=before) && current.getResources().getConfiguration().orientation==wanted) {
+                    ViewGroup host=current.findViewById(android.R.id.content);
+                    if(host.getChildCount()==0 || !(host.getChildAt(0) instanceof LinearLayout)) continue;
+                    LinearLayout root=(LinearLayout)host.getChildAt(0);
+                    if(root.getOrientation()!=(orientation==ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL)) continue;
+                    if(root.getWidth()<=0 || root.getHeight()<=0) continue;
                     activity=(ManagementActivity)current; return true;
                 }
             return false;
@@ -73,6 +79,14 @@ public final class ManagementJourneyTest {
         instrumentation.waitForIdleSync();
     }
     private void capture(String name) throws Exception {
+        CountDownLatch frame=new CountDownLatch(1);
+        main(()->{
+            View decor=activity.getWindow().getDecorView();
+            decor.getViewTreeObserver().registerFrameCommitCallback(frame::countDown);
+            decor.invalidate();
+        });
+        assertTrue("UI frame not committed before capture",frame.await(5,TimeUnit.SECONDS));
+        Thread.sleep(150); // The compositor must present the committed frame before UiAutomation captures it.
         File folder=new File(app.getFilesDir(),"code2-captures"); assertTrue(folder.isDirectory() || folder.mkdirs());
         try(FileOutputStream out=new FileOutputStream(new File(folder,name+".png"))) {
             assertTrue(instrumentation.getUiAutomation().takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));
@@ -87,7 +101,7 @@ public final class ManagementJourneyTest {
         waitFor(()->((Button)view(R.id.engine_action)).getText().toString().equals(activity.getString(R.string.start)),"Stopped control missing");
         capture("landscape-home-stopped");
         tap(R.id.engine_action); Beta2JourneyTest.waitState(EngineHost.State.RUNNING);
-        waitFor(()->((TextView)view(R.id.engine_status)).getText().toString().equals(activity.getString(R.string.running)),"Real running state missing");
+        waitFor(()->((TextView)view(R.id.engine_status)).getText().toString().equals(activity.getString(R.string.running)) && view(R.id.engine_action).isEnabled(),"Real running state missing");
         capture("landscape-home-running");
         textButton(R.string.integrations);
         tap(R.id.catalogue_entry);
