@@ -2,6 +2,7 @@
 """Unsigned Beta 2 candidate inspection; never signs or reads a keystore."""
 from pathlib import Path
 import os
+import configparser
 import re
 import subprocess
 import sys
@@ -10,7 +11,12 @@ import zipfile
 apk = Path(sys.argv[1])
 sdk = Path(os.environ['ANDROID_HOME']) / 'build-tools' / '35.0.0'
 package = subprocess.check_output([str(sdk / 'aapt'), 'dump', 'badging', str(apk)], text=True)
-assert package.startswith("package: name='io.moli.android.app.beta2' versionCode='1' versionName='0.1.0-beta2.j1'"), 'Wrong Beta 2 identity/version'
+properties = configparser.ConfigParser()
+properties.read_string('[beta]\n' + (Path(__file__).resolve().parents[1] / 'android/beta.properties').read_text())
+beta = properties['beta']
+assert beta['applicationId'] == 'io.moli.android.app.beta2'
+assert package.startswith(f"package: name='{beta['applicationId']}' versionCode='{beta['versionCode']}' versionName='{beta['versionName']}'"), 'Wrong Beta 2 identity/version'
+assert 'application-debuggable' not in package, 'Debuggable candidate'
 assert "native-code: 'arm64-v8a'" in package, 'Not an ARM64 candidate'
 with zipfile.ZipFile(apk) as archive:
     native = [n for n in archive.namelist() if n.startswith('lib/') and n.endswith('.so')]

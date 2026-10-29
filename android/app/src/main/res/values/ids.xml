@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="engine_status" type="id" />
+    <item name="engine_action" type="id" />
+    <item name="management_back" type="id" />
+    <item name="management_scroll" type="id" />
+    <item name="catalogue_entry" type="id" />
+    <item name="form_feedback" type="id" />
+    <item name="integration_instance" type="id" />
+    <item name="variable_lat" type="id" />
+    <item name="variable_lon" type="id" />
+    <item name="save_configuration" type="id" />
+</resources>

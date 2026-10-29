@@ -28,4 +28,20 @@
     <string name="start_first">Start the engine once, then open Integrations.</string>
     <string name="busy">An operation is in progress. Try again when it finishes.</string>
     <string name="catalogue_entry">%1$s — %2$s</string>
+    <string name="overview">Overview</string>
+    <string name="journal">Journal</string>
+    <string name="back">Back</string>
+    <string name="starting">Starting…</string>
+    <string name="stopping">Stopping…</string>
+    <string name="engine_error">Engine error</string>
+    <string name="maintenance">Maintenance…</string>
+    <string name="engine_state">Engine: %1$s</string>
+    <string name="management_intro">Manage the engine and its integrations. The dashboard is in Moli OS.</string>
+    <string name="journal_help">Export the TXT journal to share service events.</string>
+    <string name="integrations_help">Select an integration to open its parameters.</string>
+    <string name="select_instance">Choose the configuration to edit.</string>
+    <string name="latitude">Latitude</string>
+    <string name="longitude">Longitude</string>
+    <string name="coordinate_hint">Decimal, for example -1.25 (dot)</string>
+    <string name="saving">Saving…</string>
 </resources>
