@@ -26,6 +26,16 @@ public final class ManagementJourneyTest {
     private final Instrumentation instrumentation=InstrumentationRegistry.getInstrumentation();
     private final Context app=instrumentation.getTargetContext();
     private ManagementActivity activity;
+    @org.junit.Rule public final org.junit.rules.TestWatcher failureCapture=new org.junit.rules.TestWatcher() {
+        @Override protected void failed(Throwable error,org.junit.runner.Description description) {
+            try {
+                File folder=new File(app.getFilesDir(),"code2-captures"); folder.mkdirs();
+                try(FileOutputStream out=new FileOutputStream(new File(folder,"failure.png"))) {
+                    instrumentation.getUiAutomation().takeScreenshot().compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);
+                }
+            } catch(Exception ignored) { /* Preserve the original assertion failure. */ }
+        }
+    };
     private void main(Runnable action) { instrumentation.runOnMainSync(action); }
     private void waitFor(BooleanSupplier condition,String message) throws Exception {
         long end=SystemClock.uptimeMillis()+15000;

@@ -34,9 +34,12 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am instrument -w -r -e class io.moli.android.ManagementContinuityTest#code2KeepsCode1Data "$runner" > app/build/reports/code2/update.txt
 cat app/build/reports/code2/update.txt
 grep -Fq 'OK (1 test)' app/build/reports/code2/update.txt
+# Pixel Launcher's background ANR on this tablet image is outside the app under test.
+# This targets only the launcher in the verified fresh QEMU instance, never Moli.
+adb shell am force-stop com.google.android.apps.nexuslauncher
 adb shell am instrument -w -r -e class io.moli.android.ManagementJourneyTest "$runner" > app/build/reports/code2/journey.txt
 cat app/build/reports/code2/journey.txt
-for name in landscape-home-stopped landscape-home-running landscape-ime-latitude landscape-ime-longitude portrait-draft landscape-saved landscape-journal journal-export-picker official-dashboard-unchanged; do
+for name in landscape-home-stopped landscape-home-running landscape-ime-latitude landscape-ime-longitude portrait-draft landscape-saved landscape-journal journal-export-picker official-dashboard-unchanged failure; do
     adb exec-out run-as "$app" cat "files/code2-captures/$name.png" > "app/build/reports/code2/screenshots/$name.png" || true
 done
 grep -Fq 'OK (1 test)' app/build/reports/code2/journey.txt
