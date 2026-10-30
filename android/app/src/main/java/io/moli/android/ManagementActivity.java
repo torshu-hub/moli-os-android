@@ -627,7 +627,7 @@ public final class ManagementActivity extends Activity {
         },"moli-export").start();
     }
     @Override public Object onRetainNonConfigurationInstance() { remember(); return screen; }
-    @Override public void onStart() { super.onStart(); handler.post(refresh); }
+    @Override public void onStart() { super.onStart();if(screen.page==Page.NETWORK)networkPanel.resume();handler.post(refresh); }
     @Override public void onStop() { if(screen.page==Page.NETWORK)networkPanel.leave();remember(); handler.removeCallbacks(refresh); super.onStop(); }
     @Override public void onDestroy() { networkPanel.dispose();handler.removeCallbacksAndMessages(null); super.onDestroy(); }
 }

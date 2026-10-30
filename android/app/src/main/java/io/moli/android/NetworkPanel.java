@@ -66,6 +66,7 @@ final class NetworkPanel {
         rows=new LinearLayout(activity);rows.setOrientation(LinearLayout.VERTICAL);rows.setId(R.id.network_results);parent.addView(rows);
         refreshTarget();render();scroll.post(()->scroll.scrollTo(0,state.scroll));
     }
+    void resume(){if(rows!=null&&running==null){refreshTarget();render();}}
     private Target refreshTarget(){
         try{
             Target target=state.factory.current();
