@@ -52,4 +52,22 @@
     <string name="apk_home">APK home</string>
     <string name="official_dashboard">The official Moli OS dashboard.</string>
     <string name="android_tools">Engine and Android configuration.</string>
+    <string name="configure">Configure</string>
+    <string name="native_setup_missing">The Android setup flow for declaring this native driver and its options is not available.</string>
+    <string name="catalogue_count">%1$d embedded official integrations</string>
+    <string name="activation_help">Enabling a driver does not control the device. If the engine is running, it is stopped and restarted automatically to apply this setting.</string>
+    <string name="no_declared_brand">No declared brand</string>
+    <string name="multiple_brands">Multiple brands</string>
+    <string name="required_secrets">Authentication and vault: %1$s</string>
+    <string name="required_options">Parameters: %1$s</string>
+    <string name="required_variables">Variables: %1$s</string>
+    <string name="android_setup_unavailable">Android setup is not supported. Official preparation required: %1$s</string>
+    <string name="not_configured">No configured instance.</string>
+    <string name="instance_configuration">Instance %1$s — %2$s</string>
+    <string name="driver_enabled">Enabled in configuration</string>
+    <string name="driver_disabled">Disabled in configuration</string>
+    <string name="enable_driver">Enable</string>
+    <string name="disable_driver">Disable</string>
+    <string name="activation_saved">Activation saved and read back.</string>
+    <string name="no_required_parameters">This official profile needs no parameters.</string>
 </resources>

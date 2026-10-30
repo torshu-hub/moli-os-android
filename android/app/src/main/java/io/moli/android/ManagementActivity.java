@@ -18,14 +18,15 @@ import org.json.*;
 
 /** Native presentation only. Catalogue, configuration and lifecycle remain in J1. */
 public final class ManagementActivity extends Activity {
-    private enum Page { HOME, INTEGRATIONS, INSTANCES, PARAMETERS, JOURNAL }
+    private enum Page { HOME, INTEGRATIONS, PARAMETERS, JOURNAL }
     // Transient presentation state, retained across rotation; never a driver configuration store.
     private static final class Screen {
         Page page = Page.HOME;
         JSONObject catalogue, selected;
         String snapshot, id = "", error;
         final Map<String,String> draft = new LinkedHashMap<>();
-        boolean existing, saved, advanced;
+        boolean existing, saved, advanced, activation;
+        int catalogueScroll=-1;
         Future<JSONObject> loading;
         Future<String> saving;
     }
@@ -42,6 +43,7 @@ public final class ManagementActivity extends Activity {
     private EditText instance;
     private final Map<String,EditText> fields = new LinkedHashMap<>();
     private final Map<Page,Button> destinations = new EnumMap<>(Page.class);
+    private final List<Button> configurationActions=new ArrayList<>(), activationActions=new ArrayList<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean landscape, commandPending;
     private final Runnable refresh = new Runnable() {
@@ -193,13 +195,14 @@ public final class ManagementActivity extends Activity {
     private void navigate(Page page) {
         if(screen.saving!=null || screen.loading!=null) return;
         hideKeyboard(); remember();
+        if(page!=Page.INTEGRATIONS)screen.catalogueScroll=-1;
         screen.page=page;
         if(page==Page.INTEGRATIONS) { screen.error=null; load(); }
         render();
     }
     private void goBack() {
         if(screen.saving!=null || screen.loading!=null) return;
-        if(screen.page==Page.PARAMETERS || screen.page==Page.INSTANCES) navigate(Page.INTEGRATIONS);
+        if(screen.page==Page.PARAMETERS) navigate(Page.INTEGRATIONS);
         else if(screen.page!=Page.HOME) navigate(Page.HOME);
         else finish();
     }
@@ -252,19 +255,21 @@ public final class ManagementActivity extends Activity {
         if(save!=null) save.setEnabled(idle && (state==EngineHost.State.STOPPED || state==EngineHost.State.RUNNING) && !commandPending);
         back.setEnabled(idle);
         for(Button view:destinations.values()) view.setEnabled(idle);
+        boolean writable=idle && (state==EngineHost.State.STOPPED || state==EngineHost.State.RUNNING) && screen.snapshot!=null;
+        for(Button view:configurationActions) view.setEnabled(writable);
+        for(Button view:activationActions) view.setEnabled(writable);
     }
     private void load() {
-        if(!ProtectedKey.exists(this)) { screen.error=getString(R.string.start_first); return; }
         Context app=getApplicationContext();
         screen.loading=EngineHost.inspect(()->{
-            String value=new ConfigStore(app).read();
-            JSONObject result=ConfigStore.nativeCall(new JSONObject().put("action","catalogue").put("text",value));
-            result.put("text",value); return result;
+            String value=ProtectedKey.exists(app) ? new ConfigStore(app).disk.read("moli.toml",ConfigurationTransaction.FILE_LIMIT) : null;
+            JSONObject result=ConfigStore.nativeCall(new JSONObject().put("action","catalogue").put("text",value==null ? "" : value));
+            result.put("text",value==null ? JSONObject.NULL : value); return result;
         });
     }
     private void complete() {
         if(screen.loading!=null && screen.loading.isDone()) {
-            try { screen.catalogue=screen.loading.get(); screen.snapshot=screen.catalogue.getString("text"); }
+            try { screen.catalogue=screen.loading.get(); screen.snapshot=screen.catalogue.isNull("text") ? null : screen.catalogue.getString("text"); }
             catch(Exception failure) { screen.error=getString(HostUi.errorMessage(failure)); }
             screen.loading=null; render();
         }
@@ -278,14 +283,113 @@ public final class ManagementActivity extends Activity {
         }
     }
     private String entry() throws JSONException {
-        JSONObject metadata=screen.selected.getJSONObject("manifest").getJSONObject("integration");
-        return getString(R.string.catalogue_entry,metadata.getString("name"),metadata.getJSONArray("brands").getString(0));
+        return catalogueLabel(screen.selected.getJSONObject("manifest").getJSONObject("integration"));
+    }
+    private String brands(JSONObject metadata) throws JSONException {
+        JSONArray values=metadata.getJSONArray("brands");List<String> names=new ArrayList<>();
+        for(int i=0;i<values.length();i++)names.add(values.getString(i));
+        return String.join(" / ",names);
+    }
+    private String catalogueLabel(JSONObject metadata) throws JSONException {
+        String provider=brands(metadata);
+        return provider.isEmpty() ? metadata.getString("name") : getString(R.string.catalogue_entry,provider,metadata.getString("name"));
+    }
+    private String onboardingSummary(String source) {
+        StringBuilder first=new StringBuilder();
+        for(String raw:source.split("\n")) {
+            String line=raw.trim();
+            if(line.isEmpty() || line.startsWith("#"))continue;
+            if(first.length()>0 && line.matches("[0-9]+\\..*"))break;
+            if(first.length()>0)first.append(' ');
+            first.append(line.replaceFirst("^[0-9]+\\.\\s*","").replace("`",""));
+        }
+        return first.toString();
+    }
+    private void renderCatalogue() throws JSONException {
+        JSONArray packages=screen.catalogue.getJSONArray("packages");
+        text(content,getString(R.string.catalogue_count,packages.length()),16);
+        text(content,getString(R.string.activation_help),14);
+        if(screen.snapshot==null)text(content,getString(R.string.start_first),16);
+        Map<String,List<JSONObject>> groups=new TreeMap<>();
+        for(int i=0;i<packages.length();i++) {
+            JSONObject item=packages.getJSONObject(i),metadata=item.getJSONObject("manifest").getJSONObject("integration");
+            int count=metadata.getJSONArray("brands").length();
+            String group=count==1 ? brands(metadata) : getString(count==0 ? R.string.no_declared_brand : R.string.multiple_brands);
+            groups.computeIfAbsent(group,key->new ArrayList<>()).add(item);
+        }
+        for(Map.Entry<String,List<JSONObject>> group:groups.entrySet()) {
+            TextView label=text(content,group.getKey(),21);label.setTypeface(null,android.graphics.Typeface.BOLD);label.setAccessibilityHeading(true);
+            label.setTag("provider:"+group.getKey());
+            for(JSONObject item:group.getValue()) {
+                JSONObject manifest=item.getJSONObject("manifest"),metadata=manifest.getJSONObject("integration");
+                String profile=metadata.getString("id");boolean configurable=item.getBoolean("configurable");
+                LinearLayout integration=card(content);integration.setTag("package:"+profile);
+                TextView name=text(integration,catalogueLabel(metadata),18);name.setTypeface(null,android.graphics.Typeface.BOLD);
+                name.setTextColor(color(configurable ? R.color.management_ink : R.color.management_muted));
+                if(!configurable) {
+                    JSONObject needs=manifest.getJSONObject("needs");List<String> missing=new ArrayList<>();
+                    if(!"profile".equals(metadata.getString("driver")))missing.add(getString(R.string.native_setup_missing));
+                    for(String field:new String[]{"secrets","options","vars"}) {
+                        JSONArray values=needs.getJSONArray(field);List<String> names=new ArrayList<>();
+                        for(int i=0;i<values.length();i++)names.add(values.getString(i));
+                        if(!names.isEmpty())missing.add(getString(field.equals("secrets") ? R.string.required_secrets : field.equals("options") ? R.string.required_options : R.string.required_variables,String.join(", ",names)));
+                    }
+                    missing.add(onboardingSummary(item.getString("onboarding")));
+                    text(integration,getString(R.string.android_setup_unavailable,String.join(" · ",missing)),14).setTextColor(color(R.color.management_muted));
+                }
+                JSONArray instances=item.getJSONArray("instances");
+                if(instances.length()==0) {
+                    text(integration,getString(R.string.not_configured),14);
+                    catalogueActions(integration,item,null,configurable);
+                } else for(int i=0;i<instances.length();i++) {
+                    JSONObject selected=instances.getJSONObject(i);
+                    text(integration,getString(R.string.instance_configuration,selected.getString("id"),getString(selected.getBoolean("enabled") ? R.string.driver_enabled : R.string.driver_disabled)),16);
+                    catalogueActions(integration,item,selected,configurable);
+                }
+            }
+        }
+    }
+    private void catalogueActions(LinearLayout parent,JSONObject item,JSONObject selected,boolean configurable) throws JSONException {
+        String profile=item.getJSONObject("manifest").getJSONObject("integration").getString("id");
+        LinearLayout actions=new LinearLayout(this);parent.addView(actions);
+        Button configure=button(actions,R.string.configure,()->{
+            screen.catalogueScroll=scroll.getScrollY();
+            screen.selected=item;screen.saved=false;screen.activation=false;screen.error=null;edit(selected);
+        });
+        configure.setLayoutParams(new LinearLayout.LayoutParams(0,dp(52),1));
+        configure.setTag(selected==null ? profile : "configure:"+selected.getString("id"));
+        if(profile.equals("open-meteo") && root.findViewById(R.id.catalogue_entry)==null)configure.setId(R.id.catalogue_entry);
+        configure.setEnabled(configurable);
+        if(configurable)configurationActions.add(configure);
+        boolean enabled=selected!=null && selected.getBoolean("enabled");
+        Button activate=button(actions,enabled ? R.string.disable_driver : R.string.enable_driver,()->setEnabled(selected));
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(0,dp(52),1);params.setMarginStart(dp(12));activate.setLayoutParams(params);
+        activate.setEnabled(selected!=null);
+        activate.setTag(selected==null ? "unconfigured-toggle:"+profile : "toggle:"+selected.getString("id"));
+        if(selected!=null)activationActions.add(activate);
+    }
+    private void setEnabled(JSONObject selected) {
+        if(selected==null || screen.saving!=null || screen.loading!=null)return;
+        Context app=getApplicationContext();
+        try {
+            String before=screen.snapshot,id=selected.getString("id");boolean enabled=!selected.getBoolean("enabled");
+            screen.catalogueScroll=scroll.getScrollY();
+            screen.activation=true;screen.saved=false;screen.error=null;
+            screen.saving=EngineHost.maintain(app,()->{
+                try {
+                    ConfigStore store=new ConfigStore(app);store.setEnabled(before,id,enabled);
+                    GeneralJournal.record(app,GeneralJournal.Event.CONFIGURATION_SAVED);return store.read();
+                } catch(Exception failure){GeneralJournal.record(app,GeneralJournal.Event.CONFIGURATION_REJECTED);throw failure;}
+            });
+        } catch(Exception failure){screen.error=getString(HostUi.errorMessage(failure));}
+        render();
     }
     private void render() {
         fields.clear(); instance=null; save=null; status=null; primary=null; restart=null;
+        configurationActions.clear();activationActions.clear();
         content.removeAllViews(); footer.removeAllViews();
         back.setVisibility(screen.page==Page.HOME ? View.GONE : View.VISIBLE);
-        Page selected=(screen.page==Page.PARAMETERS || screen.page==Page.INSTANCES) ? Page.INTEGRATIONS : screen.page;
+        Page selected=(screen.page==Page.PARAMETERS) ? Page.INTEGRATIONS : screen.page;
         for(Map.Entry<Page,Button> item:destinations.entrySet()) {
             boolean active=item.getKey()==selected;
             item.getValue().setSelected(active);
@@ -302,31 +406,16 @@ public final class ManagementActivity extends Activity {
                 button(journal,R.string.export,this::exportJournal);
             } else {
                 if(screen.saved) {
-                    text(content,getString(R.string.saved),18).setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-                    text(content,getString(R.string.outdoor_binding_help),14);
+                    text(content,getString(screen.activation ? R.string.activation_saved : R.string.saved),18).setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+                    if(!screen.activation && screen.selected!=null) {
+                        String profile=screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id");
+                        if("open-meteo".equals(profile) || "open-meteo-air".equals(profile))text(content,getString(R.string.outdoor_binding_help),14);
+                    }
                 }
                 if(screen.loading!=null) text(content,getString(R.string.working),16);
                 else if(screen.catalogue!=null) {
                     if(screen.page==Page.INTEGRATIONS) {
-                        text(content,getString(R.string.integrations_help),16);
-                        JSONArray packages=screen.catalogue.getJSONArray("packages");
-                        for(int i=0;i<packages.length();i++) {
-                            JSONObject item=packages.getJSONObject(i);
-                            LinearLayout integration=card(content);
-                            Button open=button(integration,R.string.integrations,()->selectIntegration(item));
-                            JSONObject metadata=item.getJSONObject("manifest").getJSONObject("integration");
-                            open.setText(getString(R.string.catalogue_entry,metadata.getString("name"),metadata.getJSONArray("brands").getString(0)));
-                            open.setMinHeight(dp(64));
-                            open.setId(i==0 ? R.id.catalogue_entry : View.generateViewId());
-                            open.setTag(metadata.getString("id"));
-                        }
-                    } else if(screen.page==Page.INSTANCES) {
-                        title.setText(entry()); text(content,getString(R.string.select_instance),16);
-                        JSONArray instances=screen.selected.getJSONArray("instances");
-                        for(int i=0;i<instances.length();i++) {
-                            JSONObject item=instances.getJSONObject(i);
-                            Button choose=button(content,R.string.parameters,()->edit(item)); choose.setText(item.getString("id"));
-                        }
+                        renderCatalogue();
                     } else renderForm();
                 }
             }
@@ -335,19 +424,15 @@ public final class ManagementActivity extends Activity {
         feedback.setTextColor(color(R.color.management_error));
         feedback.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
         feedback.setVisibility(screen.error==null ? View.GONE : View.VISIBLE);
+        if(screen.page==Page.INTEGRATIONS && screen.error!=null) {
+            content.removeView(feedback);content.addView(feedback,0);screen.catalogueScroll=0;
+        }
         if(screen.error!=null && screen.page==Page.PARAMETERS) {
             for(EditText field:fields.values()) field.setError(screen.error);
         }
-        scroll.scrollTo(0,0); updateControls();
-    }
-    private void selectIntegration(JSONObject selected) {
-        try {
-            screen.selected=selected;
-            screen.saved=false; screen.error=null;
-            JSONArray instances=screen.selected.getJSONArray("instances");
-            if(instances.length()>1) { screen.page=Page.INSTANCES; render(); }
-            else edit(instances.length()==1 ? instances.getJSONObject(0) : null);
-        } catch(JSONException failure) { HostUi.error(this,failure); }
+        if(screen.page==Page.INTEGRATIONS && screen.catalogueScroll>=0)scroll.post(()->scroll.scrollTo(0,screen.catalogueScroll));
+        else scroll.scrollTo(0,0);
+        updateControls();
     }
     private void edit(JSONObject selected) {
         try {
@@ -362,8 +447,9 @@ public final class ManagementActivity extends Activity {
     }
     private void renderForm() throws JSONException {
         title.setText(entry());
-        text(content,getString(R.string.manual_variables),14).setTextColor(color(R.color.management_muted));
+        text(content,onboardingSummary(screen.selected.getString("onboarding")),14).setTextColor(color(R.color.management_muted));
         JSONArray vars=screen.selected.getJSONObject("manifest").getJSONObject("needs").getJSONArray("vars");
+        text(content,getString(vars.length()==0 ? R.string.no_required_parameters : R.string.manual_variables),14).setTextColor(color(R.color.management_muted));
         for(int i=0;i<vars.length();i++) {
             String name=vars.getString(i);
             boolean lat="lat".equals(name),lon="lon".equals(name);
