@@ -340,6 +340,11 @@
     color: var(--ink-2);
   }
 
+  .rail ul a:focus-visible {
+    /* Keep the focus ring inside the list's new scroll clipping area. */
+    outline-offset: -3px;
+  }
+
   .label {
     font-size: 12px;
     font-weight: 600;
