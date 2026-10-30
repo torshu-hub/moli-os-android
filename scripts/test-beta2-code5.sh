@@ -52,8 +52,11 @@ adb shell am force-stop com.google.android.apps.nexuslauncher
 set -- $(cat android/app/build/reports/code5/expected-served-web.txt)
 adb shell am instrument -w -r -e class "$test_class#upgradeNavigationOfficialProfilesAndPortraitRail" -e expectedIndex "$1" -e expectedJs "$2" -e expectedCss "$3" "$runner" > android/app/build/reports/code5/after.txt
 cat android/app/build/reports/code5/after.txt
-for name in portrait-integrations portrait-rail-actions landscape-full-dashboard; do
+for name in portrait-integrations portrait-rail-actions landscape-full-dashboard failure; do
     target="android/app/build/reports/code5/screenshots/$name.png"
     adb exec-out run-as "$app" cat "files/code5-captures/$name.png" > "$target" 2>/dev/null || rm -f "$target"
+    if [ -f "$target" ]; then
+        python3 -c 'import sys;from pathlib import Path;p=Path(sys.argv[1]);p.unlink() if not p.read_bytes().startswith(bytes.fromhex("89504e470d0a1a0a")) else None' "$target"
+    fi
 done
 grep -Fq 'OK (1 test)' android/app/build/reports/code5/after.txt

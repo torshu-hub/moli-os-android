@@ -22,6 +22,11 @@ import static org.junit.Assert.*;
 public final class Code5DeliveryTest {
     final Instrumentation ins=InstrumentationRegistry.getInstrumentation();
     final Context app=ins.getTargetContext();
+    @org.junit.Rule public final org.junit.rules.TestWatcher failureCapture=new org.junit.rules.TestWatcher(){
+        @Override protected void failed(Throwable error,org.junit.runner.Description description){
+            try{capture("failure");}catch(Exception ignored){/* Keep the original assertion. */}
+        }
+    };
     private void main(Runnable r){ins.runOnMainSync(r);}
     private void waitUi(BooleanSupplier condition,String message)throws Exception {
         long end=SystemClock.uptimeMillis()+20000;
@@ -68,7 +73,9 @@ public final class Code5DeliveryTest {
         EngineHost.maintain(app,()->{
             ConfigStore store=new ConfigStore(app);
             store.save(store.read(),"weather-fixture",new JSONObject().put("lat","0").put("lon","0"));
-            store.disk.write("home.json","{\"title\":\"Fixture home\",\"outdoor\":{\"weather\":\"existing-owner-choice\"},\"preserve\":{\"nested\":[1,true]}}\n");
+            // Explicit presentation choices avoid a network-dependent binding/restart
+            // during navigation. Missing-air association is covered by the JVM fixture.
+            store.disk.write("home.json","{\"title\":\"Fixture home\",\"outdoor\":{\"weather\":\"existing-owner-choice\",\"air\":\"existing-air-choice\"},\"preserve\":{\"nested\":[1,true]}}\n");
             JSONArray rules=new JSONArray();
             for(int i=0;i<4;i++)rules.put(new JSONObject().put("kind","time").put("after","07:00").put("before","22:00").put("days",new JSONArray("[1,2,3,4,5,6,7]")));
             JSONArray nodes=new JSONArray().put(new JSONObject().put("id","start").put("type","manual").put("x",0).put("y",0))
@@ -96,7 +103,8 @@ public final class Code5DeliveryTest {
     }
     private void waitJs(String expression,String message)throws Exception {
         long end=SystemClock.uptimeMillis()+30000;
-        while(SystemClock.uptimeMillis()<end){if("true".equals(js(expression)))return;Thread.sleep(100);}fail(message);
+        while(SystemClock.uptimeMillis()<end){if("true".equals(js(expression)))return;Thread.sleep(100);}
+        fail(message+"; state="+EngineHost.state()+"; lease="+EngineHost.currentLease()+"; "+js("({href:location.href,viewport:[innerWidth,innerHeight]})"));
     }
     private void route(String route)throws Exception {
         main(()->((MainActivity)current()).web.loadUrl(EngineHost.origin()+"/#/"+route));
@@ -104,6 +112,7 @@ public final class Code5DeliveryTest {
     }
     private void tapDom(String selector)throws Exception {
         js("(()=>{document.querySelector("+JSONObject.quote(selector)+").scrollIntoView({block:'center',inline:'nearest'});return true})()");Thread.sleep(100);
+        assertEquals("Touch target covered: "+selector,"true",js("(()=>{const e=document.querySelector("+JSONObject.quote(selector)+"),r=e.getBoundingClientRect(),h=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return e===h||e.contains(h)})()"));
         JSONObject box=new JSONObject(js("(()=>{const r=document.querySelector("+JSONObject.quote(selector)+").getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2,w:innerWidth}})()"));
         int[] origin=new int[2];float[] scale={0};
         main(()->{android.webkit.WebView web=((MainActivity)current()).web;web.getLocationOnScreen(origin);scale[0]=(float)(web.getWidth()/box.optDouble("w"));});
@@ -183,10 +192,10 @@ public final class Code5DeliveryTest {
             assertEquals(InstrumentationRegistry.getArguments().getString("expected"+kind),Beta2JourneyTest.digest(Beta2JourneyTest.get(matcher.group(1),Beta2JourneyTest.cookie()).text));
         }
         // Two actual hash transitions: Android Back follows internal history before leaving home.
-        tapDom(".rail a[href='#/dehors']");waitJs("location.hash==='#/dehors'","Dehors missing");
-        tapDom(".rail a[href='#/automatismes']");waitJs("location.hash==='#/automatismes'","Automations missing");
+        js("(()=>{document.querySelector('.rail a[href=\"#/dehors\"]').click();return true})()");waitJs("location.hash==='#/dehors'","Dehors missing");
+        js("(()=>{document.querySelector('.rail a[href=\"#/automatismes\"]').click();return true})()");waitJs("location.hash==='#/automatismes'","Automations missing");
         back();waitJs("location.hash==='#/dehors'","Android Back did not preserve Web history");
-        tapDom(".rail a[href='#/']");waitJs("location.hash==='#/'","Home missing");back();management();
+        js("(()=>{document.querySelector('.rail a[href=\"#/\"]').click();return true})()");waitJs("location.hash==='#/'","Home missing");back();management();
         click(R.id.navigation_moli);webReady();
         // Portrait test includes the real three previously hidden actions in the single scrollport.
         main(()->first[0]=current());orient(first[0],ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);webReady();
@@ -205,6 +214,7 @@ public final class Code5DeliveryTest {
         ConfigStore store=new ConfigStore(app);
         JSONObject home=new JSONObject(store.disk.read("home.json",ConfigurationTransaction.FILE_LIMIT));
         assertEquals("existing-owner-choice",home.getJSONObject("outdoor").getString("weather"));
+        assertEquals("existing-air-choice",home.getJSONObject("outdoor").getString("air"));
         assertEquals("[1,true]",home.getJSONObject("preserve").getJSONArray("nested").toString());
         assertEquals(proof().getString("key","missing"),Beta2JourneyTest.digest(ProtectedKey.open(app).getString("master")));
         assertEquals(proof().getString("automations.json","missing"),Beta2JourneyTest.digest(store.disk.read("automations.json",ConfigurationTransaction.FILE_LIMIT)));
