@@ -29,9 +29,12 @@ final class ConfigStore {
         return result;
     }
     void save(String expected, String id, JSONObject vars) throws Exception {
+        save(expected,"open-meteo",id,vars);
+    }
+    void save(String expected, String profile, String id, JSONObject vars) throws Exception {
         transaction.recover();
         if(!Objects.equals(expected, read())) throw new IllegalStateException("conflict");
-        String candidate = nativeCall(new JSONObject().put("action","prepare").put("text",expected).put("id",id).put("vars",vars)).getString("text");
+        String candidate = nativeCall(new JSONObject().put("action","prepare").put("profile",profile).put("text",expected).put("id",id).put("vars",vars)).getString("text");
         String name = "moli.toml.validation";
         try {
             disk.write(name, candidate);

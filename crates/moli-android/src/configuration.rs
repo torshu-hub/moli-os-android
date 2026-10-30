@@ -2,11 +2,38 @@
 use serde_json::{Value, json};
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
-const MANIFEST: &str = include_str!("../../../integrations/open-meteo/integration.toml");
-const ONBOARDING: &str = include_str!("../../../integrations/open-meteo/onboarding.md");
+// Explicitly supported official packages. Each entry uses the same form adapter.
+const PACKAGES: &[(&str, &str, &str)] = &[
+    (
+        "open-meteo",
+        include_str!("../../../integrations/open-meteo/integration.toml"),
+        include_str!("../../../integrations/open-meteo/onboarding.md"),
+    ),
+    (
+        "open-meteo-air",
+        include_str!("../../../integrations/open-meteo-air/integration.toml"),
+        include_str!("../../../integrations/open-meteo-air/onboarding.md"),
+    ),
+];
 
 pub(crate) fn form(text: &str) -> Result<Value, &'static str> {
-    let manifest: toml::Value = toml::from_str(MANIFEST).map_err(|_| "catalogue")?;
+    form_for(text, "open-meteo")
+}
+
+pub(crate) fn catalogue(text: &str) -> Result<Value, &'static str> {
+    let packages: Result<Vec<_>, _> = PACKAGES
+        .iter()
+        .map(|(id, _, _)| form_for(text, id))
+        .collect();
+    Ok(json!({"packages":packages?}))
+}
+
+fn form_for(text: &str, profile: &str) -> Result<Value, &'static str> {
+    let (_, manifest, onboarding) = PACKAGES
+        .iter()
+        .find(|(id, _, _)| *id == profile)
+        .ok_or("catalogue")?;
+    let manifest: toml::Value = toml::from_str(manifest).map_err(|_| "catalogue")?;
     let config: toml::Value = toml::from_str(text).map_err(|_| "configuration")?;
     let id = manifest["integration"]["id"].as_str().ok_or("catalogue")?;
     let instances: Vec<Value> = config
@@ -23,14 +50,18 @@ pub(crate) fn form(text: &str) -> Result<Value, &'static str> {
         })
         .map(|d| json!({"id":d.get("id"), "vars":d.get("options").and_then(|o|o.get("vars"))}))
         .collect();
-    Ok(json!({"manifest":manifest,"onboarding":ONBOARDING,"instances":instances}))
+    Ok(json!({"manifest":manifest,"onboarding":onboarding,"instances":instances}))
 }
 
 pub(crate) fn prepare(input: &Value) -> Result<String, &'static str> {
     let text = input["text"].as_str().ok_or("input")?;
     let id = input["id"].as_str().ok_or("input")?;
     let vars = input["vars"].as_object().ok_or("input")?;
-    let package = form(text)?;
+    let profile = input
+        .get("profile")
+        .map_or(Some("open-meteo"), Value::as_str)
+        .ok_or("input")?;
+    let package = form_for(text, profile)?;
     let manifest = &package["manifest"];
     let profile = manifest["integration"]["id"].as_str().ok_or("catalogue")?;
     let needs = manifest["needs"]["vars"].as_array().ok_or("catalogue")?;
@@ -118,5 +149,27 @@ mod tests {
         assert_eq!(state["instances"][0]["id"], "weather");
         assert_eq!(state["instances"][0]["vars"]["lat"], "0");
         assert_eq!(state["manifest"]["needs"]["vars"], json!(["lat", "lon"]));
+    }
+
+    #[test]
+    fn official_profiles_coexist_and_edit_independently_without_overwriting_conflicts() {
+        let weather = prepare(&json!({"text":"# retained\n[server]\nlanguage = \"fr\"\n", "id":"existing-weather", "vars":{"lat":"0","lon":"0"}})).unwrap();
+        let air = prepare(&json!({"text":weather,"profile":"open-meteo-air","id":"air", "vars":{"lat":"1","lon":"2"}})).unwrap();
+        assert!(air.starts_with(&weather));
+        let next = prepare(&json!({"text":air,"profile":"open-meteo-air","id":"air", "vars":{"lat":"3","lon":"4"}})).unwrap();
+        let state = catalogue(&next).unwrap();
+        assert_eq!(state["packages"][0]["instances"][0]["vars"]["lat"], "0");
+        assert_eq!(state["packages"][1]["instances"][0]["vars"]["lat"], "3");
+        assert_eq!(
+            state["packages"][1]["manifest"]["integration"]["id"],
+            "open-meteo-air"
+        );
+        assert!(prepare(&json!({"text":next,"profile":"open-meteo-air","id":"existing-weather", "vars":{"lat":"3","lon":"4"}})).is_err());
+        assert!(
+            prepare(
+                &json!({"text":next,"profile":"unknown","id":"new", "vars":{"lat":"3","lon":"4"}})
+            )
+            .is_err()
+        );
     }
 }

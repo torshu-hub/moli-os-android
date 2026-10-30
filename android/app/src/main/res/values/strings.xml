@@ -17,6 +17,7 @@
     <string name="manual_variables">Saisissez les paramètres manuellement.</string>
     <string name="save">Enregistrer</string>
     <string name="saved">Configuration enregistrée.</string>
+    <string name="outdoor_binding_help">L’enregistrement configure le profil. Dehors sera associé après réception de mesures, si la source est unique et sans remplacer votre choix existant.</string>
     <string name="export">Exporter le journal TXT</string>
     <string name="exported">Journal exporté.</string>
     <string name="choose_pin">Choisissez le code Moli OS</string>

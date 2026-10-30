@@ -1,12 +1,12 @@
-name: Android Beta 2 code4
+name: Android Beta 2 code5
 on:
   push:
-    branches: [android/beta2-code4-web]
+    branches: [android/beta2-code5-navigation-air]
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: beta2-code4-${{ github.ref }}
+  group: beta2-code5-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   candidate:
@@ -38,15 +38,16 @@ jobs:
         working-directory: web
         run: npm ci --no-audit --no-fund && npm run build
       # The official RustEmbed assets live inside JNI: regenerate the resource
-      # crate and relink unchanged code3 Rust sources; never reuse stale J1 Web.
-      - name: Package code4 with current embedded Web
+      # crate and relink the official engine with the small Android catalogue adapter.
+      - name: Package code5 with current embedded Web
         run: |
-          git fetch --no-tags --depth=1 https://github.com/torshu-hub/moli-os-android.git cfbb88c1411b9ca579c89d5c7f9fce0e243102ad
-          git diff --exit-code cfbb88c1411b9ca579c89d5c7f9fce0e243102ad -- crates Cargo.toml Cargo.lock integrations android/app/src/main
+          git fetch --no-tags --depth=1 https://github.com/torshu-hub/moli-os-android.git 7ca9fc8e5ef2e0ea373c7cc4540776f2457e0791
+          git diff --exit-code 7ca9fc8e5ef2e0ea373c7cc4540776f2457e0791 -- crates ':!crates/moli-android/src/configuration.rs' ':!crates/moli-android/src/lib.rs' Cargo.toml Cargo.lock integrations
+          git diff --exit-code 7ca9fc8e5ef2e0ea373c7cc4540776f2457e0791 -- web ':!web/src/maison/Maison.svelte'
           cargo +1.99.1 clean --release -p moli-api --target aarch64-linux-android
           sh scripts/build-android.sh arm64-v8a
           cd android
-          ./gradlew --no-daemon :app:lintBeta :app:assembleBeta
+          ./gradlew --no-daemon :app:lintBeta :app:assembleBeta :app:testDebugUnitTest --tests io.moli.android.WeatherBindingTest
       - name: Enable disposable emulator
         run: sudo chmod a+rw /dev/kvm
       - uses: ReactiveCircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
@@ -57,25 +58,25 @@ jobs:
           target: google_apis
           disable-animations: true
           working-directory: android
-          script: sh ../scripts/test-beta2-code4.sh
+          script: sh ../scripts/test-beta2-code5.sh
       - name: Seal candidate and source
         run: |
           mkdir -p android-candidate
-          cp android/app/build/outputs/apk/beta/app-beta-unsigned.apk android-candidate/moli-os-beta2-code4-arm64-unsigned.apk
+          cp android/app/build/outputs/apk/beta/app-beta-unsigned.apk android-candidate/moli-os-beta2-code5-arm64-unsigned.apk
           git rev-parse HEAD > android-candidate/source.txt
           sha256sum android-candidate/*.apk > android-candidate/SHA256SUMS
-          python3 scripts/check-beta2-apk.py android-candidate/moli-os-beta2-code4-arm64-unsigned.apk
-          python3 scripts/check-beta2-code4-web.py android-candidate/moli-os-beta2-code4-arm64-unsigned.apk android/app/build/reports/code4/web-assets-proof.json
+          python3 scripts/check-beta2-apk.py android-candidate/moli-os-beta2-code5-arm64-unsigned.apk
+          python3 scripts/check-beta2-code4-web.py android-candidate/moli-os-beta2-code5-arm64-unsigned.apk android/app/build/reports/code5/web-assets-proof.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: moli-os-beta2-code4-arm64-candidate
+          name: moli-os-beta2-code5-arm64-candidate
           path: android-candidate/
           retention-days: 14
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: moli-os-beta2-code4-checks
+          name: moli-os-beta2-code5-checks
           path: |
             android/app/build/test-results/
             android/app/build/reports/

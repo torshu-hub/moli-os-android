@@ -30,4 +30,21 @@ public final class WeatherBindingTest {
         assertNull(WeatherBinding.linkedHome(null,form("different"),devices(12.5)));
         try {WeatherBinding.linkedHome("{broken",form("weather"),devices(12.5));fail();}catch(JSONException expected){}
     }
+    @Test public void linksOnlyUnambiguousAirWithReceivedMeasurementsAndKeepsWeather()throws Exception {
+        JSONObject air=form("air").put("manifest",new JSONObject().put("integration",new JSONObject().put("id","open-meteo-air")));
+        JSONObject weather=form("weather").put("manifest",new JSONObject().put("integration",new JSONObject().put("id","open-meteo")));
+        JSONObject catalogue=new JSONObject().put("packages",new JSONArray().put(weather).put(air));
+        JSONObject device=new JSONObject().put("id","air:runtime-id").put("instance","air").put("manufacturer","Open-Meteo").put("online",true).put("state",new JSONObject());
+        JSONObject snapshot=new JSONObject().put("devices",new JSONArray().put(device));
+        String before="{\"outdoor\":{\"weather\":\"owner-weather\"},\"preserve\":[1,true]}";
+        assertNull(WeatherBinding.linkedCatalogue(before,catalogue,snapshot));
+        device.getJSONObject("state").put("aqi",new JSONObject().put("value",18));
+        JSONObject next=new JSONObject(WeatherBinding.linkedCatalogue(before,catalogue,snapshot));
+        assertEquals("owner-weather",next.getJSONObject("outdoor").getString("weather"));
+        assertEquals("air:runtime-id",next.getJSONObject("outdoor").getString("air"));
+        assertEquals("[1,true]",next.getJSONArray("preserve").toString());
+        assertNull(WeatherBinding.linkedCatalogue(next.toString(),catalogue,snapshot));
+        air.getJSONArray("instances").put(new JSONObject().put("id","second-air"));
+        assertNull(WeatherBinding.linkedCatalogue(before,catalogue,snapshot));
+    }
 }
