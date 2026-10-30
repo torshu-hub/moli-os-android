@@ -1,0 +1,318 @@
+# Permanent manual Beta 2 delivery. Owner-authorized 2026-10-30; no rebuild or candidate code execution.
+name: Sign owner Beta 2
+'on':
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful reviewed Beta 2 candidate run (no rebuild)
+        required: true
+        type: string
+      expected_sha256:
+        description: Reviewed unsigned ARM64 APK SHA-256
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: owner-beta2-signing
+  cancel-in-progress: false
+jobs:
+  gate:
+    if: github.ref == 'refs/heads/main' && github.repository == 'torshu-hub/moli-os-android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      approved: ${{ steps.gate.outputs.approved }}
+      metadata: ${{ steps.gate.outputs.metadata }}
+      unsigned_sha256: ${{ steps.gate.outputs.unsigned_sha256 }}
+    steps:
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Prepare SDK before secret access
+      run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;35.0.0"'
+    - id: gate
+      name: Verify reviewed Beta 2 candidate and reuse successful CI
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        EXPECTED_SHA256: ${{ inputs.expected_sha256 }}
+      run: |
+        python3 -I - <<'PYCODE'
+        # Trusted candidate gate. No checkout or project import before key access.
+        import hashlib, io, json, os, re, subprocess, urllib.error, urllib.request, zipfile
+        from pathlib import Path, PurePosixPath
+        REPO = 'torshu-hub/moli-os-android'
+        API = 'https://api.github.com/repos/'+REPO
+        TOKEN = os.environ['GH_TOKEN']
+        class StripAuthRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                if not newurl.startswith('https://'):
+                    raise ValueError('HTTPS redirect required')
+                result = super().redirect_request(req, fp, code, msg, headers, newurl)
+                result.remove_header('Authorization')
+                return result
+
+        def request(path, binary=False, optional=False):
+            req=urllib.request.Request(API+path, headers={'Authorization':'Bearer '+TOKEN,'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
+            try:
+                with urllib.request.build_opener(StripAuthRedirect()).open(req,timeout=60) as response:
+                    data=response.read(150_000_001)
+                    if len(data)>150_000_000: raise ValueError('Response exceeds bound')
+                    return data if binary else json.loads(data)
+            except urllib.error.HTTPError as error:
+                if optional and error.code==404:return None
+                raise ValueError('GitHub validation request failed') from None
+
+        number=os.environ['CANDIDATE_RUN_ID']
+        UNSIGNED=os.environ['EXPECTED_SHA256']
+        if not re.fullmatch('[1-9][0-9]{0,19}',number) or not re.fullmatch('[a-f0-9]{64}',UNSIGNED):
+            raise ValueError('Candidate run and actual reviewed SHA-256 required')
+        run=request('/actions/runs/'+number)
+        # Current Beta 2 candidate pipelines only; no fork, PR artifact or code39 pipeline.
+        allowed={'.github/workflows/android-beta2-code2.yml','.github/workflows/android-beta2-j1.yml'}
+        branch=run['head_branch']; SOURCE=run['head_sha']
+        if run['repository']['full_name']!=REPO or run['head_repository']['full_name']!=REPO or run['path'] not in allowed or run['event']!='push' or not branch.startswith('android/beta2-') or run['status']!='completed' or run['conclusion']!='success' or not re.fullmatch('[a-f0-9]{40}',SOURCE):
+            raise ValueError('Successful original Beta 2 candidate pipeline required')
+        if request('/git/ref/heads/'+branch)['object']['sha']!=SOURCE:
+            raise ValueError('Candidate branch moved; review the new source first')
+        # Reuse successful checks at this source. Never rebuild or rerun application tests.
+        required={'.github/workflows/check.yml','.github/workflows/audit.yml'}
+        checks={}
+        for page in range(1,11):
+            entries=request('/actions/runs?head_sha='+SOURCE+'&status=success&per_page=100&page='+str(page))['workflow_runs']
+            for check in entries:
+                if check['head_sha']==SOURCE and check['repository']['full_name']==REPO and check['head_branch']==branch and check['status']=='completed' and check['conclusion']=='success' and check['path'] in required:
+                    checks.setdefault(check['path'],check['id'])
+            if required<=checks.keys() or len(entries)<100:break
+        if not required<=checks.keys():raise ValueError('Existing source checks incomplete or failed')
+        artifacts=request('/actions/runs/'+number+'/artifacts')['artifacts']
+        found=[a for a in artifacts if re.fullmatch(r'moli-os-beta2-[a-z0-9-]+-arm64-candidate',a['name']) and not a['expired']]
+        if len(found)!=1:raise ValueError('Unique non-expired Beta 2 candidate required')
+        archive=zipfile.ZipFile(io.BytesIO(request('/actions/artifacts/'+str(found[0]['id'])+'/zip',binary=True)))
+        names=archive.namelist()
+        apks=[n for n in names if re.fullmatch(r'moli-os-beta2-[a-z0-9-]+-arm64-unsigned\.apk',n)]
+        if len(apks)!=1 or set(names)!={apks[0],'source.txt','SHA256SUMS'} or len(names)!=3 or any(e.file_size>100_000_000 for e in archive.infolist()):raise ValueError('Unexpected candidate contents')
+        if archive.read('source.txt').decode().strip()!=SOURCE:raise ValueError('Wrong artifact source')
+        apk=archive.read(apks[0])
+        if hashlib.sha256(apk).hexdigest()!=UNSIGNED:raise ValueError('Candidate differs from reviewed bytes')
+        sums=archive.read('SHA256SUMS').decode().split()
+        if len(sums)!=2 or sums[0]!=UNSIGNED or PurePosixPath(sums[1]).name!=apks[0]:raise ValueError('Wrong sealed digest')
+        Path('validated-beta2').mkdir(mode=0o700)
+        Path('validated-beta2/unsigned.apk').write_bytes(apk)
+        sdk=Path(os.environ['ANDROID_HOME'])/'build-tools/35.0.0'
+        badging=subprocess.check_output([str(sdk/'aapt'),'dump','badging','validated-beta2/unsigned.apk'],text=True)
+        match=re.match(r"package: name='io\.moli\.android\.app\.beta2' versionCode='([1-9][0-9]*)' versionName='([0-9]+\.[0-9]+\.[0-9]+-beta2\.code([1-9][0-9]*))'",badging)
+        if not match or int(match[1])!=int(match[3]) or int(match[1])>2100000000 or 'application-debuggable' in badging:raise ValueError('Wrong Beta 2 identity/version')
+        code=int(match[1]); version=match[2]; tag='moli-beta2-code-'+str(code)
+        if request('/releases/tags/'+tag,optional=True) is not None:
+            with open(os.environ['GITHUB_OUTPUT'],'a') as out:out.write('approved=false\n')
+            print('Release already exists; no new signing attempt')
+            raise SystemExit(0)
+        # Tags encode the strictly increasing Android versionCode in this release family.
+        previous=[]
+        for page in range(1,101):
+            releases=request('/releases?per_page=100&page='+str(page))
+            for release in releases:
+                prior=re.fullmatch('moli-beta2-code-([1-9][0-9]*)',release['tag_name'])
+                if prior:previous.append(int(prior[1]))
+            if len(releases)<100:break
+        else:raise ValueError('Release history exceeds bound')
+        if code<=max(previous,default=0):raise ValueError('Android versionCode must increase')
+        metadata={'applicationId':'io.moli.android.app.beta2','versionCode':code,'versionName':version,'source_sha':SOURCE,'candidate_run_id':int(number),'artifact_id':found[0]['id'],'unsigned_sha256':UNSIGNED,'checks':checks,'tag':tag}
+        with open(os.environ['GITHUB_OUTPUT'],'a') as out:
+            out.write('approved=true\nunsigned_sha256='+UNSIGNED+'\nmetadata='+json.dumps(metadata,separators=(',',':'))+'\n')
+        print('Validated '+version+' from '+SOURCE+'; using existing successful source checks')
+        PYCODE
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      if: steps.gate.outputs.approved == 'true'
+      with:
+        name: validated-beta2
+        path: validated-beta2/
+        retention-days: 1
+        if-no-files-found: error
+  sign:
+    needs: gate
+    if: needs.gate.outputs.approved == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: android-beta-signing
+    steps:
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Prepare SDK before secret access
+      run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;35.0.0"'
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: validated-beta2
+        path: validated-beta2
+    - name: Sign validated bytes with existing owner certificate
+      env:
+        BETA_SIGNING_BUNDLE: ${{ secrets.BETA_SIGNING_BUNDLE }}
+        EXPECTED_CERTIFICATE: ce51eb0755d1e4fd5043d833108f0ed374f44cdac8734e4cf63f2efe1bc3bf37
+        UNSIGNED_SHA256: ${{ needs.gate.outputs.unsigned_sha256 }}
+        BETA_METADATA: ${{ needs.gate.outputs.metadata }}
+        UNSIGNED_APK: validated-beta2/unsigned.apk
+        SIGNED_OUTPUT: signed
+      run: |
+        python3 -I - <<'PYCODE'
+        """Trusted signing step, embedded verbatim in the manual workflow. No project imports."""
+        import base64
+        import hashlib
+        import json
+        import os
+        from pathlib import Path
+        import re
+        import subprocess
+        import sys
+        import tempfile
+
+
+        def command(args, **kwargs):
+            result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **kwargs)
+            if result.returncode:
+                raise ValueError('Signing tool refused the input; no private diagnostic is printed')
+            return result.stdout
+
+
+        def sign():
+            raw = os.environ.pop('BETA_SIGNING_BUNDLE', '')
+            if not raw or len(raw) > 40000:
+                raise ValueError('ATTENTE COPIE UTILISATEUR: configure the owner-held signing bundle')
+            bundle = json.loads(raw)
+            if set(bundle) != {'format', 'p12', 'password', 'certificate_sha256', 'nordpass_confirmed'} or bundle['format'] != 1 or bundle['nordpass_confirmed'] is not True:
+                raise ValueError('Owner recovery confirmation is required')
+            password, expected = bundle['password'], bundle['certificate_sha256']
+            if expected != os.environ.get('EXPECTED_CERTIFICATE'):
+                raise ValueError('Existing beta certificate pin is required')
+            if not isinstance(password, str) or not 24 <= len(password) <= 128 or any(not 33 <= ord(c) <= 126 for c in password) or not re.fullmatch('[a-f0-9]{64}', expected):
+                raise ValueError('Invalid signing credentials or public fingerprint')
+            blob = base64.b64decode(bundle['p12'], validate=True)
+            if not 1000 <= len(blob) <= 20000:
+                raise ValueError('Invalid signing container')
+            if os.environ.get('GITHUB_ACTIONS') == 'true':
+                for value in (password, bundle['p12']):
+                    print('::add-mask::' + value.replace('%', '%25'), flush=True)
+            sdk = Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'
+            source = Path(os.environ['UNSIGNED_APK']).resolve()
+            if hashlib.sha256(source.read_bytes()).hexdigest()!=os.environ.get('UNSIGNED_SHA256'):
+                raise ValueError('Unsigned bytes must match the validated artifact')
+            metadata = json.loads(os.environ['BETA_METADATA'])
+            code, version = metadata['versionCode'], metadata['versionName']
+            if metadata['applicationId'] != 'io.moli.android.app.beta2' or not re.fullmatch('[1-9][0-9]*', str(code)) or not 0 < int(code) <= 2100000000 or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+-beta2\.[A-Za-z0-9.]+', version):
+                raise ValueError('Invalid beta metadata')
+            badging = command([str(sdk/'aapt'), 'dump', 'badging', str(source)])
+            prefix = f"package: name='io.moli.android.app.beta2' versionCode='{code}' versionName='{version}'"
+            if not badging.startswith(prefix) or 'application-debuggable' in badging or "sdkVersion:'28'" not in badging or "targetSdkVersion:'35'" not in badging or "native-code: 'arm64-v8a'" not in badging:
+                raise ValueError('Beta APK identity, version, ABI or debugging state mismatch')
+            permissions = set(re.findall(r"uses-permission: name='([^']+)'", badging))
+            allowed = {'android.permission.'+p for p in ('INTERNET','FOREGROUND_SERVICE','FOREGROUND_SERVICE_SPECIAL_USE','POST_NOTIFICATIONS')}
+            if permissions != allowed:
+                raise ValueError('Unexpected APK permissions')
+            verifier = str(sdk/'apksigner')
+            if subprocess.run([verifier, 'verify', str(source)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                raise ValueError('The build input must be unsigned')
+            output = Path(os.environ['SIGNED_OUTPUT']).resolve()
+            if output.exists():
+                raise ValueError('Refusing to overwrite an existing output directory')
+            output.mkdir(mode=0o700, parents=True)
+            release = output/'release'; release.mkdir(mode=0o700)
+            apk = release/f'moli-os-{version}-arm64.apk'
+            try:
+                with tempfile.TemporaryDirectory(prefix='moli-sign-', dir=os.environ.get('RUNNER_TEMP')) as temporary:
+                    keyfile = Path(temporary)/'beta.p12'
+                    fd = os.open(keyfile, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, 'wb') as stream:
+                        stream.write(blob)
+                    child = dict(os.environ, MOLI_KS_PASSWORD=password)
+                    pairs = [(source, apk)]
+                    for original, signed in pairs:
+                        command([verifier, 'sign', '--ks', str(keyfile), '--ks-type', 'PKCS12', '--ks-key-alias', 'moli-beta',
+                                 '--ks-pass', 'env:MOLI_KS_PASSWORD', '--key-pass', 'env:MOLI_KS_PASSWORD',
+                                 '--v1-signing-enabled', 'false', '--v2-signing-enabled', 'true', '--v3-signing-enabled', 'false',
+                                 '--v4-signing-enabled', 'false', '--out', str(signed), str(original)], env=child)
+                        certificate = command([verifier, 'verify', '--verbose', '--print-certs', str(signed)])
+                        found = re.findall(r'Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})', certificate)
+                        if found != [expected]:
+                            raise ValueError('APK signer does not match the owner recovery fingerprint')
+                        command([str(sdk/'zipalign'), '-c', '-P', '16', '4', str(signed)])
+                digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+                (release/'SHA256SUMS').write_text(digest+'  '+apk.name+'\n')
+                (release/'CERTIFICATE-SHA256.txt').write_text(expected+'\n')
+                (release/'INSTALLATION.txt').write_text(f'Moli OS Android Beta 2 — {version}.\nArrêter le moteur Beta 2 puis installer par-dessus la version Beta 2 précédente, sans effacer les données. Code39 reste indépendant.\n')
+                print('Signed beta verified; public certificate SHA-256: '+expected)
+            except Exception:
+                # Remove only this operation's newly created output; never existing owner data.
+                import shutil
+                shutil.rmtree(output)
+                raise
+
+
+        if __name__ == '__main__':
+            try:
+                sign()
+            except Exception:
+                print('Signing stopped: missing owner recovery confirmation, invalid metadata/credentials or SDK verification failure. No key was generated.', file=sys.stderr)
+                sys.exit(1)
+        PYCODE
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: signed-beta2
+        path: signed/release/
+        retention-days: 14
+        if-no-files-found: error
+  publish:
+    needs:
+    - gate
+    - sign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+    - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Prepare SDK before secret access
+      run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "build-tools;35.0.0"'
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: signed-beta2
+        path: release
+    - name: Independently verify and publish Beta 2 only
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BETA_METADATA: ${{ needs.gate.outputs.metadata }}
+      run: |
+        python3 -I - <<'PYCODE'
+        import hashlib, json, os, re, subprocess
+        from pathlib import Path
+        metadata=json.loads(os.environ['BETA_METADATA'])
+        SOURCE=metadata['source_sha']; code=metadata['versionCode']; version=metadata['versionName']; tag=metadata['tag']
+        CERTIFICATE='ce51eb0755d1e4fd5043d833108f0ed374f44cdac8734e4cf63f2efe1bc3bf37'
+        sdk=Path(os.environ['ANDROID_HOME'])/'build-tools/35.0.0'
+        release=Path('release'); apk=release/f'moli-os-{version}-arm64.apk'
+        cert=subprocess.check_output([str(sdk/'apksigner'),'verify','--verbose','--print-certs',str(apk)],text=True)
+        if re.findall(r'Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]{64})',cert)!=[CERTIFICATE]:raise ValueError('Wrong signer')
+        package=subprocess.check_output([str(sdk/'aapt'),'dump','badging',str(apk)],text=True)
+        if not package.startswith(f"package: name='io.moli.android.app.beta2' versionCode='{code}' versionName='{version}'") or 'application-debuggable' in package:raise ValueError('Wrong identity or debugging state')
+        subprocess.run([str(sdk/'zipalign'),'-c','-P','16','4',str(apk)],check=True)
+        actual=hashlib.sha256(apk.read_bytes()).hexdigest()
+        if (release/'SHA256SUMS').read_text()!=actual+'  '+apk.name+'\n':raise ValueError('Wrong release digest')
+        if (release/'CERTIFICATE-SHA256.txt').read_text().strip()!=CERTIFICATE:raise ValueError('Wrong certificate receipt')
+        (release/'SOURCE.txt').write_text(SOURCE+'\n')
+        (release/'PROVENANCE.json').write_text(json.dumps(dict(metadata,signed_sha256=actual,certificate_sha256=CERTIFICATE,signing_run_id=int(os.environ['GITHUB_RUN_ID'])),indent=2)+'\n')
+        notes=Path('notes.txt')
+        notes.write_text(f'Moli OS Android Beta 2 code{code}. Arrêter le moteur Beta 2 puis installer par-dessus la version Beta 2 précédente, sans effacer les données. Code39 inchangé.\nSource : {SOURCE}\nCandidat : run {metadata["candidate_run_id"]}, signé sans reconstruction avec le certificat propriétaire existant. Validation physique S5e à effectuer.\n')
+        subprocess.run(['gh','release','create',tag,*[str(p) for p in sorted(release.iterdir())],'--repo','torshu-hub/moli-os-android','--target',SOURCE,'--prerelease','--title',f'Moli OS Android Beta 2 code{code} — {version}','--notes-file',str(notes)],check=True)
+        url=f'https://github.com/torshu-hub/moli-os-android/releases/download/{tag}/{apk.name}'
+        with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as out:
+            out.write(f'[Télécharger l’APK ARM64 signée]({url})\n\nSHA-256 : `{actual}`\n')
+        print(url)
+        PYCODE
