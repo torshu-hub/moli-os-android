@@ -3,6 +3,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 root=$(pwd)
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$root/target}"
 [ "$(adb shell getprop ro.kernel.qemu | tr -d '\r')" = 1 ] || { echo 'Disposable emulator required' >&2; exit 1; }
 app=io.moli.android.app.beta2.test
 if adb shell pm path "$app" | grep -q '^package:'; then
