@@ -194,6 +194,7 @@ public final class Code5DeliveryTest {
         // Two actual hash transitions: Android Back follows internal history before leaving home.
         js("(()=>{document.querySelector('.rail a[href=\"#/dehors\"]').click();return true})()");waitJs("location.hash==='#/dehors'","Dehors missing");
         js("(()=>{document.querySelector('.rail a[href=\"#/automatismes\"]').click();return true})()");waitJs("location.hash==='#/automatismes'","Automations missing");
+        System.out.println("Web history before Android Back: "+js("({route:location.hash,length:history.length})"));
         back();waitJs("location.hash==='#/dehors'","Android Back did not preserve Web history");
         js("(()=>{document.querySelector('.rail a[href=\"#/\"]').click();return true})()");waitJs("location.hash==='#/'","Home missing");back();management();
         click(R.id.navigation_moli);webReady();
