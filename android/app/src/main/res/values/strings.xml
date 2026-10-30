@@ -53,6 +53,7 @@
     <string name="official_dashboard">Le tableau de bord Moli OS officiel.</string>
     <string name="android_tools">Le moteur et la configuration Android.</string>
     <string name="configure">Configurer</string>
+    <string name="native_setup_missing">Le parcours Android de déclaration et des options de ce pilote natif n’est pas disponible.</string>
     <string name="catalogue_count">%1$d intégrations officielles embarquées</string>
     <string name="activation_help">Activer un pilote ne commande pas l’appareil. Si le moteur tourne, il est arrêté puis relancé automatiquement pour appliquer ce réglage.</string>
     <string name="no_declared_brand">Sans marque déclarée</string>

@@ -328,6 +328,7 @@ public final class ManagementActivity extends Activity {
                 name.setTextColor(color(configurable ? R.color.management_ink : R.color.management_muted));
                 if(!configurable) {
                     JSONObject needs=manifest.getJSONObject("needs");List<String> missing=new ArrayList<>();
+                    if(!"profile".equals(metadata.getString("driver")))missing.add(getString(R.string.native_setup_missing));
                     for(String field:new String[]{"secrets","options","vars"}) {
                         JSONArray values=needs.getJSONArray(field);List<String> names=new ArrayList<>();
                         for(int i=0;i<values.length();i++)names.add(values.getString(i));
@@ -406,7 +407,10 @@ public final class ManagementActivity extends Activity {
             } else {
                 if(screen.saved) {
                     text(content,getString(screen.activation ? R.string.activation_saved : R.string.saved),18).setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-                    if(!screen.activation)text(content,getString(R.string.outdoor_binding_help),14);
+                    if(!screen.activation && screen.selected!=null) {
+                        String profile=screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id");
+                        if("open-meteo".equals(profile) || "open-meteo-air".equals(profile))text(content,getString(R.string.outdoor_binding_help),14);
+                    }
                 }
                 if(screen.loading!=null) text(content,getString(R.string.working),16);
                 else if(screen.catalogue!=null) {
