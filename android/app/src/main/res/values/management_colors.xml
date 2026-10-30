@@ -11,4 +11,10 @@
     <color name="management_success">#15815A</color>
     <color name="management_error">#B23443</color>
     <color name="management_disabled">#E2E8F0</color>
+    <color name="management_pending">#9C6A18</color>
+    <color name="engine_running_background">#EFFAF4</color>
+    <color name="engine_error_background">#FFF0F2</color>
+    <color name="engine_pending_background">#FFF9EC</color>
+    <color name="engine_stop_background">#FFEBEB</color>
+    <color name="engine_restart_background">#E5EFFF</color>
 </resources>

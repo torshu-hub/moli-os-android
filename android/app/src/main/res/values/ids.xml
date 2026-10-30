@@ -17,4 +17,7 @@
     <item name="navigation_moli" type="id" />
     <item name="engine_card" type="id" />
     <item name="advanced_options" type="id" />
+    <item name="open_moli" type="id" />
+    <item name="open_management" type="id" />
+    <item name="apk_home_return" type="id" />
 </resources>

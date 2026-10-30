@@ -48,4 +48,7 @@
     <string name="storage_tile">Stockage</string>
     <string name="device_tile">Appareil</string>
     <string name="advanced_options">Options avancées</string>
+    <string name="apk_home">Accueil APK</string>
+    <string name="official_dashboard">Le tableau de bord Moli OS officiel.</string>
+    <string name="android_tools">Le moteur et la configuration Android.</string>
 </resources>

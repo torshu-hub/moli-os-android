@@ -45,7 +45,7 @@ jobs:
           mkdir -p android/app/src/main/jniLibs/arm64-v8a
           unzip -p /tmp/code1.apk lib/arm64-v8a/libmoli_android.so > android/app/src/main/jniLibs/arm64-v8a/libmoli_android.so
           cd android
-          ./gradlew --no-daemon :app:lintBeta :app:assembleBeta
+          ./gradlew --no-daemon :app:testDebugUnitTest --tests io.moli.android.WeatherBindingTest :app:lintBeta :app:assembleBeta
       - name: Build isolated emulator engine
         run: sh scripts/build-android.sh x86_64
       - name: Enable disposable emulator
@@ -58,7 +58,7 @@ jobs:
           target: google_apis
           disable-animations: true
           working-directory: android
-          script: sh ../scripts/test-beta2-code2.sh
+          script: sh ../scripts/test-beta2-code3.sh
       - name: Seal candidate and source
         run: |
           mkdir -p android-candidate

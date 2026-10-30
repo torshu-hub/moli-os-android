@@ -32,6 +32,10 @@ public final class ManagementActivity extends Activity {
     private Screen screen;
     private LinearLayout root, navigation, body, content, footer, advancedFields;
     private Button moliDestination;
+    private LinearLayout engineCard;
+    private ImageView engineSymbol;
+    private FrameLayout engineBadge;
+    private EngineHost.State styledState;
     private ScrollView scroll;
     private TextView status, title, feedback;
     private Button primary, restart, save, back;
@@ -152,15 +156,23 @@ public final class ManagementActivity extends Activity {
         destinations.put(page,navigationButton(label,icon,id,()->navigate(page)));
     }
     private void renderHome() {
-        LinearLayout engine=card(content); engine.setId(R.id.engine_card);
+        LinearLayout engine=card(content); engineCard=engine; styledState=null; engine.setId(R.id.engine_card);
         heading(engine,R.string.engine_card_title,18);
-        status=text(engine,"",24); status.setId(R.id.engine_status);
+        LinearLayout stateRow=new LinearLayout(this); stateRow.setGravity(Gravity.CENTER_VERTICAL); engine.addView(stateRow);
+        engineBadge=new FrameLayout(this);
+        LinearLayout.LayoutParams badge=new LinearLayout.LayoutParams(dp(64),dp(64));badge.setMarginEnd(dp(18));stateRow.addView(engineBadge,badge);
+        engineSymbol=new ImageView(this);engineSymbol.setImageResource(R.drawable.ic_engine_power);
+        engineSymbol.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        engineBadge.addView(engineSymbol,new FrameLayout.LayoutParams(dp(32),dp(32),Gravity.CENTER));
+        status=text(stateRow,"",24); status.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));status.setId(R.id.engine_status);
         status.setTypeface(null,android.graphics.Typeface.BOLD);
         LinearLayout actions=new LinearLayout(this); actions.setGravity(Gravity.CENTER_VERTICAL); engine.addView(actions);
         primary=button(actions,R.string.start,this::command); primary.setId(R.id.engine_action);
         primary.setBackgroundResource(R.drawable.management_button_primary); primary.setTextColor(getColorStateList(R.color.management_primary_text));
         primary.setLayoutParams(new LinearLayout.LayoutParams(0,dp(52),1));
         restart=button(actions,R.string.restart,()->sendCommand(MoliService.RESTART));
+        restart.setBackgroundResource(R.drawable.management_button_restart);
+        restart.setTextColor(getColorStateList(R.color.management_restart_text));
         LinearLayout.LayoutParams second=new LinearLayout.LayoutParams(0,dp(52),1); second.setMarginStart(dp(12)); restart.setLayoutParams(second);
         // Layout placeholders only: no values, measurements or parallel monitoring service.
         int[] labels={R.string.memory_tile,R.string.storage_tile,R.string.integrations,R.string.device_tile};
@@ -219,7 +231,15 @@ public final class ManagementActivity extends Activity {
         }
         if(status!=null) {
             status.setText(label); status.setContentDescription(getString(R.string.engine_state,getString(label)));
-            status.setTextColor(color(state==EngineHost.State.RUNNING ? R.color.management_success : state==EngineHost.State.ERROR ? R.color.management_error : R.color.management_muted));
+            if(styledState!=state) {
+                int tone=state==EngineHost.State.RUNNING ? R.color.management_success : state==EngineHost.State.ERROR ? R.color.management_error : state==EngineHost.State.STOPPED ? R.color.management_muted : R.color.management_pending;
+                int fill=state==EngineHost.State.RUNNING ? R.color.engine_running_background : state==EngineHost.State.ERROR ? R.color.engine_error_background : state==EngineHost.State.STOPPED ? R.color.management_card : R.color.engine_pending_background;
+                status.setTextColor(color(tone)); engineSymbol.setColorFilter(color(tone));
+                engineBadge.setBackground(surface(fill,tone,32)); engineCard.setBackground(surface(fill,R.color.management_border,18));
+                primary.setBackgroundResource(state==EngineHost.State.RUNNING ? R.drawable.management_button_stop : R.drawable.management_button_primary);
+                primary.setTextColor(getColorStateList(state==EngineHost.State.RUNNING ? R.color.management_stop_text : R.color.management_primary_text));
+                styledState=state;
+            }
         }
         boolean idle=screen.saving==null && screen.loading==null;
         boolean actionable=state==EngineHost.State.STOPPED || state==EngineHost.State.ERROR || state==EngineHost.State.RUNNING;

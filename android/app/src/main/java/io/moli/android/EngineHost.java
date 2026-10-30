@@ -23,6 +23,7 @@ final class EngineHost {
         int port = NativeServer.start(ProtectedKey.dataDirectory(app,keys).getAbsolutePath(), keys.getString("master"), session, keys.getString("pin"));
         synchronized(EngineHost.class) { ++lease; token=session; origin="http://127.0.0.1:"+port; state=State.RUNNING; }
         GeneralJournal.record(app, GeneralJournal.Event.ENGINE_STARTED);
+        WeatherBinding.start(app,currentLease());
     }
     private static void stopNow(Context app) throws Exception {
         NativeServer.stop();

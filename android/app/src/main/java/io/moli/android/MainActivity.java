@@ -30,12 +30,14 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);
         LinearLayout root=HostUi.screen(this);
-        home=new LinearLayout(this);home.setOrientation(LinearLayout.VERTICAL);root.addView(home);
-        HostUi.text(this,home,R.string.app_name);
-        HostUi.button(this,home,R.string.moli_os,()->showDashboard());
-        HostUi.button(this,home,R.string.management,()->startActivity(new Intent(this,ManagementActivity.class)));
+        root.setBackgroundColor(getColor(R.color.management_background));
+        home=ApkHome.create(this,this::showDashboard,()->startActivity(new Intent(this,ManagementActivity.class)));
+        root.addView(home,new LinearLayout.LayoutParams(-1,0,1));
         dashboard=new LinearLayout(this);dashboard.setOrientation(LinearLayout.VERTICAL);root.addView(dashboard,new LinearLayout.LayoutParams(-1,0,1));dashboard.setVisibility(View.GONE);
-        HostUi.button(this,dashboard,R.string.spaces,()->showHome());
+        Button apkHome=HostUi.button(this,dashboard,R.string.apk_home,this::showHome);
+        apkHome.setId(R.id.apk_home_return);apkHome.setAllCaps(false);
+        apkHome.setBackgroundResource(R.drawable.management_button_secondary);
+        apkHome.setTextColor(getColorStateList(R.color.management_button_text));
         status=HostUi.text(this,dashboard,R.string.stopped);
         web=new WebView(this);web.getSettings().setJavaScriptEnabled(true);web.getSettings().setDomStorageEnabled(true);
         web.getSettings().setAllowFileAccess(false);web.getSettings().setAllowContentAccess(false);web.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
@@ -69,7 +71,7 @@ public final class MainActivity extends Activity {
     void showHome(){viewing=false;dashboard.setVisibility(View.GONE);home.setVisibility(View.VISIBLE);}
     @Override public void onBackPressed(){if(viewing){String url=web.getUrl();if(loaded!=null&&url!=null&&url.contains("#/")&&!url.endsWith("#/"))web.loadUrl(loaded+"/#/");else showHome();}else super.onBackPressed();}
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putBoolean("viewing",viewing);}
-    @Override public void onStart(){super.onStart();web.onResume();invalidate();handler.post(refresh);}
+    @Override public void onStart(){super.onStart();WeatherBinding.start(getApplicationContext(),EngineHost.currentLease());web.onResume();invalidate();handler.post(refresh);}
     @Override public void onStop(){handler.removeCallbacks(refresh);web.onPause();super.onStop();}
     @Override public void onDestroy(){handler.removeCallbacks(refresh);web.destroy();super.onDestroy();}
 }
