@@ -213,8 +213,10 @@
     border-radius: var(--r-lg);
     background: var(--surface);
     box-shadow: var(--shadow);
-    max-height: 100%;
-    overflow-y: auto;
+    /* The editor's side scrolls on desktop; the document does on tablets.
+       A second constrained scroller here cuts long conditions into a card. */
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   header {
@@ -309,6 +311,7 @@
 
   .seg {
     display: flex;
+    flex-wrap: wrap;
     gap: 4px;
     padding: 4px;
     border-radius: 14px;
