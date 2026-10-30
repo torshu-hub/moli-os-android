@@ -1,0 +1,83 @@
+name: Android Beta 2 code2
+on:
+  push:
+    branches: [android/beta2-code2-ux]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: beta2-code2-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: android/**/*.gradle*
+      - name: Install pinned toolchains
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --target aarch64-linux-android,x86_64-linux-android
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.2.13676358" "platforms;android-35" "build-tools;35.0.0"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          cache-on-failure: true
+      - name: Build original dashboard
+        working-directory: web
+        run: npm ci --no-audit --no-fund && npm run build
+      # Reuse the exact native ARM64 engine delivered in J1; Android presentation only.
+      - name: Reuse validated J1 engine and build code2 candidate
+        run: |
+          curl --fail --location --proto '=https' --output /tmp/code1.apk https://github.com/torshu-hub/moli-os-android/releases/download/moli-beta2-code-1/moli-os-0.1.0-beta2.j1-arm64.apk
+          echo 'd464d42738e773c3440d2c8d9ee6f6860a633c56bf0a5cdcbfbad9951abe35ba  /tmp/code1.apk' | sha256sum -c -
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          unzip -p /tmp/code1.apk lib/arm64-v8a/libmoli_android.so > android/app/src/main/jniLibs/arm64-v8a/libmoli_android.so
+          cd android
+          ./gradlew --no-daemon :app:testDebugUnitTest --tests io.moli.android.WeatherBindingTest :app:lintBeta :app:assembleBeta
+      - name: Build isolated emulator engine
+        run: sh scripts/build-android.sh x86_64
+      - name: Enable disposable emulator
+        run: sudo chmod a+rw /dev/kvm
+      - uses: ReactiveCircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
+        with:
+          api-level: 35
+          profile: pixel_c
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          working-directory: android
+          script: sh ../scripts/test-beta2-code3.sh
+      - name: Seal candidate and source
+        run: |
+          mkdir -p android-candidate
+          cp android/app/build/outputs/apk/beta/app-beta-unsigned.apk android-candidate/moli-os-beta2-code2-arm64-unsigned.apk
+          git rev-parse HEAD > android-candidate/source.txt
+          sha256sum android-candidate/*.apk > android-candidate/SHA256SUMS
+          python3 scripts/check-beta2-apk.py android-candidate/moli-os-beta2-code2-arm64-unsigned.apk
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: moli-os-beta2-code2-arm64-candidate
+          path: android-candidate/
+          retention-days: 14
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: moli-os-beta2-code2-checks
+          path: |
+            android/app/build/test-results/
+            android/app/build/reports/
+            android/app/build/outputs/androidTest-results/
+          retention-days: 14

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="engine_status" type="id" />
+    <item name="engine_action" type="id" />
+    <item name="management_back" type="id" />
+    <item name="management_scroll" type="id" />
+    <item name="catalogue_entry" type="id" />
+    <item name="form_feedback" type="id" />
+    <item name="integration_instance" type="id" />
+    <item name="variable_lat" type="id" />
+    <item name="variable_lon" type="id" />
+    <item name="save_configuration" type="id" />
+    <item name="management_navigation" type="id" />
+    <item name="navigation_home" type="id" />
+    <item name="navigation_integrations" type="id" />
+    <item name="navigation_journal" type="id" />
+    <item name="navigation_moli" type="id" />
+    <item name="engine_card" type="id" />
+    <item name="advanced_options" type="id" />
+    <item name="open_moli" type="id" />
+    <item name="open_management" type="id" />
+    <item name="apk_home_return" type="id" />
+</resources>
