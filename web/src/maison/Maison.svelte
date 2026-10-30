@@ -1,7 +1,7 @@
 <script>
   import '@fontsource-variable/figtree';
   import './maison.css';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { home, hub, start, value, savePref, watches, hidden } from './lib/home.svelte.js';
   import { t } from '../lib/i18n.svelte.js';
   import Icon from './ui/Icon.svelte';
@@ -108,6 +108,23 @@
   }
 
   const page = $derived(route.split('/')[0] ?? '');
+
+  // A fresh main section starts at the top. Mark visited hash entries (no
+  // new entry or URL change) so Back/Forward retain native scroll restoration.
+  // Leave the initial position, sub-routes and the rail alone.
+  let previousPage;
+  $effect(() => {
+    const returning = history.state?.moliRoute === route;
+    history.replaceState({ ...history.state, moliRoute: route }, '');
+    const changed = previousPage !== undefined && previousPage !== page;
+    previousPage = page;
+    if (!changed || returning) return;
+    let active = true;
+    tick().then(() => {
+      if (active) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    });
+    return () => (active = false);
+  });
 </script>
 
 <div class="maison" data-theme={theme}>
@@ -274,6 +291,16 @@
     padding: 0;
     display: grid;
     gap: 6px;
+    flex: 1;
+    min-height: 0;
+    align-content: start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .brand,
+  .rail-foot {
+    flex-shrink: 0;
   }
 
   .rail a,
@@ -501,6 +528,7 @@
       margin: 0;
       gap: 0;
       overflow-x: auto;
+      overflow-y: hidden;
       scrollbar-width: none;
       justify-content: safe center;
     }
