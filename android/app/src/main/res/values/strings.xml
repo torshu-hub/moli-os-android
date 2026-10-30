@@ -120,4 +120,31 @@
     <string name="description_z2m">Équipements Zigbee via Zigbee2MQTT</string>
     <string name="setup_discovery_pending">La découverte réseau reste réservée au jalon suivant.</string>
     <string name="setup_host_pending">Les mesures du pilote Host Linux ne sont pas établies sur Android.</string>
+
+    <string name="network_destination">Réseau</string>
+    <string name="network_title">Découverte réseau</string>
+    <string name="network_wifi">Wi-Fi</string>
+    <string name="network_ethernet">Ethernet</string>
+    <string name="network_search">Rechercher</string>
+    <string name="network_cancel">Annuler</string>
+    <string name="network_ready">Prête à rechercher</string>
+    <string name="network_searching">Recherche en cours</string>
+    <string name="network_complete">Terminée</string>
+    <string name="network_cancelled">Annulée</string>
+    <string name="network_changed">Réseau changé : relancez la recherche</string>
+    <string name="network_unavailable">Réseau indisponible</string>
+    <string name="network_count_state">%1$d adresses · %2$s</string>
+    <string name="network_limits">Recherche manuelle, 20 s maximum : annonces mDNS/SSDP et ports TCP 80, 443, 631. Les appareils silencieux peuvent manquer.</string>
+    <string name="network_partial">Résultats partiels : grand sous-réseau, limite atteinte ou méthode indisponible. Aucun balayage massif ; les appareils silencieux peuvent manquer.</string>
+    <string name="network_unknown">Appareil inconnu</string>
+    <string name="network_description">Description d’appareil</string>
+    <string name="network_port">Port ouvert</string>
+    <string name="network_mdns">Annonce mDNS</string>
+    <string name="network_ssdp">Annonce SSDP</string>
+    <string name="network_copy">Copier l’IP</string>
+    <string name="network_copied">Adresse IP copiée.</string>
+    <string name="network_ip">Adresse IP</string>
+    <string name="network_evidence_help">Un port ouvert ne prouve ni marque ni modèle. Les noms sont annoncés par les appareils. Aucune configuration Moli n’est modifiée.</string>
+    <string name="network_close">Fermer</string>
+    <string name="network_requirements">Réseau privé IPv4 en Wi-Fi ou Ethernet requis. VPN et réseau mobile exclus.</string>
 </resources>

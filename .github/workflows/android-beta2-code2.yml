@@ -1,12 +1,12 @@
-name: Android Beta 2 code7
+name: Android Beta 2 code8
 on:
   push:
-    branches: [android/beta2-code7-compact-config]
+    branches: [android/beta2-code8-reseau-decouverte]
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: beta2-code7-${{ github.ref }}
+  group: beta2-code8-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   candidate:
@@ -29,7 +29,7 @@ jobs:
           cache-dependency-path: android/**/*.gradle*
       - name: Install pinned toolchains
         run: |
-          rustup toolchain install 1.99.1 --profile minimal --target aarch64-linux-android,x86_64-linux-android
+          rustup toolchain install 1.99.1 --profile minimal --target x86_64-linux-android
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.2.13676358" "platforms;android-35" "build-tools;35.0.0"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
@@ -37,27 +37,16 @@ jobs:
       - name: Build original dashboard
         working-directory: web
         run: npm ci --no-audit --no-fund && npm run build
-      # Code6 Web/engine/driver sources stay exact; relink only the Android adapter.
-      # Cargo.lock may change only moli-android direct dependencies (checked below).
-      - name: Package code7 with current embedded Web
+      # Native presentation/discovery only: keep the validated code7 engine/Web.
+      - name: Package code8 with the exact signed code7 engine
         run: |
-          git fetch --no-tags --depth=1 https://github.com/torshu-hub/moli-os-android.git 787c6a8d43bbc53b79a44097177c37689764ca38
-          git diff --exit-code 787c6a8d43bbc53b79a44097177c37689764ca38 -- crates ':!crates/moli-android/src/configuration.rs' ':!crates/moli-android/Cargo.toml' Cargo.toml integrations
-          git diff --exit-code 787c6a8d43bbc53b79a44097177c37689764ca38 -- web
-          git diff --exit-code 787c6a8d43bbc53b79a44097177c37689764ca38 -- android/app/src/main/java/io/moli/android/MainActivity.java android/app/src/main/java/io/moli/android/EngineHost.java
-          python3 - <<'PYLOCK'
-          import subprocess,tomllib
-          base=tomllib.loads(subprocess.check_output(['git','show','787c6a8d43bbc53b79a44097177c37689764ca38:Cargo.lock'],text=True))
-          current=tomllib.load(open('Cargo.lock','rb'))
-          for lock in [base,current]:
-              lock['package']=[p for p in lock['package'] if p['name']!='moli-android']
-          assert base==current, 'Only Android adapter dependency edges may change'
-          PYLOCK
-          cargo +1.99.1 test -p moli-android --lib configuration --locked
-          cargo +1.99.1 clean --release -p moli-api --target aarch64-linux-android
-          sh scripts/build-android.sh arm64-v8a
+          git fetch --no-tags --depth=1 https://github.com/torshu-hub/moli-os-android.git 2ac0ed2326cf017554c47f186fb4d660c155fc70
+          git diff --exit-code 2ac0ed2326cf017554c47f186fb4d660c155fc70 -- crates Cargo.toml Cargo.lock integrations web
+          git diff --exit-code 2ac0ed2326cf017554c47f186fb4d660c155fc70 -- android/app/src/main/java/io/moli/android/MainActivity.java android/app/src/main/java/io/moli/android/EngineHost.java android/app/src/main/java/io/moli/android/ConfigStore.java android/app/src/main/java/io/moli/android/WeatherBinding.java
+          python3 scripts/check-beta2-code8-scope.py
+          python3 scripts/reuse-beta2-code7-engine.py
           cd android
-          ./gradlew --no-daemon :app:lintBeta :app:assembleBeta :app:testDebugUnitTest --tests io.moli.android.WeatherBindingTest
+          ./gradlew --no-daemon :app:lintBeta :app:assembleBeta :app:testDebugUnitTest --tests io.moli.android.NetworkEvidenceTest --tests io.moli.android.DiscoveryHttpTest
       - name: Enable disposable emulator
         run: sudo chmod a+rw /dev/kvm
       - uses: ReactiveCircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
@@ -68,25 +57,25 @@ jobs:
           target: google_apis
           disable-animations: true
           working-directory: android
-          script: sh ../scripts/test-beta2-code7.sh
+          script: sh ../scripts/test-beta2-code8.sh
       - name: Seal candidate and source
         run: |
           mkdir -p android-candidate
-          cp android/app/build/outputs/apk/beta/app-beta-unsigned.apk android-candidate/moli-os-beta2-code7-arm64-unsigned.apk
+          cp android/app/build/outputs/apk/beta/app-beta-unsigned.apk android-candidate/moli-os-beta2-code8-arm64-unsigned.apk
           git rev-parse HEAD > android-candidate/source.txt
           sha256sum android-candidate/*.apk > android-candidate/SHA256SUMS
-          python3 scripts/check-beta2-apk.py android-candidate/moli-os-beta2-code7-arm64-unsigned.apk
-          python3 scripts/check-beta2-code4-web.py android-candidate/moli-os-beta2-code7-arm64-unsigned.apk android/app/build/reports/code7/web-assets-proof.json
+          python3 scripts/check-beta2-apk.py android-candidate/moli-os-beta2-code8-arm64-unsigned.apk
+          python3 scripts/check-beta2-code4-web.py android-candidate/moli-os-beta2-code8-arm64-unsigned.apk android/app/build/reports/code8/web-assets-proof.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: moli-os-beta2-code7-arm64-candidate
+          name: moli-os-beta2-code8-arm64-candidate
           path: android-candidate/
           retention-days: 14
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: moli-os-beta2-code7-checks
+          name: moli-os-beta2-code8-checks
           path: |
             android/app/build/test-results/
             android/app/build/reports/

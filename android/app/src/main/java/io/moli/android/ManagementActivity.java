@@ -18,10 +18,11 @@ import org.json.*;
 
 /** Native presentation only. Catalogue, configuration and lifecycle remain in J1. */
 public final class ManagementActivity extends Activity {
-    private enum Page { HOME, INTEGRATIONS, PARAMETERS, JOURNAL }
+    private enum Page { HOME, INTEGRATIONS, PARAMETERS, JOURNAL, NETWORK }
     // Transient presentation state, retained across rotation; never a driver configuration store.
     private static final class Screen {
         Page page = Page.HOME;
+        final NetworkPanel.State network=new NetworkPanel.State();
         JSONObject catalogue, selected;
         String snapshot, id = "", error;
         final Map<String,String> draft = new LinkedHashMap<>();
@@ -32,6 +33,7 @@ public final class ManagementActivity extends Activity {
         Future<String> saving;
     }
     private Screen screen;
+    NetworkPanel networkPanel;
     private LinearLayout root, navigation, body, content, footer;
     private Button moliDestination;
     private LinearLayout engineCard;
@@ -62,6 +64,7 @@ public final class ManagementActivity extends Activity {
         landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         build();
+        networkPanel=new NetworkPanel(this,screen.network,scroll);
         render();
     }
     private int dp(int value) { return Math.round(value*getResources().getDisplayMetrics().density); }
@@ -113,12 +116,20 @@ public final class ManagementActivity extends Activity {
         }
         destination(Page.HOME,R.string.overview,R.drawable.ic_management_home,R.id.navigation_home);
         destination(Page.INTEGRATIONS,R.string.integrations,R.drawable.ic_management_integrations,R.id.navigation_integrations);
+        destination(Page.NETWORK,R.string.network_destination,R.drawable.ic_management_network,R.id.navigation_network);
         destination(Page.JOURNAL,R.string.journal,R.drawable.ic_management_journal,R.id.navigation_journal);
         moliDestination=navigationButton(R.string.moli_os,R.drawable.ic_management_moli,R.id.navigation_moli,this::openMoli);
-        if(landscape) root.addView(navigation,new LinearLayout.LayoutParams(dp(224),-1));
+        View navigationContainer;
+        if(landscape){
+            ScrollView rail=new ScrollView(this);rail.setFillViewport(true);rail.setHorizontalScrollBarEnabled(false);rail.addView(navigation);
+            navigationContainer=rail;root.addView(rail,new LinearLayout.LayoutParams(dp(224),-1));
+        }else{
+            HorizontalScrollView rail=new HorizontalScrollView(this);rail.setFillViewport(true);rail.setHorizontalScrollBarEnabled(false);
+            rail.addView(navigation,new android.widget.FrameLayout.LayoutParams(Math.max(dp(560),dp(getResources().getConfiguration().screenWidthDp)),-2));navigationContainer=rail;
+        }
         body=column(); body.setPadding(dp(landscape ? 32 : 20),dp(12),dp(landscape ? 32 : 20),dp(12));
         root.addView(body,new LinearLayout.LayoutParams(landscape ? 0 : -1,landscape ? -1 : 0,1));
-        if(!landscape) root.addView(navigation,new LinearLayout.LayoutParams(-1,-2));
+        if(!landscape) root.addView(navigationContainer,new LinearLayout.LayoutParams(-1,-2));
         LinearLayout header=new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL); body.addView(header);
         back=button(header,R.string.back,this::goBack); back.setId(R.id.management_back);
         back.setLayoutParams(new LinearLayout.LayoutParams(-2,dp(48)));
@@ -191,13 +202,16 @@ public final class ManagementActivity extends Activity {
         }
     }
     private void openMoli() {
+        if(screen.page==Page.NETWORK)networkPanel.leave();
         startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP));
     }
     private void navigate(Page page) {
         if(screen.saving!=null || screen.loading!=null) return;
+        if(screen.page==Page.NETWORK)networkPanel.leave();
         hideKeyboard(); remember();
         if(page!=Page.INTEGRATIONS)screen.catalogueScroll=-1;
         screen.page=page;
+        if(page==Page.NETWORK)screen.error=null;
         if(page==Page.INTEGRATIONS) { screen.error=null; load(); }
         render();
     }
@@ -449,10 +463,12 @@ public final class ManagementActivity extends Activity {
             item.getValue().setSelected(active);
             item.getValue().setTypeface(null,active ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         }
-        title.setText(screen.page==Page.HOME ? R.string.management : screen.page==Page.JOURNAL ? R.string.journal : R.string.integrations);
+        title.setText(screen.page==Page.HOME ? R.string.management : screen.page==Page.JOURNAL ? R.string.journal : screen.page==Page.NETWORK ? R.string.network_title : R.string.integrations);
         try {
             if(screen.page==Page.HOME) {
                 renderHome();
+            } else if(screen.page==Page.NETWORK) {
+                networkPanel.mount(content);
             } else if(screen.page==Page.JOURNAL) {
                 LinearLayout journal=card(content);
                 heading(journal,R.string.export,18);
@@ -485,7 +501,7 @@ public final class ManagementActivity extends Activity {
             for(EditText field:fields.values()) field.setError(screen.error);
         }
         if(screen.page==Page.INTEGRATIONS && screen.catalogueScroll>=0)scroll.post(()->scroll.scrollTo(0,screen.catalogueScroll));
-        else scroll.scrollTo(0,0);
+        else if(screen.page!=Page.NETWORK) scroll.scrollTo(0,0);
         updateControls();
     }
     private void edit(JSONObject selected) {
@@ -612,6 +628,6 @@ public final class ManagementActivity extends Activity {
     }
     @Override public Object onRetainNonConfigurationInstance() { remember(); return screen; }
     @Override public void onStart() { super.onStart(); handler.post(refresh); }
-    @Override public void onStop() { remember(); handler.removeCallbacks(refresh); super.onStop(); }
-    @Override public void onDestroy() { handler.removeCallbacksAndMessages(null); super.onDestroy(); }
+    @Override public void onStop() { if(screen.page==Page.NETWORK)networkPanel.leave();remember(); handler.removeCallbacks(refresh); super.onStop(); }
+    @Override public void onDestroy() { networkPanel.dispose();handler.removeCallbacksAndMessages(null); super.onDestroy(); }
 }
