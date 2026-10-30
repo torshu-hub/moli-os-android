@@ -17,6 +17,7 @@
     <string name="manual_variables">Enter the parameters manually.</string>
     <string name="save">Save</string>
     <string name="saved">Configuration saved.</string>
+    <string name="outdoor_binding_help">Saving configures the profile. Outdoors is linked after readings arrive, if the source is unique and without replacing your existing choice.</string>
     <string name="export">Export TXT journal</string>
     <string name="exported">Journal exported.</string>
     <string name="choose_pin">Choose your Moli OS code</string>
