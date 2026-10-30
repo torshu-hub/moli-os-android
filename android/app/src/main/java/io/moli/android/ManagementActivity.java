@@ -443,6 +443,7 @@ public final class ManagementActivity extends Activity {
     }
     private void renderForm() throws JSONException {
         title.setText(entry());
+        text(content,onboardingSummary(screen.selected.getString("onboarding")),14).setTextColor(color(R.color.management_muted));
         JSONArray vars=screen.selected.getJSONObject("manifest").getJSONObject("needs").getJSONArray("vars");
         text(content,getString(vars.length()==0 ? R.string.no_required_parameters : R.string.manual_variables),14).setTextColor(color(R.color.management_muted));
         for(int i=0;i<vars.length();i++) {
