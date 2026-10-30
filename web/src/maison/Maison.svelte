@@ -145,21 +145,25 @@
           </a>
         </li>
       {/each}
+      <li>
+        <button class="theme" onclick={cycleTheme} title={themeTitle}>
+          <span class="glyph"><Icon name={theme === 'night' ? 'moon' : 'sun'} size={20} /></span>
+          <span class="label">{themeName}</span>
+        </button>
+      </li>
+      <li>
+        <a href="#/systeme" class:active={page === 'systeme'} aria-current={page === 'systeme' ? 'page' : undefined} title={t('commun.nav.systeme_titre')}>
+          <span class="glyph"><Icon name="branch" size={20} /></span>
+          <span class="label">{t('commun.nav.systeme')}</span>
+        </a>
+      </li>
+      <li>
+        <a class="atelier" href="#/atelier" title={t('commun.nav.atelier_titre')}>
+          <span class="glyph"><Icon name="atelier" size={20} /></span>
+          <span class="label">{t('commun.nav.atelier')}</span>
+        </a>
+      </li>
     </ul>
-    <div class="rail-foot">
-      <button class="theme" onclick={cycleTheme} title={themeTitle}>
-        <Icon name={theme === 'night' ? 'moon' : 'sun'} size={20} />
-        <span class="label">{themeName}</span>
-      </button>
-      <a href="#/systeme" class:active={page === 'systeme'} title={t('commun.nav.systeme_titre')}>
-        <Icon name="branch" size={20} />
-        <span class="label">{t('commun.nav.systeme')}</span>
-      </a>
-      <a class="atelier" href="#/atelier" title={t('commun.nav.atelier_titre')}>
-        <Icon name="atelier" size={20} />
-        <span class="label">{t('commun.nav.atelier')}</span>
-      </a>
-    </div>
   </nav>
 
   <main class="content">
@@ -200,12 +204,6 @@
     {:else}
       <Accueil />
     {/if}
-    <!-- On a phone the rail's foot is hidden: the same three, at the bottom. -->
-    <footer class="phone-foot">
-      <a href="#/systeme"><Icon name="branch" size={16} />{t('commun.nav.comment_ca_marche')}</a>
-      <a href="#/atelier"><Icon name="atelier" size={16} />{t('commun.nav.atelier')}</a>
-      <button onclick={cycleTheme}><Icon name={theme === 'night' ? 'moon' : 'sun'} size={16} />{home.theme === 'auto' ? t('commun.theme.auto_pied') : themeName}</button>
-    </footer>
   </main>
 
   {#if page !== 'moli'}
@@ -293,8 +291,7 @@
     overscroll-behavior: contain;
   }
 
-  .brand,
-  .rail-foot {
+  .brand {
     flex-shrink: 0;
   }
 
@@ -335,7 +332,8 @@
     color: var(--ink-2);
   }
 
-  .rail ul a:focus-visible {
+  .rail ul a:focus-visible,
+  .rail ul button:focus-visible {
     /* Keep the focus ring inside the list's new scroll clipping area. */
     outline-offset: -3px;
   }
@@ -343,17 +341,6 @@
   .label {
     font-size: 12px;
     font-weight: 600;
-  }
-
-  .rail-foot {
-    margin-top: auto;
-    display: grid;
-    gap: 4px;
-  }
-
-  .rail-foot a,
-  .rail-foot button {
-    padding: 8px 0;
   }
 
   .content {
@@ -414,10 +401,6 @@
     font-size: 13.5px;
     font-weight: 600;
     box-shadow: var(--shadow);
-  }
-
-  .phone-foot {
-    display: none;
   }
 
   .notices {
@@ -509,10 +492,7 @@
       inset: auto 0 0 0;
       height: auto;
       flex-direction: row;
-      justify-content: safe center;
-      gap: 0;
-      overflow-x: auto;
-      overscroll-behavior-x: contain;
+      justify-content: center;
       padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
       background: var(--surface);
       box-shadow: var(--shadow-lift);
@@ -523,17 +503,16 @@
       display: none;
     }
 
-    /* One horizontal scrollport includes every destination and the theme.
-       Keep the existing list semantics and the separate desktop rail foot. */
-    .rail ul,
-    .rail-foot {
-      display: contents;
-    }
-
-    .rail li,
-    .rail-foot a,
-    .rail-foot button {
-      flex: 0 0 62px;
+    /* The same sequence scrolls vertically on wide screens, horizontally here. */
+    .rail ul {
+      grid-auto-flow: column;
+      grid-auto-columns: 62px;
+      width: 100%;
+      margin: 0;
+      gap: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      justify-content: safe center;
     }
 
     .rail a,
@@ -558,28 +537,6 @@
 
     .content {
       padding: 20px 16px 140px;
-    }
-
-    .phone-foot {
-      display: none;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 8px 18px;
-      margin-top: 28px;
-      font-size: 13px;
-    }
-
-    .phone-foot a,
-    .phone-foot button {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      border: none;
-      background: none;
-      color: var(--ink-3);
-      font: inherit;
-      text-decoration: none;
-      cursor: pointer;
     }
 
     .orb {
