@@ -25,13 +25,14 @@ public final class ManagementActivity extends Activity {
         JSONObject catalogue, selected;
         String snapshot, id = "", error;
         final Map<String,String> draft = new LinkedHashMap<>();
-        boolean existing, saved, advanced, activation;
+        boolean existing, saved, activation;
+        int filter;
         int catalogueScroll=-1;
         Future<JSONObject> loading;
         Future<String> saving;
     }
     private Screen screen;
-    private LinearLayout root, navigation, body, content, footer, advancedFields;
+    private LinearLayout root, navigation, body, content, footer;
     private Button moliDestination;
     private LinearLayout engineCard;
     private ImageView engineSymbol;
@@ -43,7 +44,7 @@ public final class ManagementActivity extends Activity {
     private EditText instance;
     private final Map<String,EditText> fields = new LinkedHashMap<>();
     private final Map<Page,Button> destinations = new EnumMap<>(Page.class);
-    private final List<Button> configurationActions=new ArrayList<>(), activationActions=new ArrayList<>();
+    private final List<View> configurationActions=new ArrayList<>(), activationActions=new ArrayList<>(), contextActions=new ArrayList<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean landscape, commandPending;
     private final Runnable refresh = new Runnable() {
@@ -256,8 +257,9 @@ public final class ManagementActivity extends Activity {
         back.setEnabled(idle);
         for(Button view:destinations.values()) view.setEnabled(idle);
         boolean writable=idle && (state==EngineHost.State.STOPPED || state==EngineHost.State.RUNNING) && screen.snapshot!=null;
-        for(Button view:configurationActions) view.setEnabled(writable);
-        for(Button view:activationActions) view.setEnabled(writable);
+        for(View view:configurationActions) view.setEnabled(writable);
+        for(View view:activationActions) view.setEnabled(writable);
+        for(View view:contextActions) view.setEnabled(idle);
     }
     private void load() {
         Context app=getApplicationContext();
@@ -294,79 +296,131 @@ public final class ManagementActivity extends Activity {
         String provider=brands(metadata);
         return provider.isEmpty() ? metadata.getString("name") : getString(R.string.catalogue_entry,provider,metadata.getString("name"));
     }
-    private String onboardingSummary(String source) {
-        StringBuilder first=new StringBuilder();
-        for(String raw:source.split("\n")) {
-            String line=raw.trim();
-            if(line.isEmpty() || line.startsWith("#"))continue;
-            if(first.length()>0 && line.matches("[0-9]+\\..*"))break;
-            if(first.length()>0)first.append(' ');
-            first.append(line.replaceFirst("^[0-9]+\\.\\s*","").replace("`",""));
+    private int description(String id) {
+        switch(id) {
+            case "alexa": return R.string.description_alexa;
+            case "bambu": return R.string.description_bambu;
+            case "daikin-brp069": return R.string.description_daikin_brp069;
+            case "demo": return R.string.description_demo;
+            case "dirigera": return R.string.description_dirigera;
+            case "esphome": return R.string.description_esphome;
+            case "frigate": return R.string.description_frigate;
+            case "helpers": return R.string.description_helpers;
+            case "host": return R.string.description_host;
+            case "hue": return R.string.description_hue;
+            case "igd": return R.string.description_igd;
+            case "iopool": return R.string.description_iopool;
+            case "ipp": return R.string.description_ipp;
+            case "izypower": return R.string.description_izypower;
+            case "klipper": return R.string.description_klipper;
+            case "meross-em06": return R.string.description_meross_em06;
+            case "moonraker": return R.string.description_moonraker;
+            case "open-meteo": return R.string.description_open_meteo;
+            case "open-meteo-air": return R.string.description_open_meteo_air;
+            case "philips": return R.string.description_philips;
+            case "phones": return R.string.description_phones;
+            case "presence": return R.string.description_presence;
+            case "reolink": return R.string.description_reolink;
+            case "shelly": return R.string.description_shelly;
+            case "solarman": return R.string.description_solarman;
+            case "sonos": return R.string.description_sonos;
+            case "tapo": return R.string.description_tapo;
+            case "telegram": return R.string.description_telegram;
+            case "tempo": return R.string.description_tempo;
+            case "tuya": return R.string.description_tuya;
+            case "z2m": return R.string.description_z2m;
+            default: return R.string.integrations_help;
         }
-        return first.toString();
+    }
+    private void unavailable(JSONObject item) {
+        try {
+            JSONObject needs=item.getJSONObject("manifest").getJSONObject("needs");
+            List<String> reasons=new ArrayList<>();
+            String id=item.getJSONObject("manifest").getJSONObject("integration").getString("id");
+            if(needs.getJSONArray("secrets").length()>0 || id.equals("hue") || id.equals("dirigera")) reasons.add(getString(R.string.setup_auth_missing));
+            else if(id.equals("igd"))reasons.add(getString(R.string.setup_discovery_pending));
+            else if(id.equals("host"))reasons.add(getString(R.string.setup_host_pending));
+            else reasons.add(getString(R.string.setup_flow_missing));
+            for(String field:new String[]{"options","vars"}) {
+                JSONArray values=needs.getJSONArray(field);List<String> names=new ArrayList<>();
+                for(int i=0;i<values.length();i++)names.add(values.getString(i));
+                if(!names.isEmpty())reasons.add(getString(field.equals("options") ? R.string.required_options : R.string.required_variables,String.join(", ",names)));
+            }
+            new android.app.AlertDialog.Builder(this).setTitle(catalogueLabel(item.getJSONObject("manifest").getJSONObject("integration")))
+                .setMessage(String.join("\n",reasons)).setPositiveButton(android.R.string.ok,null).show();
+        } catch(JSONException failure){HostUi.error(this,failure);}
     }
     private void renderCatalogue() throws JSONException {
         JSONArray packages=screen.catalogue.getJSONArray("packages");
-        text(content,getString(R.string.catalogue_count,packages.length()),16);
-        text(content,getString(R.string.activation_help),14);
-        if(screen.snapshot==null)text(content,getString(R.string.start_first),16);
+        LinearLayout filters=new LinearLayout(this);content.addView(filters);
+        int[] labels={R.string.filter_all,R.string.filter_configurable,R.string.filter_incomplete};
+        for(int i=0;i<labels.length;i++) {
+            final int choice=i;Button filter=button(filters,labels[i],()->{screen.filter=choice;screen.catalogueScroll=0;render();});
+            filter.setTag("filter:"+i);filter.setSelected(screen.filter==i);
+            filter.setTypeface(null,screen.filter==i ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+            filter.setPadding(dp(6),dp(6),dp(6),dp(6));filter.setTextSize(14);
+            LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(0,dp(48),1);if(i>0)params.setMarginStart(dp(6));filter.setLayoutParams(params);
+            contextActions.add(filter);
+        }
+        if(screen.snapshot==null)text(content,getString(R.string.start_first),14);
         Map<String,List<JSONObject>> groups=new TreeMap<>();
         for(int i=0;i<packages.length();i++) {
             JSONObject item=packages.getJSONObject(i),metadata=item.getJSONObject("manifest").getJSONObject("integration");
+            boolean configurable=item.getBoolean("configurable");
+            if(screen.filter==1&&!configurable || screen.filter==2&&configurable)continue;
             int count=metadata.getJSONArray("brands").length();
             String group=count==1 ? brands(metadata) : getString(count==0 ? R.string.no_declared_brand : R.string.multiple_brands);
             groups.computeIfAbsent(group,key->new ArrayList<>()).add(item);
         }
         for(Map.Entry<String,List<JSONObject>> group:groups.entrySet()) {
-            TextView label=text(content,group.getKey(),21);label.setTypeface(null,android.graphics.Typeface.BOLD);label.setAccessibilityHeading(true);
-            label.setTag("provider:"+group.getKey());
+            TextView label=text(content,group.getKey(),16);label.setPadding(dp(4),dp(14),0,dp(6));
+            label.setTypeface(null,android.graphics.Typeface.BOLD);label.setAccessibilityHeading(true);label.setTag("provider:"+group.getKey());
             for(JSONObject item:group.getValue()) {
-                JSONObject manifest=item.getJSONObject("manifest"),metadata=manifest.getJSONObject("integration");
-                String profile=metadata.getString("id");boolean configurable=item.getBoolean("configurable");
-                LinearLayout integration=card(content);integration.setTag("package:"+profile);
-                TextView name=text(integration,catalogueLabel(metadata),18);name.setTypeface(null,android.graphics.Typeface.BOLD);
-                name.setTextColor(color(configurable ? R.color.management_ink : R.color.management_muted));
-                if(!configurable) {
-                    JSONObject needs=manifest.getJSONObject("needs");List<String> missing=new ArrayList<>();
-                    if(!"profile".equals(metadata.getString("driver")))missing.add(getString(R.string.native_setup_missing));
-                    for(String field:new String[]{"secrets","options","vars"}) {
-                        JSONArray values=needs.getJSONArray(field);List<String> names=new ArrayList<>();
-                        for(int i=0;i<values.length();i++)names.add(values.getString(i));
-                        if(!names.isEmpty())missing.add(getString(field.equals("secrets") ? R.string.required_secrets : field.equals("options") ? R.string.required_options : R.string.required_variables,String.join(", ",names)));
-                    }
-                    missing.add(onboardingSummary(item.getString("onboarding")));
-                    text(integration,getString(R.string.android_setup_unavailable,String.join(" · ",missing)),14).setTextColor(color(R.color.management_muted));
-                }
                 JSONArray instances=item.getJSONArray("instances");
-                if(instances.length()==0) {
-                    text(integration,getString(R.string.not_configured),14);
-                    catalogueActions(integration,item,null,configurable);
-                } else for(int i=0;i<instances.length();i++) {
-                    JSONObject selected=instances.getJSONObject(i);
-                    text(integration,getString(R.string.instance_configuration,selected.getString("id"),getString(selected.getBoolean("enabled") ? R.string.driver_enabled : R.string.driver_disabled)),16);
-                    catalogueActions(integration,item,selected,configurable);
-                }
+                if(instances.length()==0)catalogueRow(item,null);
+                else for(int i=0;i<instances.length();i++)catalogueRow(item,instances.getJSONObject(i));
             }
         }
     }
-    private void catalogueActions(LinearLayout parent,JSONObject item,JSONObject selected,boolean configurable) throws JSONException {
-        String profile=item.getJSONObject("manifest").getJSONObject("integration").getString("id");
-        LinearLayout actions=new LinearLayout(this);parent.addView(actions);
-        Button configure=button(actions,R.string.configure,()->{
-            screen.catalogueScroll=scroll.getScrollY();
-            screen.selected=item;screen.saved=false;screen.activation=false;screen.error=null;edit(selected);
+    private void catalogueRow(JSONObject item,JSONObject selected) throws JSONException {
+        JSONObject metadata=item.getJSONObject("manifest").getJSONObject("integration");
+        String profile=metadata.getString("id");boolean configurable=item.getBoolean("configurable");
+        boolean valid=selected!=null&&selected.getBoolean("valid");
+        String id=selected==null ? null : selected.getString("id"),name=catalogueLabel(metadata);
+        int state=!configurable ? R.string.setup_incomplete : selected==null ? R.string.setup_needed : valid ? R.string.setup_configured : R.string.setup_invalid;
+        String stateText=getString(state);
+        LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setTag("package:"+profile);
+        row.setBackground(surface(R.color.management_card,0,8));
+        LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.bottomMargin=dp(2);content.addView(row,rp);
+        LinearLayout body=column();body.setPadding(dp(12),dp(8),dp(4),dp(8));body.setMinimumHeight(dp(64));
+        row.addView(body,new LinearLayout.LayoutParams(0,-2,1));
+        body.setBackgroundResource(R.drawable.management_catalogue_row);
+        android.text.SpannableString title=new android.text.SpannableString(name+"  "+stateText);
+        title.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),0,name.length(),0);
+        title.setSpan(new android.text.style.RelativeSizeSpan(0.8f),name.length()+2,title.length(),0);
+        title.setSpan(new android.text.style.ForegroundColorSpan(color(state==R.string.setup_invalid ? R.color.management_error : R.color.management_muted)),name.length()+2,title.length(),0);
+        TextView label=text(body,title,16);label.setPadding(0,0,0,0);label.setMaxLines(2);label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        label.setTextColor(color(configurable ? R.color.management_ink : R.color.management_muted));
+        String detail=getString(description(profile))+(id==null ? "" : " · "+id);
+        TextView summary=text(body,detail,13);summary.setPadding(0,dp(3),0,0);summary.setSingleLine(true);summary.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        summary.setTextColor(color(R.color.management_muted));
+        label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);summary.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        body.setContentDescription(name+", "+stateText+", "+detail+(configurable ? ", "+getString(R.string.configure) : ", "+getString(R.string.setup_reason)));
+        body.setTag(selected==null ? profile : "configure:"+id);
+        body.setOnClickListener(v->{
+            if(!configurable){unavailable(item);return;}
+            screen.catalogueScroll=scroll.getScrollY();screen.selected=item;screen.saved=false;screen.activation=false;screen.error=null;edit(selected);
         });
-        configure.setLayoutParams(new LinearLayout.LayoutParams(0,dp(52),1));
-        configure.setTag(selected==null ? profile : "configure:"+selected.getString("id"));
-        if(profile.equals("open-meteo") && root.findViewById(R.id.catalogue_entry)==null)configure.setId(R.id.catalogue_entry);
-        configure.setEnabled(configurable);
-        if(configurable)configurationActions.add(configure);
-        boolean enabled=selected!=null && selected.getBoolean("enabled");
-        Button activate=button(actions,enabled ? R.string.disable_driver : R.string.enable_driver,()->setEnabled(selected));
-        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(0,dp(52),1);params.setMarginStart(dp(12));activate.setLayoutParams(params);
-        activate.setEnabled(selected!=null);
-        activate.setTag(selected==null ? "unconfigured-toggle:"+profile : "toggle:"+selected.getString("id"));
-        if(selected!=null)activationActions.add(activate);
+        if(profile.equals("open-meteo")&&root.findViewById(R.id.catalogue_entry)==null)body.setId(R.id.catalogue_entry);
+        if(configurable)configurationActions.add(body);else contextActions.add(body);
+        boolean enabled=selected!=null&&selected.getBoolean("enabled");
+        Switch toggle=new Switch(this);toggle.setChecked(enabled);toggle.setShowText(false);toggle.setMinimumWidth(dp(56));toggle.setMinimumHeight(dp(48));
+        toggle.setPadding(dp(8),0,dp(12),0);row.addView(toggle,new LinearLayout.LayoutParams(-2,dp(48)));
+        toggle.setContentDescription(getString(enabled ? R.string.disable_instance : R.string.enable_instance,id==null ? name : id));
+        toggle.setTag(selected==null ? "unconfigured-toggle:"+profile : "toggle:"+id);
+        boolean actionable=selected!=null&&(!configurable||valid);
+        toggle.setEnabled(actionable);if(actionable)activationActions.add(toggle);
+        toggle.setOnClickListener(v->{toggle.setChecked(enabled);setEnabled(selected);});
     }
     private void setEnabled(JSONObject selected) {
         if(selected==null || screen.saving!=null || screen.loading!=null)return;
@@ -386,7 +440,7 @@ public final class ManagementActivity extends Activity {
     }
     private void render() {
         fields.clear(); instance=null; save=null; status=null; primary=null; restart=null;
-        configurationActions.clear();activationActions.clear();
+        configurationActions.clear();activationActions.clear();contextActions.clear();
         content.removeAllViews(); footer.removeAllViews();
         back.setVisibility(screen.page==Page.HOME ? View.GONE : View.VISIBLE);
         Page selected=(screen.page==Page.PARAMETERS) ? Page.INTEGRATIONS : screen.page;
@@ -439,48 +493,48 @@ public final class ManagementActivity extends Activity {
             screen.existing=selected!=null;
             screen.id=selected==null ? screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id") : selected.getString("id");
             screen.draft.clear();
-            JSONObject current=selected==null ? null : selected.optJSONObject("vars");
-            JSONArray vars=screen.selected.getJSONObject("manifest").getJSONObject("needs").getJSONArray("vars");
-            for(int i=0;i<vars.length();i++) { String name=vars.getString(i); screen.draft.put(name,current==null ? "" : current.optString(name,"")); }
-            screen.advanced=false; screen.page=Page.PARAMETERS; render();
+            JSONObject options=selected==null ? null : selected.optJSONObject("options");
+            JSONArray fields=screen.selected.getJSONArray("fields");
+            for(int i=0;i<fields.length();i++) {
+                JSONObject spec=fields.getJSONObject(i);String name=spec.getString("name"),location=spec.getString("location");
+                JSONObject current=options==null ? null : location.equals("vars") ? options.optJSONObject("vars") : options;
+                screen.draft.put(name,current==null ? "" : current.optString(name,""));
+            }
+            screen.page=Page.PARAMETERS;render();
         } catch(JSONException failure) { HostUi.error(this,failure); }
     }
     private void renderForm() throws JSONException {
         title.setText(entry());
-        text(content,onboardingSummary(screen.selected.getString("onboarding")),14).setTextColor(color(R.color.management_muted));
-        JSONArray vars=screen.selected.getJSONObject("manifest").getJSONObject("needs").getJSONArray("vars");
-        text(content,getString(vars.length()==0 ? R.string.no_required_parameters : R.string.manual_variables),14).setTextColor(color(R.color.management_muted));
-        for(int i=0;i<vars.length();i++) {
-            String name=vars.getString(i);
+        String profile=screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id");
+        text(content,getString(description(profile)),14).setTextColor(color(R.color.management_muted));
+        JSONArray specs=screen.selected.getJSONArray("fields");
+        if(specs.length()==0)text(content,getString(R.string.no_required_parameters),14);
+        if(profile.equals("sonos"))text(content,getString(R.string.sonos_basic_only),14);
+        for(int i=0;i<specs.length();i++) {
+            JSONObject spec=specs.getJSONObject(i);String name=spec.getString("name");
             boolean lat="lat".equals(name),lon="lon".equals(name);
             String label=lat ? getString(R.string.latitude) : lon ? getString(R.string.longitude) : name;
+            if(!spec.getBoolean("required"))label=getString(R.string.optional_parameter,label);
             EditText field=field(label,screen.draft.getOrDefault(name,""),lat ? R.id.variable_lat : lon ? R.id.variable_lon : View.generateViewId());
+            field.setTag("field:"+name);
             if(lat || lon) {
-                field.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL|InputType.TYPE_NUMBER_FLAG_SIGNED);
-                field.setHint(R.string.coordinate_hint);
-            }
-            field.setImeOptions((i==vars.length()-1 ? EditorInfo.IME_ACTION_DONE : EditorInfo.IME_ACTION_NEXT)|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+                field.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL|InputType.TYPE_NUMBER_FLAG_SIGNED);field.setHint(R.string.coordinate_hint);
+            } else if(spec.getBoolean("numeric"))field.setInputType(InputType.TYPE_CLASS_NUMBER);
+            else field.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            if(!spec.getBoolean("required"))field.setHint(R.string.official_default);
+            field.setImeOptions((i==specs.length()-1 ? EditorInfo.IME_ACTION_DONE : EditorInfo.IME_ACTION_NEXT)|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
             fields.put(name,field);
-            if(i==vars.length()-1) field.setOnEditorActionListener((v,action,event)->{
-                if(action==EditorInfo.IME_ACTION_DONE) { hideKeyboard(); return true; } return false;
-            });
         }
-        Button advanced=button(content,R.string.advanced_options,()->{
-            screen.advanced=!screen.advanced;
-            advancedFields.setVisibility(screen.advanced ? View.VISIBLE : View.GONE);
-        });
-        advanced.setId(R.id.advanced_options);
-        advancedFields=column(); content.addView(advancedFields);
-        advancedFields.setVisibility(screen.advanced ? View.VISIBLE : View.GONE);
-        LinearLayout mainFields=content; content=advancedFields;
-        instance=field(getString(R.string.instance),screen.id,R.id.integration_instance);
-        instance.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        instance.setImeOptions(EditorInfo.IME_ACTION_DONE|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-        content=mainFields;
+        if(screen.existing)text(content,getString(R.string.existing_instance,screen.id),13).setTextColor(color(R.color.management_muted));
+        else {
+            instance=field(getString(R.string.instance),screen.id,R.id.integration_instance);
+            instance.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            instance.setImeOptions(EditorInfo.IME_ACTION_DONE|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+            instance.setEnabled(screen.saving==null);
+        }
         save=button(footer,screen.saving==null ? R.string.save : R.string.saving,this::save);
         save.setId(R.id.save_configuration);
         save.setBackgroundResource(R.drawable.management_button_primary); save.setTextColor(getColorStateList(R.color.management_primary_text));
-        instance.setEnabled(!screen.existing && screen.saving==null);
         for(EditText field:fields.values()) field.setEnabled(screen.saving==null);
     }
     private EditText field(String label,String value,int id) {
@@ -518,12 +572,16 @@ public final class ManagementActivity extends Activity {
         remember(); hideKeyboard(); screen.error=null;
         Context app=getApplicationContext();
         try {
-            JSONObject vars=new JSONObject();
-            for(Map.Entry<String,String> item:screen.draft.entrySet()) vars.put(item.getKey(),item.getValue());
+            JSONObject vars=new JSONObject(),options=new JSONObject();
+            JSONArray specs=screen.selected.getJSONArray("fields");
+            for(int i=0;i<specs.length();i++) {
+                JSONObject spec=specs.getJSONObject(i);String name=spec.getString("name");
+                (spec.getString("location").equals("vars") ? vars : options).put(name,screen.draft.getOrDefault(name,""));
+            }
             final String before=screen.snapshot,id=screen.id,profile=screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id");
             screen.saving=EngineHost.maintain(app,()->{
                 try {
-                    ConfigStore store=new ConfigStore(app); store.save(before,profile,id,vars);
+                    ConfigStore store=new ConfigStore(app); store.save(before,profile,id,vars,options);
                     GeneralJournal.record(app,GeneralJournal.Event.CONFIGURATION_SAVED); return store.read();
                 } catch(Exception failure) {
                     GeneralJournal.record(app,GeneralJournal.Event.CONFIGURATION_REJECTED); throw failure;

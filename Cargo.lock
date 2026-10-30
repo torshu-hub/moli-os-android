@@ -1152,8 +1152,13 @@ name = "moli-android"
 version = "0.1.0"
 dependencies = [
  "jni",
+ "moli-ipp",
+ "moli-moonraker",
  "moli-os",
+ "moli-profile",
  "moli-runtime",
+ "moli-solarman",
+ "moli-sonos",
  "serde_json",
  "toml",
  "toml_edit",

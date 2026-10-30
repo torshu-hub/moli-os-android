@@ -12,6 +12,11 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 moli-os = { path = "../moli-os" }
 moli-runtime.workspace = true
+moli-profile.workspace = true
+moli-solarman.workspace = true
+moli-ipp.workspace = true
+moli-sonos.workspace = true
+moli-moonraker.workspace = true
 jni = "0.21.1"
 toml_edit = "0.25"
 serde_json.workspace = true

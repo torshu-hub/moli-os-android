@@ -32,7 +32,10 @@ final class ConfigStore {
         save(expected,"open-meteo",id,vars);
     }
     void save(String expected, String profile, String id, JSONObject vars) throws Exception {
-        apply(expected,new JSONObject().put("action","prepare").put("profile",profile).put("id",id).put("vars",vars));
+        save(expected,profile,id,vars,new JSONObject());
+    }
+    void save(String expected, String profile, String id, JSONObject vars, JSONObject options) throws Exception {
+        apply(expected,new JSONObject().put("action","prepare").put("profile",profile).put("id",id).put("vars",vars).put("options",options));
     }
     void setEnabled(String expected, String id, boolean enabled) throws Exception {
         apply(expected,new JSONObject().put("action","toggle").put("id",id).put("enabled",enabled));
