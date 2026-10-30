@@ -32,9 +32,15 @@ final class ConfigStore {
         save(expected,"open-meteo",id,vars);
     }
     void save(String expected, String profile, String id, JSONObject vars) throws Exception {
+        apply(expected,new JSONObject().put("action","prepare").put("profile",profile).put("id",id).put("vars",vars));
+    }
+    void setEnabled(String expected, String id, boolean enabled) throws Exception {
+        apply(expected,new JSONObject().put("action","toggle").put("id",id).put("enabled",enabled));
+    }
+    private void apply(String expected, JSONObject change) throws Exception {
         transaction.recover();
         if(!Objects.equals(expected, read())) throw new IllegalStateException("conflict");
-        String candidate = nativeCall(new JSONObject().put("action","prepare").put("profile",profile).put("text",expected).put("id",id).put("vars",vars)).getString("text");
+        String candidate = nativeCall(change.put("text",expected)).getString("text");
         String name = "moli.toml.validation";
         try {
             disk.write(name, candidate);
