@@ -97,8 +97,8 @@ public final class Code8DeliveryTest {
         assertFalse(LocalDiscovery.eligible(new android.net.NetworkCapabilities()));
         NetworkEvidence.Entry a=NetworkEvidence.ssdp("192.168.50.1","HTTP/1.1 200 OK\r\nLOCATION: http://192.168.50.1/root.xml\r\n");
         assertEquals("Fixture & gateway",DiscoveryXml.describe(a,"<root><device><friendlyName>Fixture &amp; gateway</friendlyName></device></root>").name);
-        for(String xml:new String[]{"<!DOCTYPE root [<!ENTITY x SYSTEM 'http://example.org/'>]><root/>","<root><device>","<other/>","x".repeat(32769)}){
-            try{DiscoveryXml.describe(a,xml);fail("Malformed description accepted");}catch(Exception expected){}
+        for(String xml:new String[]{"<!DOCTYPE root [<!ENTITY x SYSTEM 'http://example.org/'>]><root/>","<root><device>","<root/><root/>","<other/>","x".repeat(32769)}){
+            try{DiscoveryXml.describe(a,xml);fail("Malformed fixture description accepted: "+xml.substring(0,Math.min(80,xml.length())));}catch(Exception expected){}
         }
         android.content.pm.PackageInfo pkg=app.getPackageManager().getPackageInfo(app.getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS);
         java.util.List<String> permissions=java.util.Arrays.asList(pkg.requestedPermissions);
