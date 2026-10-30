@@ -120,4 +120,31 @@
     <string name="description_z2m">Zigbee devices via Zigbee2MQTT</string>
     <string name="setup_discovery_pending">Network discovery is reserved for the next milestone.</string>
     <string name="setup_host_pending">Linux Host driver measurements have not been established on Android.</string>
+
+    <string name="network_destination">Network</string>
+    <string name="network_title">Network discovery</string>
+    <string name="network_wifi">Wi-Fi</string>
+    <string name="network_ethernet">Ethernet</string>
+    <string name="network_search">Search</string>
+    <string name="network_cancel">Cancel</string>
+    <string name="network_ready">Ready to search</string>
+    <string name="network_searching">Searching</string>
+    <string name="network_complete">Complete</string>
+    <string name="network_cancelled">Cancelled</string>
+    <string name="network_changed">Network changed: search again</string>
+    <string name="network_unavailable">Network unavailable</string>
+    <string name="network_count_state">%1$d addresses · %2$s</string>
+    <string name="network_limits">Manual search, up to 20 s: mDNS/SSDP announcements and TCP ports 80, 443, 631. Silent devices may be missing.</string>
+    <string name="network_partial">Partial results: large subnet, limit reached or method unavailable. No large-scale probing; silent devices may be missing.</string>
+    <string name="network_unknown">Unknown device</string>
+    <string name="network_description">Device description</string>
+    <string name="network_port">Open port</string>
+    <string name="network_mdns">mDNS announcement</string>
+    <string name="network_ssdp">SSDP announcement</string>
+    <string name="network_copy">Copy IP</string>
+    <string name="network_copied">IP address copied.</string>
+    <string name="network_ip">IP address</string>
+    <string name="network_evidence_help">An open port does not prove a brand or model. Names are announced by devices. No Moli configuration is changed.</string>
+    <string name="network_close">Close</string>
+    <string name="network_requirements">A private IPv4 Wi-Fi or Ethernet network is required. VPN and cellular networks are excluded.</string>
 </resources>

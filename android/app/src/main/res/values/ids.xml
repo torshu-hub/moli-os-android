@@ -20,4 +20,11 @@
     <item name="open_moli" type="id" />
     <item name="open_management" type="id" />
     <item name="apk_home_return" type="id" />
+    <item name="navigation_network" type="id" />
+    <item name="network_active" type="id" />
+    <item name="network_search" type="id" />
+    <item name="network_cancel" type="id" />
+    <item name="network_status" type="id" />
+    <item name="network_limits" type="id" />
+    <item name="network_results" type="id" />
 </resources>
