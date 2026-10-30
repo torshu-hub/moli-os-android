@@ -509,32 +509,37 @@
       inset: auto 0 0 0;
       height: auto;
       flex-direction: row;
-      justify-content: center;
+      justify-content: safe center;
+      gap: 0;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
       padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
       background: var(--surface);
       box-shadow: var(--shadow-lift);
       z-index: 25;
     }
 
-    .rail .brand,
-    .rail-foot {
+    .rail .brand {
       display: none;
     }
 
-    .rail ul {
-      grid-auto-flow: column;
-      grid-auto-columns: 62px;
-      width: 100%;
-      margin: 0;
-      gap: 0;
-      overflow-x: auto;
-      overflow-y: hidden;
-      scrollbar-width: none;
-      justify-content: safe center;
+    /* One horizontal scrollport includes every destination and the theme.
+       Keep the existing list semantics and the separate desktop rail foot. */
+    .rail ul,
+    .rail-foot {
+      display: contents;
     }
 
-    .rail a {
-      width: auto;
+    .rail li,
+    .rail-foot a,
+    .rail-foot button {
+      flex: 0 0 62px;
+    }
+
+    .rail a,
+    .rail button {
+      width: 62px;
+      min-height: 48px;
       padding: 4px 0;
     }
 
@@ -556,7 +561,7 @@
     }
 
     .phone-foot {
-      display: flex;
+      display: none;
       flex-wrap: wrap;
       justify-content: center;
       gap: 8px 18px;
