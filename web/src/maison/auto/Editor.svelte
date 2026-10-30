@@ -671,7 +671,7 @@
 
   .body {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
     gap: 16px;
     min-height: 0;
   }
@@ -687,6 +687,7 @@
     gap: 14px;
     overflow-y: auto;
     min-height: 0;
+    min-width: 0;
     padding-bottom: 80px;
   }
 
@@ -874,7 +875,7 @@
     }
 
     .body {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .canvas-wrap {
