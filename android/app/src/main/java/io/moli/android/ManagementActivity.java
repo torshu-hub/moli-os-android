@@ -789,7 +789,10 @@ public final class ManagementActivity extends Activity {
     }
     private boolean configuredMeross(String uuid) throws JSONException {
         JSONArray instances=screen.selected.getJSONArray("instances");
-        for(int i=0;i<instances.length();i++)if(uuid.equalsIgnoreCase(instances.getJSONObject(i).getJSONObject("options").optString("expected_uuid")))return true;
+        for(int i=0;i<instances.length();i++) {
+            JSONObject vars=instances.getJSONObject(i).getJSONObject("options").optJSONObject("vars");
+            if(vars!=null && uuid.equalsIgnoreCase(vars.optString("expected_uuid")))return true;
+        }
         return false;
     }
     private void renderMerossMatches() throws JSONException {
