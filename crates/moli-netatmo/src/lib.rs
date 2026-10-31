@@ -71,11 +71,20 @@ impl Netatmo {
         account: &mut oauth::account::Account,
         force: bool,
         cache: &mut Option<Topology>,
+        started: Instant,
     ) -> Result<(Vec<Observation>, bool), Failure> {
         let grant = account
             .ensure_with(self.transport.as_ref(), &DriverVault(ctx), now_ms(), force)
             .await
             .map_err(auth_failure)?;
+        let status = client::read(
+            self.transport.as_ref(),
+            &grant.tokens.access_token,
+            &self.config.home_id,
+            false,
+        )
+        .await?;
+        let status_collected_at = now_ms();
         if cache.as_ref().is_none_or(|c| Instant::now() >= c.next) {
             match client::read(
                 self.transport.as_ref(),
@@ -88,7 +97,7 @@ impl Netatmo {
                 Ok(data) => {
                     *cache = Some(Topology {
                         data,
-                        next: Instant::now() + Duration::from_secs(self.config.topology_seconds),
+                        next: started + Duration::from_secs(self.config.topology_seconds),
                         collected_at: now_ms(),
                     });
                 }
@@ -105,13 +114,6 @@ impl Netatmo {
                 }
             }
         }
-        let status = client::read(
-            self.transport.as_ref(),
-            &grant.tokens.access_token,
-            &self.config.home_id,
-            false,
-        )
-        .await?;
         let topology = cache.as_ref().ok_or(Failure::InvalidResponse)?;
         let mut rows = model::parse(
             &topology.data,
@@ -121,6 +123,7 @@ impl Netatmo {
             self.config.max_age_seconds * 1000,
         )?;
         for row in &mut rows {
+            row.collected_at = status_collected_at;
             row.readings.insert(
                 "topology_collected_at",
                 Value::Int(i64::try_from(topology.collected_at).unwrap_or(i64::MAX)),
@@ -197,7 +200,7 @@ impl Driver for Netatmo {
                     }
                     ()=tokio::time::sleep_until(next)=>{
                         let start=Instant::now();
-                        match self.collect(ctx,&mut account,force,&mut cache).await {
+                        match self.collect(ctx,&mut account,force,&mut cache,start).await {
                             Ok((observations,write))=>{
                                 let seen:std::collections::BTreeSet<_>=observations.iter().map(|o|ctx.device_id(&o.native)).collect();
                                 for id in ctx.devices().into_iter().filter(|id|!seen.contains(id)){invalidate(ctx,&id,"missing","");records.remove(&id);}

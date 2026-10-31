@@ -602,10 +602,10 @@ async fn driver_polls_status_at_30_seconds_and_topology_at_300_and_read_scope_ca
     let mock = Arc::new(Mock::default());
     let mut t = topology();
     t["time_server"] = json!(now_ms() / 1000);
-    mock.add(200, &t);
     let mut s = status();
     s["time_server"] = json!(now_ms() / 1000);
     mock.add(200, &s);
+    mock.add(200, &t);
     let mut driver = Netatmo::new(config()).unwrap();
     driver.transport = mock.clone();
     let cancel = CancellationToken::new();
@@ -623,10 +623,10 @@ async fn driver_polls_status_at_30_seconds_and_topology_at_300_and_read_scope_ca
         Err(moli_runtime::CommandError::ReadOnly)
     ));
     for n in 1..=10 {
+        mock.add(200, &s);
         if n == 10 {
             mock.add(200, &t);
         }
-        mock.add(200, &s);
         let before = mock.requests.lock().unwrap().len();
         tokio::time::advance(Duration::from_secs(30)).await;
         settle(|| mock.requests.lock().unwrap().len() > before && hub.stats().drivers_running == 1)
@@ -667,10 +667,10 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
     let mock = Arc::new(Mock::default());
     let mut t = topology();
     t["time_server"] = json!(now_ms() / 1000);
-    mock.add(200, &t);
     let mut s = status();
     s["time_server"] = json!(now_ms() / 1000);
     mock.add(200, &s);
+    mock.add(200, &t);
     let mut driver = Netatmo::new(config()).unwrap();
     driver.transport = mock.clone();
     let cancel = CancellationToken::new();
