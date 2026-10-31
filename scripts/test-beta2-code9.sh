@@ -15,7 +15,15 @@ git archive "$base" | tar -x -C "$fixture"
 cp -a web/dist "$fixture/web/dist"
 (cd "$fixture" && cargo +1.99.1 clean --release -p moli-api --target x86_64-linux-android && sh scripts/build-android.sh x86_64)
 (cd android && ./gradlew -p "$fixture/android" --no-daemon -PmoliAbis=x86_64 -PmoliFixtureVersionCode=8 :app:assembleDebug)
+# The old fixture and code9 share a target directory. Cargo can otherwise keep
+# build.rs output containing absolute include_str! paths into the old fixture.
+cargo +1.99.1 clean --release -p moli-android --target x86_64-linux-android
 sh scripts/build-android.sh x86_64
+python3 - <<'PY'
+from pathlib import Path
+manifest = Path('integrations/meross-mss310/integration.toml').read_bytes()
+assert manifest in Path('android/app/src/main/jniLibs/x86_64/libmoli_android.so').read_bytes(), 'The emulator JNI must embed the code9 catalogue'
+PY
 (cd android && ./gradlew --no-daemon -PmoliAbis=x86_64 -PmoliFixtureVersionCode=9 :app:assembleDebug :app:assembleDebugAndroidTest)
 mkdir -p android/app/build/reports/code9/screenshots
 adb shell wm size 1280x720
