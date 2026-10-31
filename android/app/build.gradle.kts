@@ -4,7 +4,7 @@ val beta = Properties().apply { rootProject.file("beta.properties").inputStream(
 require(beta.getProperty("applicationId") == "io.moli.android.app.beta2")
 val embedNotices by tasks.registering(Copy::class) {
     from(rootProject.file("../LICENSE"), rootProject.file("../NOTICE"))
-    from(rootProject.file("../licenses/ha-solarman-MIT.txt"))
+    from(rootProject.file("../licenses/ha-solarman-MIT.txt"), rootProject.file("../licenses/meross-lan-MIT.txt"))
     into(layout.buildDirectory.dir("generated/notices"))
 }
 android {

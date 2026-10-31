@@ -23,7 +23,19 @@ final class HostUi {
     }
     static int errorMessage(Throwable failure){
         while(failure.getCause()!=null)failure=failure.getCause();
-        String code=failure.getMessage();int message="configuration".equals(code)?R.string.configuration_rejected:
+        String code=failure.getMessage();
+        if(code!=null)switch(code) {
+            case "account_key":return R.string.meross_error_key;
+            case "account_local":return R.string.meross_error_local;
+            case "account_uuid_different":return R.string.meross_error_identity;
+            case "account_protocol":return R.string.meross_error_protocol;
+            case "account_auth":case "account_denied":case "account_input":case "account_region":return R.string.meross_error_auth;
+            case "account_mfa":return R.string.meross_error_mfa;
+            case "account_network":case "account_clock":return R.string.meross_error_network;
+            case "account_rate":return R.string.meross_error_rate;
+            case "account_expired":return R.string.meross_error_expired;
+        }
+        int message="configuration".equals(code)?R.string.configuration_rejected:
             "conflict".equals(code)||"configuration_conflict".equals(code)?R.string.configuration_conflict:
             "start_first".equals(code)?R.string.start_first:
             "busy".equals(code)||"running".equals(code)?R.string.busy:R.string.operation_failed;

@@ -12,6 +12,8 @@
 //! on the same network, checks its identity there, and talks to it at its
 //! new address, journaled and remembered (`data/addresses.json`).
 
+pub mod meross_cloud;
+mod mss310;
 mod profile;
 mod trust;
 
@@ -67,6 +69,9 @@ pub struct Config {
     /// Values for the profile's `{placeholders}` (`lat`, `lon`…).
     #[serde(default)]
     pub vars: std::collections::BTreeMap<String, String>,
+    /// Optional human label; native identity remains the device UUID.
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 /// Where and how to reach the device.
@@ -294,7 +299,27 @@ impl ProfileDriver {
     /// Given by the host program, never by the driver options: the driver
     /// and `moli-os profile trust` must read the same list.
     pub fn new(config: Config, trust_file: PathBuf) -> Result<Self, ProfileError> {
-        let (profile, file) = open(&config.profile)?;
+        let (mut profile, file) = open(&config.profile)?;
+        if let Some(name) = &config.name {
+            if name.trim().is_empty() || name.len() > 160 || name.chars().any(char::is_control) {
+                return Err(ProfileError {
+                    profile: config.profile.clone(),
+                    message: "invalid display name".into(),
+                });
+            }
+            profile.meta.name.clone_from(name);
+        }
+        if config.profile == "meross-mss310"
+            && !config
+                .vars
+                .get("expected_uuid")
+                .is_some_and(|id| meross_cloud::uuid(id))
+        {
+            return Err(ProfileError {
+                profile: config.profile.clone(),
+                message: "MSS310 expected UUID required".into(),
+            });
+        }
         Target::of(&config, &profile)?;
         Ok(Self {
             config,
@@ -439,7 +464,7 @@ async fn answers_as(
         return false;
     };
     let path: Vec<String> = path.split('.').map(str::to_owned).collect();
-    fetch(target, request, secret)
+    fetch_profile(target, request, secret, profile)
         .await
         .ok()
         .and_then(|answer| answer.text(&path))
@@ -643,6 +668,15 @@ async fn fetch(
 /// A signed Meross local-API `GET` message:
 /// `sign = md5(messageId ‖ key ‖ timestamp)`.
 fn meross_message(namespace: &str, payload: &serde_json::Value, key: &str) -> serde_json::Value {
+    meross_message_method("GET", namespace, payload, key)
+}
+
+fn meross_message_method(
+    method: &str,
+    namespace: &str,
+    payload: &serde_json::Value,
+    key: &str,
+) -> serde_json::Value {
     use md5::{Digest as _, Md5};
     static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let now = std::time::SystemTime::now()
@@ -655,14 +689,12 @@ fn meross_message(namespace: &str, payload: &serde_json::Value, key: &str) -> se
     );
     let message_id = hex(&Md5::digest(unique.as_bytes()));
     let timestamp = now.as_secs();
-    let sign = hex(&Md5::digest(
-        format!("{message_id}{key}{timestamp}").as_bytes(),
-    ));
+    let sign = meross_signature(&message_id, key, timestamp);
     serde_json::json!({
         "header": {
             "from": "/appliance/moli/subscribe",
             "messageId": message_id,
-            "method": "GET",
+            "method": method,
             "namespace": namespace,
             "payloadVersion": 1,
             "sign": sign,
@@ -670,6 +702,53 @@ fn meross_message(namespace: &str, payload: &serde_json::Value, key: &str) -> se
         },
         "payload": payload,
     })
+}
+
+fn meross_signature(message_id: &str, key: &str, timestamp: u64) -> String {
+    use md5::{Digest as _, Md5};
+    hex(&Md5::digest(
+        format!("{message_id}{key}{timestamp}").as_bytes(),
+    ))
+}
+
+async fn fetch_profile(
+    target: &Target,
+    request: &profile::CompiledRequest,
+    secret: Option<&str>,
+    compiled: &Compiled,
+) -> anyhow::Result<Answer> {
+    if compiled.meta.id == "meross-mss310" && compiled.source == Source::Builtin {
+        mss310::fetch(target, request, secret).await
+    } else {
+        fetch(target, request, secret).await
+    }
+}
+
+/// Verify the model and UUID using the local signed protocol during provisioning.
+pub async fn mss310_identity(host: &str, port: u16, key: &str) -> anyhow::Result<String> {
+    let (profile, _) = open("meross-mss310")?;
+    let target = Target {
+        host: host.into(),
+        port,
+        tls: false,
+        vars: std::collections::BTreeMap::new(),
+    };
+    let answer = mss310::fetch(&target, &profile.requests[0], Some(key)).await?;
+    answer
+        .text(&["payload", "all", "system", "hardware", "uuid"].map(str::to_owned))
+        .context("MSS310 identity missing")
+}
+
+/// Stable, non-sensitive provisioning diagnosis.
+#[must_use]
+pub fn mss310_identity_error(error: &anyhow::Error) -> &'static str {
+    if error.is::<mss310::KeyRejected>() {
+        "account_key"
+    } else if unreachable(error) {
+        "account_local"
+    } else {
+        "account_protocol"
+    }
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -769,7 +848,7 @@ impl<'a> Session<'a> {
         let profile = self.profile;
         let needed = identity_requests(profile);
         for (i, request) in profile.requests.iter().enumerate() {
-            match fetch(self.target, request, self.secret).await {
+            match fetch_profile(self.target, request, self.secret, profile).await {
                 Ok(answer) => {
                     self.answers.insert(request.id.clone(), answer);
                     self.due[i] = Instant::now() + request.every;
@@ -798,7 +877,7 @@ impl<'a> Session<'a> {
     async fn poll(&mut self, ctx: &DriverCtx, device: &DeviceId, i: usize) -> anyhow::Result<()> {
         let profile = self.profile;
         let request = &profile.requests[i];
-        let result = match fetch(self.target, request, self.secret).await {
+        let result = match fetch_profile(self.target, request, self.secret, profile).await {
             Ok(answer) => {
                 self.failures[i] = 0;
                 self.silent = 0;
@@ -841,6 +920,10 @@ impl<'a> Session<'a> {
             command.reply(Err(moli_i18n::tr!("pilotes.profile.lecture_seule")));
             return;
         };
+        if write.meross {
+            self.meross_command(ctx, device, command, write).await;
+            return;
+        }
         let deadline = Instant::from_std(command.deadline);
         let outcome =
             tokio::time::timeout_at(deadline, self.write(ctx, device, write, &command.value))
@@ -1269,6 +1352,7 @@ mod tests {
 
     fn config(profile: &str) -> Config {
         Config {
+            name: None,
             profile: profile.into(),
             // TEST-NET: nothing here ever connects.
             host: Some("192.0.2.1".into()),
@@ -1547,6 +1631,7 @@ mod tests {
             })
             .unwrap();
             let config = Config {
+                name: None,
                 profile: "daikin-brp069".into(),
                 host: Some(CONFIGURED.to_string()),
                 port: Some(port),
@@ -1731,12 +1816,14 @@ mod tests {
     fn only_builtin_profiles_of_home_devices_are_followed() {
         let (profile, _) = open("open-meteo").unwrap();
         let web = Config {
+            name: None,
             host: Some("10.0.0.30".into()),
             ..config("open-meteo")
         };
         assert!(!followable(&web, &profile, Lan::REAL), "its own host");
         let (daikin, _) = open("daikin-brp069").unwrap();
         let mut home = Config {
+            name: None,
             host: Some("10.0.0.21".into()),
             ..config("daikin-brp069")
         };

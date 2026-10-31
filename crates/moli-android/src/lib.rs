@@ -1,5 +1,6 @@
 //! JNI boundary; all business code remains in the official engine.
 mod configuration;
+mod meross;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
@@ -97,10 +98,19 @@ pub extern "system" fn Java_io_moli_android_NativeServer_configuration(
             let slot = engine()
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if slot.is_some() && input["action"] != "form" && input["action"] != "catalogue" {
+            if slot.is_some()
+                && input["action"] != "form"
+                && input["action"] != "catalogue"
+                && !(input["action"] == "meross"
+                    && matches!(
+                        input["operation"].as_str(),
+                        Some("status" | "inventory" | "identify")
+                    ))
+            {
                 return Err("running");
             }
             match input["action"].as_str() {
+                Some("meross") => meross::run(&input),
                 Some("form") => configuration::form(input["text"].as_str().ok_or("input")?),
                 Some("catalogue") => {
                     configuration::catalogue(input["text"].as_str().ok_or("input")?)

@@ -1,0 +1,25 @@
+{
+  "header": {
+    "method": "GETACK",
+    "namespace": "Appliance.Control.ConsumptionX"
+  },
+  "payload": {
+    "consumptionx": [
+      {
+        "date": "2026-10-21",
+        "time": 1792584000,
+        "value": 987
+      },
+      {
+        "date": "2026-10-20",
+        "time": 1792497600,
+        "value": 1200
+      }
+    ],
+    "moli_latest": {
+      "date": "2026-10-21",
+      "time": 1792584000,
+      "value": 987
+    }
+  }
+}

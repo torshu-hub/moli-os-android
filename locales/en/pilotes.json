@@ -530,5 +530,8 @@
   "pilotes.solarman.lecture_seule": "the inverter is read only, it takes no orders",
   "pilotes.solarman.fuseau_inconnu": "unknown time zone: \"{timezone}\" (for example Europe/Paris)",
   "pilotes.solarman.numero_inconnu": "the logger's serial number is unknown: {host} does not answer discovery (at night the inverter sleeps); give it in the \"serial\" option (logger sticker or Solarman app)",
-  "pilotes.solarman.pas_un_micro": "the device behind this logger is not a Deye micro-inverter: not supported yet"
+  "pilotes.solarman.pas_un_micro": "the device behind this logger is not a Deye micro-inverter: not supported yet",
+  "pilotes.profile.meross_refused": "Meross: command refused before sending; check connection, key and identity.",
+  "pilotes.profile.meross_unknown": "Meross: uncertain result after sending; read the state before another command.",
+  "pilotes.profile.meross_unconfirmed": "Meross: command acknowledged, physical state not confirmed."
 }
