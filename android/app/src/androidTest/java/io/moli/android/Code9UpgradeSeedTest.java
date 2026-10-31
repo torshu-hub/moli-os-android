@@ -36,7 +36,7 @@ public final class Code9UpgradeSeedTest {
     @Test public void seedRealCode9()throws Exception {
         Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertEquals("io.moli.android.app.beta2.test",app.getPackageName());
-        assertEquals(9,app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());assertFalse(ProtectedKey.exists(app));
+        assertEquals(10,app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());assertFalse(ProtectedKey.exists(app));
         ProtectedKey.create(app,"482913");
         app.startForegroundService(new Intent(app,MoliService.class));Beta2JourneyTest.waitState(EngineHost.State.RUNNING);
         app.startForegroundService(new Intent(app,MoliService.class).setAction(MoliService.STOP));Beta2JourneyTest.waitState(EngineHost.State.STOPPED);

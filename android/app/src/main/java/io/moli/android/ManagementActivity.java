@@ -31,6 +31,9 @@ public final class ManagementActivity extends Activity {
         int catalogueScroll=-1;
         Future<JSONObject> loading, merossWork;
         JSONObject account;
+        String accountOperation="";
+        long inventoryAt;
+        boolean accountExpired;
         String accountUuid="", merossKey="", pendingMerossHost;
         boolean manualMeross, merossReturn, finding, merossScanning, findAfterInventory, identified;
         final MerossMatches matches=new MerossMatches();
@@ -295,8 +298,14 @@ public final class ManagementActivity extends Activity {
     private void complete() {
         completeMerossIdentification();
         if(screen.merossWork!=null && screen.merossWork.isDone()) {
-            try { remember();screen.account=screen.merossWork.get();screen.error=null; }
-            catch(Exception failure) { screen.error=getString(HostUi.errorMessage(failure)); }
+            try {
+                remember();screen.account=screen.merossWork.get();screen.error=null;screen.accountExpired=false;
+                if(screen.account.optBoolean("connected") && screen.account.has("items"))screen.inventoryAt=System.currentTimeMillis();
+                else screen.inventoryAt=0;
+            } catch(Exception failure) {
+                int message=HostUi.errorMessage(failure);screen.error=getString(message);
+                if(message==R.string.meross_error_expired)screen.accountExpired=true;
+            }
             screen.merossWork=null;render();
             if(screen.findAfterInventory){screen.findAfterInventory=false;if(screen.error==null)findMeross();}
         }
@@ -311,7 +320,7 @@ public final class ManagementActivity extends Activity {
                         JSONObject item=packages.getJSONObject(i);
                         if(item.getJSONObject("manifest").getJSONObject("integration").getString("id").equals("meross-mss310")) {
                             screen.selected=item;if(!screen.merossReturn)edit(null);
-                            screen.draft.put("host",screen.pendingMerossHost);screen.page=Page.PARAMETERS;break;
+                            screen.draft.put("host",screen.pendingMerossHost);screen.manualMeross=true;screen.page=Page.PARAMETERS;break;
                         }
                     }
                 }catch(JSONException failure){screen.error=getString(HostUi.errorMessage(failure));}
@@ -546,7 +555,7 @@ public final class ManagementActivity extends Activity {
         try {
             screen.existing=selected!=null;
             screen.id=selected==null ? screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id") : selected.getString("id");
-            screen.draft.clear();screen.merossKey="";screen.accountUuid="";screen.identified=false;
+            screen.draft.clear();screen.merossKey="";screen.accountUuid="";screen.manualMeross=false;
             if(selected==null && screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id").equals("meross-mss310"))screen.id="meross-"+java.util.UUID.randomUUID().toString().substring(0,8);
             JSONObject options=selected==null ? null : selected.optJSONObject("options");
             JSONArray fields=screen.selected.getJSONArray("fields");
@@ -565,17 +574,10 @@ public final class ManagementActivity extends Activity {
     private void renderForm() throws JSONException {
         title.setText(entry());
         String profile=screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id");
-        text(content,getString(description(profile)),14).setTextColor(color(R.color.management_muted));
+        if(!profile.equals("meross-mss310"))text(content,getString(description(profile)),14).setTextColor(color(R.color.management_muted));
         if(profile.equals("meross-mss310")) {
             renderMeross();
-            if(autoMerossReady()) {
-                save=button(footer,R.string.meross_add_found,this::addFoundMeross);save.setTag("meross:add-found");
-                save.setBackgroundResource(R.drawable.management_button_primary);save.setTextColor(getColorStateList(R.color.management_primary_text));
-                if(screen.matches.found()<screen.account.optJSONArray("items").length()) {
-                    Button manual=button(content,R.string.meross_manual,()->{screen.manualMeross=true;edit(null);});manual.setTag("meross:manual");configurationActions.add(manual);
-                }
-                return;
-            }
+            if(!screen.manualMeross)return;
         }
         JSONArray specs=screen.selected.getJSONArray("fields");
         if(specs.length()==0)text(content,getString(R.string.no_required_parameters),14);
@@ -588,7 +590,7 @@ public final class ManagementActivity extends Activity {
                 continue;
             }
             boolean lat="lat".equals(name),lon="lon".equals(name);
-            String label=lat ? getString(R.string.latitude) : lon ? getString(R.string.longitude) : profile.equals("meross-mss310") && name.equals("name") ? getString(R.string.meross_name) : name;
+            String label=lat ? getString(R.string.latitude) : lon ? getString(R.string.longitude) : profile.equals("meross-mss310") ? getString(name.equals("name") ? R.string.meross_name : name.equals("host") ? R.string.meross_host : R.string.meross_port) : name;
             if(!spec.getBoolean("required"))label=getString(R.string.optional_parameter,label);
             EditText field=field(label,screen.draft.getOrDefault(name,""),lat ? R.id.variable_lat : lon ? R.id.variable_lon : View.generateViewId());
             field.setTag("field:"+name);
@@ -617,52 +619,110 @@ public final class ManagementActivity extends Activity {
     }
     private void merossAction(JSONObject request) {
         if(screen.merossWork!=null || screen.saving!=null)return;
-        remember();hideKeyboard();screen.error=null;screen.identified=false;screen.accountUuid="";
+        remember();hideKeyboard();screen.error=null;
+        screen.accountOperation=request.optString("operation");
+        // A refresh keeps the last received list and LAN matches visible on failure.
+        if(!screen.accountOperation.equals("inventory")) {
+            screen.identified=false;screen.accountUuid="";screen.inventoryAt=0;
+            screen.matches.hosts.clear();while(screen.matches.results.length()>0)screen.matches.results.remove(0);
+            screen.account=null;
+        }
         Context app=getApplicationContext();
-        try {screen.merossWork=EngineHost.maintain(app,()->new ConfigStore(app).meross(request));}
-        catch(Exception failure){screen.error=getString(HostUi.errorMessage(failure));}
+        try {
+            screen.merossWork=screen.accountOperation.equals("inventory")
+                ? EngineHost.inspect(()->new ConfigStore(app).meross(request))
+                : EngineHost.maintain(app,()->new ConfigStore(app).meross(request));
+        } catch(Exception failure){screen.error=getString(HostUi.errorMessage(failure));}
         render();
     }
+    private void refreshMeross() {
+        try {merossAction(new JSONObject().put("operation","inventory"));}catch(JSONException ignored){}
+    }
+    private void manageMerossAccount() {
+        if(screen.account==null || !screen.account.optBoolean("connected")){accountDialog(false);return;}
+        new android.app.AlertDialog.Builder(this).setTitle(R.string.meross_account)
+            .setItems(new String[]{getString(R.string.meross_reconnect),getString(R.string.meross_forget)},(dialog,which)->{
+                if(which==0)accountDialog(false);
+                else try {merossAction(new JSONObject().put("operation","forget"));}catch(JSONException ignored){}
+            }).show();
+    }
+    private void chooseMerossIp() {
+        remember();hideKeyboard();
+        List<NetworkEvidence.Device> devices=screen.network.results.list();
+        try {if(screen.network.factory!=null && !Objects.equals(screen.network.key,screen.network.factory.current().key))devices=Collections.emptyList();}
+        catch(Exception unavailable){devices=Collections.emptyList();}
+        if(devices.isEmpty()){screen.merossReturn=true;navigate(Page.NETWORK);return;}
+        final List<NetworkEvidence.Device> candidates=devices;
+        String[] labels=new String[candidates.size()];for(int i=0;i<labels.length;i++)labels[i]=candidates.get(i).ip+" — "+candidates.get(i).name();
+        new android.app.AlertDialog.Builder(this).setTitle(R.string.meross_choose_ip).setItems(labels,(d,n)->{screen.draft.put("host",candidates.get(n).ip);render();}).show();
+    }
+    private Button merossLink(LinearLayout parent,int label,Runnable action) {
+        Button link=button(parent,label,action);link.setBackgroundResource(R.drawable.management_catalogue_row);
+        link.setPadding(dp(8),dp(4),dp(8),dp(4));link.setTextSize(14);contextActions.add(link);return link;
+    }
     private void renderMeross() throws JSONException {
-        text(content,getString(R.string.meross_local_help),14);
-        LinearLayout actions=new LinearLayout(this);content.addView(actions);
-        Button account=button(actions,R.string.meross_account,()->accountDialog(false));configurationActions.add(account);
-        Button choose=button(actions,R.string.meross_choose_ip,()->{
-            remember();hideKeyboard();
-            List<NetworkEvidence.Device> devices=screen.network.results.list();
-            try { if(screen.network.factory!=null && !Objects.equals(screen.network.key,screen.network.factory.current().key))devices=Collections.emptyList(); }
-            catch(Exception unavailable){devices=Collections.emptyList();}
-            if(devices.isEmpty()) {screen.merossReturn=true;navigate(Page.NETWORK);return;}
-            final List<NetworkEvidence.Device> candidates=devices;
-            String[] labels=new String[candidates.size()];for(int i=0;i<labels.length;i++)labels[i]=candidates.get(i).ip+" — "+candidates.get(i).name();
-            new android.app.AlertDialog.Builder(this).setTitle(R.string.meross_choose_ip).setItems(labels,(d,n)->{screen.draft.put("host",candidates.get(n).ip);render();}).show();
-        });configurationActions.add(choose);
-        for(Button b:new Button[]{account,choose})b.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
-        if(screen.account!=null && screen.account.optBoolean("connected")) {
-            renderMerossMatches();
-            if(autoMerossReady())return;
-            JSONArray items=screen.account.optJSONArray("items");
-            if(items!=null && items.length()>0) {
+        boolean session=screen.account!=null && screen.account.optBoolean("connected");
+        JSONArray items=session ? screen.account.optJSONArray("items") : null;
+        LinearLayout account=column();account.setPadding(dp(16),dp(8),dp(16),dp(8));
+        account.setBackground(surface(R.color.management_card,R.color.management_border,12));content.addView(account);
+        boolean wide=getResources().getConfiguration().screenWidthDp-(landscape?288:40)>=600;
+        LinearLayout accountTop=new LinearLayout(this);accountTop.setGravity(Gravity.CENTER_VERTICAL);account.addView(accountTop);
+        TextView accountTitle=heading(accountTop,R.string.meross_account,17);accountTitle.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout accountActions=new LinearLayout(this);
+        if(wide)accountTop.addView(accountActions);
+        int state=screen.merossWork!=null ? R.string.meross_working : screen.accountExpired ? R.string.meross_session_expired :
+            !session ? R.string.meross_disconnected : items==null ? R.string.meross_session_saved : R.string.meross_inventory_current;
+        text(account,getString(state),14).setTag("meross:account-state");
+        if(items!=null) {
+            String detail=getString(R.string.meross_inventory_count,items.length());
+            if(screen.inventoryAt>0)detail+=" · "+getString(R.string.meross_inventory_time,android.text.format.DateFormat.getTimeFormat(this).format(new Date(screen.inventoryAt)));
+            text(account,detail,13).setTextColor(color(R.color.management_muted));
+        }
+        if(!wide)account.addView(accountActions);
+        if(session && items!=null && !screen.accountExpired) {
+            Button refresh=merossLink(accountActions,R.string.meross_inventory,this::refreshMeross);refresh.setTag("meross:refresh");
+            refresh.setLayoutParams(new LinearLayout.LayoutParams(wide?-2:0,dp(48),wide?0:1));
+        }
+        Button manage=merossLink(accountActions,R.string.meross_manage_account,this::manageMerossAccount);manage.setTag("meross:account");
+        manage.setLayoutParams(new LinearLayout.LayoutParams(wide?-2:0,dp(48),wide?0:1));
+        renderMerossMatches();
+        if(screen.manualMeross) {
+            merossLink(content,R.string.meross_automatic,()->{remember();screen.manualMeross=false;hideKeyboard();render();}).setTag("meross:automatic");
+            heading(content,R.string.meross_manual,17);
+            if(items!=null && items.length()>0 && !screen.accountExpired) {
                 String[] labels=new String[items.length()];for(int i=0;i<labels.length;i++)labels[i]=items.getJSONObject(i).getString("name");
                 Button select=button(content,R.string.meross_select_account_device,()->{
-                    remember();
-                    new android.app.AlertDialog.Builder(this).setTitle(R.string.meross_select_account_device).setItems(labels,(d,n)->{
+                    remember();new android.app.AlertDialog.Builder(this).setTitle(R.string.meross_select_account_device).setItems(labels,(d,n)->{
                         try {JSONObject item=items.getJSONObject(n);screen.accountUuid=item.getString("uuid");screen.draft.put("name",item.getString("name"));screen.merossKey="";render();}
                         catch(JSONException failure){HostUi.error(this,failure);}
                     }).show();
-                });configurationActions.add(select);
-            } else text(content,getString(R.string.meross_no_devices),14);
-            Button refresh=button(content,R.string.meross_inventory,()->{try{merossAction(new JSONObject().put("operation","inventory"));}catch(JSONException ignored){}});configurationActions.add(refresh);
-            Button forget=button(content,R.string.meross_forget,()->{try{screen.accountUuid="";merossAction(new JSONObject().put("operation","forget"));}catch(JSONException ignored){}});configurationActions.add(forget);
+                });select.setTag("meross:select-device");configurationActions.add(select);
+            }
+            Button choose=button(content,R.string.meross_choose_ip,this::chooseMerossIp);choose.setTag("meross:choose-ip");configurationActions.add(choose);
+            if(!screen.accountUuid.isEmpty())text(content,getString(R.string.meross_identity,screen.accountUuid),13);
+            merossKey=field(getString(R.string.meross_key),screen.merossKey,R.id.meross_key);
+            merossKey.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            merossKey.setHint(screen.existing ? R.string.meross_keep_key : R.string.meross_key_hint);configurationActions.add(merossKey);
+            return;
         }
-        if(!screen.accountUuid.isEmpty())text(content,getString(R.string.meross_identity,screen.accountUuid),13);
-        merossKey=field(getString(R.string.meross_key),screen.merossKey,R.id.meross_key);
-        merossKey.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        merossKey.setHint(screen.existing ? R.string.meross_keep_key : R.string.meross_key_hint);
-        configurationActions.add(merossKey);
-        if(screen.merossWork!=null)text(content,getString(R.string.meross_working),14);
+        if(screen.finding) {
+            button(content,R.string.network_cancel,()->{cancelMerossFind();render();}).setTag("meross:cancel");
+        } else if(screen.merossWork==null && (!session || screen.accountExpired || items==null || items.length()>0)) {
+            int label=!session || screen.accountExpired ? R.string.meross_connect : items==null ? R.string.meross_inventory : autoMerossReady() ? R.string.meross_add_found : R.string.meross_find;
+            Button action=button(content,label,()->{
+                if(!session || screen.accountExpired)accountDialog(false);else if(items==null)refreshMeross();else if(autoMerossReady())addFoundMeross();else findMeross();
+            });
+            action.setTag(label==R.string.meross_add_found?"meross:add-found":label==R.string.meross_find?"meross:find":"meross:continue");
+            action.setBackgroundResource(R.drawable.management_button_primary);action.setTextColor(getColorStateList(R.color.management_primary_text));configurationActions.add(action);
+        }
+        if(screen.saving!=null)text(content,getString(R.string.saving),14);
+        LinearLayout secondary=new LinearLayout(this);content.addView(secondary);
+        if(autoMerossReady()) {
+            Button again=merossLink(secondary,R.string.meross_find_again,this::findMeross);again.setTag("meross:find");again.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
+        }
+        Button manual=merossLink(secondary,R.string.meross_manual,()->{remember();screen.manualMeross=true;render();});manual.setTag("meross:manual");manual.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
     }
-    private boolean autoMerossReady(){return screen.account!=null && screen.account.optBoolean("connected") && screen.account.optJSONArray("items")!=null && screen.identified && !screen.manualMeross && screen.matches.found()>0;}
+    private boolean autoMerossReady(){return screen.account!=null && screen.account.optBoolean("connected") && !screen.accountExpired && screen.account.optJSONArray("items")!=null && screen.identified && !screen.manualMeross && screen.matches.found()>0;}
     private List<String> merossCandidates() throws Exception {
         NetworkPanel.Target network=screen.network.factory.current();
         if(!Objects.equals(network.key,screen.network.key))return Collections.emptyList();
@@ -727,21 +787,33 @@ public final class ManagementActivity extends Activity {
             screen.identityWork=EngineHost.inspect(()->new ConfigStore(app).meross(input));
         }catch(Exception failure){screen.finding=false;screen.error=getString(HostUi.errorMessage(failure));}
     }
+    private boolean configuredMeross(String uuid) throws JSONException {
+        JSONArray instances=screen.selected.getJSONArray("instances");
+        for(int i=0;i<instances.length();i++)if(uuid.equalsIgnoreCase(instances.getJSONObject(i).getJSONObject("options").optString("expected_uuid")))return true;
+        return false;
+    }
     private void renderMerossMatches() throws JSONException {
-        Button find=button(content,R.string.meross_find,this::findMeross);find.setTag("meross:find");configurationActions.add(find);
-        if(screen.finding) {
-            text(content,screen.merossScanning ? getString(R.string.network_searching) : getString(R.string.meross_find_progress,screen.candidateOffset,screen.candidates.size()),14);
-            button(content,R.string.network_cancel,()->{cancelMerossFind();render();}).setTag("meross:cancel");
+        if(screen.manualMeross)return;
+        JSONArray items=screen.account==null ? null : screen.account.optJSONArray("items");
+        if(items==null || !screen.account.optBoolean("connected")) {
+            text(content,getString(R.string.meross_inventory_empty),14);return;
         }
-        if(!screen.identified && !screen.finding)return;
-        JSONArray items=screen.account.optJSONArray("items");if(items==null)return;
+        heading(content,R.string.meross_plugs,17);
+        if(items.length()==0)text(content,getString(R.string.meross_no_devices),14);
         for(int i=0;i<items.length();i++) {
             JSONObject item=items.getJSONObject(i);String uuid=item.getString("uuid"),host=screen.matches.unique(uuid);
-            String state=screen.matches.ambiguous(uuid)?getString(R.string.meross_match_ambiguous):host!=null?host: getString(screen.finding?R.string.meross_match_pending:R.string.meross_match_missing);
-            TextView row=text(content,item.getString("name")+" — "+state+(host==null?"":"\n"+getString(R.string.meross_identity,uuid)),14);
+            String state=screen.matches.ambiguous(uuid)?getString(R.string.meross_match_ambiguous):host!=null?getString(R.string.meross_verified_ip,host):getString(screen.finding?R.string.meross_match_pending:screen.identified?R.string.meross_match_missing:R.string.meross_ip_pending);
+            String name=item.getString("name"),detail=state+" · "+getString(configuredMeross(uuid)?R.string.meross_in_moli:R.string.meross_to_add);
+            android.text.SpannableString label=new android.text.SpannableString(name+" · MSS310\n"+detail);
+            label.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD),0,name.length(),0);
+            label.setSpan(new android.text.style.RelativeSizeSpan(0.82f),name.length()+1,label.length(),0);
+            label.setSpan(new android.text.style.ForegroundColorSpan(color(R.color.management_muted)),name.length()+1,label.length(),0);
+            TextView row=text(content,label,16);row.setPadding(dp(14),dp(8),dp(14),dp(8));row.setBackgroundResource(R.drawable.management_catalogue_row);
             row.setTag("meross:match:"+uuid);
+            row.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setTitle(name).setMessage(getString(R.string.meross_identity,uuid)).setPositiveButton(android.R.string.ok,null).show());
         }
-        if(screen.identified) {
+        if(screen.finding)text(content,screen.merossScanning ? getString(R.string.network_searching) : getString(R.string.meross_find_progress,screen.candidateOffset,screen.candidates.size()),14);
+        else if(screen.identified) {
             text(content,getString(R.string.meross_match_summary,screen.matches.found(),items.length()),14);
             int unavailable=0,key=0,other=0;
             for(int i=0;i<screen.matches.results.length();i++) {
@@ -749,7 +821,7 @@ public final class ManagementActivity extends Activity {
                 if(result.equals("unavailable"))unavailable++;else if(result.equals("key_rejected"))key++;else if(!result.equals("matched"))other++;
             }
             if(unavailable+key+other>0)text(content,getString(R.string.meross_other_results,unavailable,key,other),13);
-        }
+        } else if(items.length()>0)text(content,getString(R.string.meross_no_key_needed),13).setTextColor(color(R.color.management_muted));
     }
     private void addFoundMeross() {
         if(screen.saving!=null || screen.finding || screen.identityWork!=null)return;

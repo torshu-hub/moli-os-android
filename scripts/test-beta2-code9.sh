@@ -1,5 +1,5 @@
 #!/bin/sh
-# One code9 -> corrective versionCode 10 update in a disposable emulator, with existing synthetic seed data.
+# One code9 versionCode 10 -> UX corrective versionCode 11 update in a disposable emulator, with existing synthetic seed data.
 set -eu
 cd "$(dirname "$0")/.."
 root=$(pwd)
@@ -9,12 +9,12 @@ app=io.moli.android.app.beta2.test
 if adb shell pm path "$app" | grep -q '^package:'; then echo 'Fresh emulator required; existing installation left untouched' >&2; exit 1; fi
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
-base=175b03c225c9312cf350d039caf8ebd00885d24c
+base=b93d0ca4b2f5c1d2c2460aff775eea61bb830dc1
 git fetch --no-tags --depth=1 https://github.com/torshu-hub/moli-os-android.git "$base"
 git archive "$base" | tar -x -C "$fixture"
 cp -a web/dist "$fixture/web/dist"
 (cd "$fixture" && cargo +1.99.1 clean --release -p moli-api -p moli-android --target x86_64-linux-android && sh scripts/build-android.sh x86_64)
-(cd android && ./gradlew -p "$fixture/android" --no-daemon -PmoliAbis=x86_64 -PmoliFixtureVersionCode=9 :app:assembleDebug)
+(cd android && ./gradlew -p "$fixture/android" --no-daemon -PmoliAbis=x86_64 -PmoliFixtureVersionCode=10 :app:assembleDebug)
 # The old fixture and code9 share a target directory. Cargo can otherwise keep
 # build.rs output containing absolute include_str! paths into the old fixture.
 cargo +1.99.1 clean --release -p moli-android --target x86_64-linux-android
@@ -24,7 +24,7 @@ from pathlib import Path
 manifest = Path('integrations/meross-mss310/integration.toml').read_bytes()
 assert manifest in Path('android/app/src/main/jniLibs/x86_64/libmoli_android.so').read_bytes(), 'The emulator JNI must embed the code9 catalogue'
 PY
-(cd android && ./gradlew --no-daemon -PmoliAbis=x86_64 -PmoliFixtureVersionCode=10 :app:assembleDebug :app:assembleDebugAndroidTest)
+(cd android && ./gradlew --no-daemon -PmoliAbis=x86_64 -PmoliFixtureVersionCode=11 :app:assembleDebug :app:assembleDebugAndroidTest)
 mkdir -p android/app/build/reports/code9/screenshots
 adb shell wm size 1280x720
 adb shell wm density 160
@@ -45,7 +45,7 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 adb shell am force-stop com.google.android.apps.nexuslauncher
 adb shell am instrument -w -r -e class io.moli.android.Code9DeliveryTest#upgradeAndConfigureMerossWithoutTouchingExistingDataOrNetwork "$runner" > android/app/build/reports/code9/after.txt
 cat android/app/build/reports/code9/after.txt
-for name in meross-paired-landscape meross-paired-portrait meross-missing-portrait failure; do
+for name in meross-account-landscape meross-account-portrait meross-account-phone meross-paired-landscape meross-paired-portrait meross-missing-portrait failure; do
     target="android/app/build/reports/code9/screenshots/$name.png"
     adb exec-out run-as "$app" cat "files/code9-captures/$name.png" > "$target" 2>/dev/null || rm -f "$target"
     if [ -f "$target" ]; then python3 -c 'import sys;from pathlib import Path;p=Path(sys.argv[1]);p.unlink() if not p.read_bytes().startswith(bytes.fromhex("89504e470d0a1a0a")) else None' "$target"; fi

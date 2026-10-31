@@ -102,7 +102,10 @@ pub extern "system" fn Java_io_moli_android_NativeServer_configuration(
                 && input["action"] != "form"
                 && input["action"] != "catalogue"
                 && !(input["action"] == "meross"
-                    && matches!(input["operation"].as_str(), Some("status" | "identify")))
+                    && matches!(
+                        input["operation"].as_str(),
+                        Some("status" | "inventory" | "identify")
+                    ))
             {
                 return Err("running");
             }

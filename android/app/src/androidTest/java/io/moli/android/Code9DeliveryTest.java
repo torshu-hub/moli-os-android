@@ -17,7 +17,7 @@ import java.util.concurrent.*;
 import java.util.function.BooleanSupplier;
 import static org.junit.Assert.*;
 
-/** One code8 → code9 update and native form; no cloud or LAN traffic is started. */
+/** One versionCode 10 → 11 update and native account flow; no cloud or LAN traffic is started. */
 @RunWith(AndroidJUnit4.class)
 public final class Code9DeliveryTest {
     final Instrumentation ins=InstrumentationRegistry.getInstrumentation();
@@ -75,21 +75,51 @@ public final class Code9DeliveryTest {
                     String uuid=String.format("%032x",n);items.put(new JSONObject().put("uuid",uuid).put("name","Account plug "+n));
                     if(n<=found)rows.put(new JSONObject().put("uuid",uuid).put("host","192.168.50."+(20+n)).put("result","matched"));
                 }
-                account.set(screen,new JSONObject().put("connected",true).put("items",items));identified.setBoolean(screen,true);
+                account.set(screen,new JSONObject().put("connected",true).put("items",items));identified.setBoolean(screen,found>=0);
                 MerossMatches value=(MerossMatches)matches.get(screen);value.hosts.clear();while(value.results.length()>0)value.results.remove(0);value.add(rows);
-                assertEquals(found,value.plan(items).length());render.invoke(current());
+                assertEquals(Math.max(0,found),value.plan(items).length());render.invoke(current());
             }catch(Exception error){throw new AssertionError(error);}
         });ins.waitForIdleSync();
     }
+    private void accountPresentation(boolean expired,boolean inventory)throws Exception {
+        main(()->{
+            try {
+                java.lang.reflect.Field state=ManagementActivity.class.getDeclaredField("screen");state.setAccessible(true);Object screen=state.get(current());
+                java.lang.reflect.Field account=screen.getClass().getDeclaredField("account"),flag=screen.getClass().getDeclaredField("accountExpired");account.setAccessible(true);flag.setAccessible(true);
+                if(!inventory)account.set(screen,new JSONObject().put("connected",true));flag.setBoolean(screen,expired);
+                java.lang.reflect.Method render=ManagementActivity.class.getDeclaredMethod("render");render.setAccessible(true);render.invoke(current());
+            }catch(Exception error){throw new AssertionError(error);}
+        });ins.waitForIdleSync();
+    }
+    private void density(int value)throws Exception {
+        try(android.os.ParcelFileDescriptor descriptor=ins.getUiAutomation().executeShellCommand("wm density "+value);
+            java.io.InputStream input=new android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor)) {while(input.read()!=-1){}}
+        waitUi(()->current().getResources().getDisplayMetrics().densityDpi==value && tag("meross:find")!=null,"Display density did not settle");
+        ins.waitForIdleSync();Thread.sleep(500);
+    }
+    private void automaticHasNoManualFields() {
+        assertNull(tag("field:host"));assertNull(tag("meross:choose-ip"));assertNull(tag("meross:select-device"));assertNull(current().findViewById(R.id.meross_key));
+    }
     @Test public void upgradeAndConfigureMerossWithoutTouchingExistingDataOrNetwork()throws Exception {
         assertEquals("io.moli.android.app.beta2.test",app.getPackageName());
-        assertEquals(10,app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());
+        assertEquals(11,app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());
         Code9UpgradeSeedTest.sameData(app);
         long began=SystemClock.uptimeMillis();
         ins.startActivitySync(app.getPackageManager().getLaunchIntentForPackage(app.getPackageName()));
         Activity[] a={null};main(()->a[0]=current());orient(a[0],ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         click(R.id.navigation_integrations);clickTag("configure:existing-plug-1");
-        waitUi(()->tag("field:host")!=null&&tag("field:host").isEnabled(),"Meross form did not settle");
+        waitUi(()->tag("meross:account-state")!=null&&((TextView)tag("meross:account-state")).getText().toString().equals(app.getString(R.string.meross_disconnected)),"Meross account did not settle");
+        main(this::automaticHasNoManualFields);
+        accountPresentation(false,false);
+        main(()->{assertEquals(app.getString(R.string.meross_session_saved),((TextView)tag("meross:account-state")).getText().toString());assertNotNull(tag("meross:continue"));automaticHasNoManualFields();});
+        pairedPresentation(-1);
+        main(()->{assertNotNull(tag("meross:find"));assertNull(tag("meross:add-found"));automaticHasNoManualFields();
+            for(int n=1;n<=4;n++)assertTrue(((TextView)tag("meross:match:"+String.format("%032x",n))).getText().toString().contains(app.getString(R.string.meross_in_moli)));});
+        capture("meross-account-landscape");
+        main(()->a[0]=current());orient(a[0],ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);capture("meross-account-portrait");
+        density(320);main(()->{assertTrue(current().getResources().getConfiguration().screenWidthDp<=400);automaticHasNoManualFields();});
+        capture("meross-account-phone");density(160);
+        main(()->a[0]=current());orient(a[0],ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         assertEquals(EngineHost.State.STOPPED,EngineHost.state());
         pairedPresentation(4);
         main(()->{assertTrue(tag("meross:add-found").isEnabled());assertTrue(((TextView)tag("meross:match:"+String.format("%032x",4))).getText().toString().contains("192.168.50.24"));});
@@ -101,9 +131,16 @@ public final class Code9DeliveryTest {
         main(()->assertTrue(((TextView)tag("meross:match:"+String.format("%032x",4))).getText().toString().contains(app.getString(R.string.meross_match_missing))));
         capture("meross-missing-portrait");
         clickTag("meross:manual");
-        main(()->assertEquals("",((EditText)tag("field:host")).getText().toString()));
+        main(()->{assertEquals("192.0.2.1",((EditText)tag("field:host")).getText().toString());assertNotNull(current().findViewById(R.id.meross_key));});
+        clickTag("meross:automatic");main(this::automaticHasNoManualFields);
+        pairedPresentation(0);main(()->{assertNotNull(tag("meross:find"));assertNull(tag("meross:add-found"));});
+        accountPresentation(true,true);
+        main(()->{assertEquals(app.getString(R.string.meross_session_expired),((TextView)tag("meross:account-state")).getText().toString());assertNull(tag("meross:find"));assertNotNull(tag("meross:match:"+String.format("%032x",4)));});
+        accountPresentation(false,true);pairedPresentation(3);
         // Reused code39 UUID/IP presentation fixtures only; no account, RPC, new simulator or Save.
+        click(R.id.management_back);clickTag("configure:existing-plug-1");
+        main(()->{assertNotNull(tag("meross:add-found"));automaticHasNoManualFields();});
         click(R.id.management_back);Code9UpgradeSeedTest.sameData(app);
-        try(FileOutputStream out=new FileOutputStream(new File(app.getFilesDir(),"code9-captures/update-proof.txt"))){out.write(("code9 -> code9 corrective (versionCode 10), identical config/key/home/automations/files; UI and rotation verified in "+(SystemClock.uptimeMillis()-began)+" ms\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+        try(FileOutputStream out=new FileOutputStream(new File(app.getFilesDir(),"code9-captures/update-proof.txt"))){out.write(("code9 versionCode 10 -> UX corrective versionCode 11, identical config/key/home/automations/files; UI and rotation verified in "+(SystemClock.uptimeMillis()-began)+" ms\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));}
     }
 }
