@@ -5,19 +5,21 @@ import java.util.*;
 
 /** Reused code39 facts/scope rules, grouped by IP. Nothing here is persisted. */
 final class NetworkEvidence {
-    enum Kind { IPP, HTTP, CAST, UPNP, IGD, TCP }
-    enum Proof { DESCRIPTION, ANNOUNCEMENT, OPEN_PORT }
+    enum Kind { IPP, HTTP, CAST, UPNP, IGD, TCP, PRESENCE }
+    enum Proof { DESCRIPTION, ANNOUNCEMENT, OPEN_PORT, ECHO, PTR }
     static final class Entry {
         final String ip,name,path,location;
+        String manufacturer="",model="",identity="",deviceType="",dnsName="";
         final int port;
         final Kind kind;
         final Proof proof;
         Entry(String ip,int port,String name,Kind kind,Proof proof,String path,String location) {
-            if(!privateIp(ipv4(ip))||port<1||port>65535)throw new IllegalArgumentException("endpoint");
+            if(!privateIp(ipv4(ip))||port<0||port>65535||(port==0&&(kind!=Kind.PRESENCE||(proof!=Proof.ECHO&&proof!=Proof.PTR))))throw new IllegalArgumentException("endpoint");
             this.ip=ip;this.port=port;this.name=safeName(name);this.kind=kind;this.proof=proof;
             this.path=path==null?"":path;this.location=location==null?"":location;
         }
         String id(){return port+":"+kind+":"+proof;}
+        String description(){return String.join(" · ",java.util.stream.Stream.of(manufacturer,model).filter(v->!v.isEmpty()).toArray(String[]::new));}
     }
     static final class Device {
         final String ip;
@@ -35,6 +37,7 @@ final class NetworkEvidence {
         if(!privateIp(ipv4(ip))||port<1||port>65535||type==null)return null;
         String normalized=type.endsWith(".")?type.substring(0,type.length()-1):type;
         Kind kind=normalized.equals("_ipp._tcp")?Kind.IPP:normalized.equals("_http._tcp")?Kind.HTTP:normalized.equals("_googlecast._tcp")?Kind.CAST:null;
+        if(kind==null && java.util.Set.of("_ipps._tcp","_airplay._tcp","_raop._tcp","_androidtvremote2._tcp").contains(normalized))kind=Kind.PRESENCE;
         if(kind==null)return null;
         return new Entry(ip,port,name,kind,Proof.ANNOUNCEMENT,"","");
     }
@@ -91,7 +94,7 @@ final class NetworkEvidence {
             LinkedHashMap<String,Entry> facts=devices.get(entry.ip);
             if(facts==null){if(devices.size()>=128){limited=true;return false;}facts=new LinkedHashMap<>();devices.put(entry.ip,facts);}
             Entry old=facts.get(entry.id());
-            if(old!=null&&old.name.equals(entry.name)&&old.location.equals(entry.location))return false;
+            if(old!=null&&old.name.equals(entry.name)&&old.location.equals(entry.location)&&old.description().equals(entry.description())&&old.identity.equals(entry.identity)&&old.dnsName.equals(entry.dnsName))return false;
             if(old==null&&facts.size()>=12){limited=true;return false;}
             facts.put(entry.id(),entry);return true;
         }

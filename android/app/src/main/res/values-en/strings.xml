@@ -134,7 +134,7 @@
     <string name="network_changed">Network changed: search again</string>
     <string name="network_unavailable">Network unavailable</string>
     <string name="network_count_state">%1$d addresses · %2$s</string>
-    <string name="network_limits">Manual search, up to 20 s: mDNS/SSDP announcements and TCP ports 80, 443, 631. Silent devices may be missing.</string>
+    <string name="network_limits">One-time search, up to 20 s. Silent devices may be missing.</string>
     <string name="network_partial">Partial results: large subnet, limit reached or method unavailable. No large-scale probing; silent devices may be missing.</string>
     <string name="network_unknown">Unknown device</string>
     <string name="network_description">Device description</string>
@@ -144,7 +144,7 @@
     <string name="network_copy">Copy IP</string>
     <string name="network_copied">IP address copied.</string>
     <string name="network_ip">IP address</string>
-    <string name="network_evidence_help">An open port does not prove a brand or model. Names are announced by devices. No Moli configuration is changed.</string>
+    <string name="network_evidence_help">A network response only proves momentary presence. Names and models are declared by devices or local DNS. A saved IP does not guarantee identity. No Moli configuration is changed.</string>
     <string name="network_close">Close</string>
     <string name="network_requirements">A private IPv4 Wi-Fi or Ethernet network is required. VPN and cellular networks are excluded.</string>
     <string name="description_meross_mss310">Local plug: ON/OFF, power, current, voltage and daily reading.</string>
@@ -204,4 +204,19 @@
     <string name="meross_find_again">Search again</string>
     <string name="meross_host">IP address</string>
     <string name="meross_port">Port</string>
+    <string name="integration_devices">Configured devices</string>
+    <string name="configuration_files">View configuration files</string>
+    <string name="configuration_native">No TOML profile: native driver</string>
+    <string name="configuration_no_instance">No instance configured in moli.toml</string>
+    <string name="configuration_copy">Copy</string>
+    <string name="network_self">This device — %1$s · local address</string>
+    <string name="network_reference">Configured in %1$s — %2$s (IP unverified)</string>
+    <string name="network_used">Used by %1$s — %2$s</string>
+    <string name="network_echo">ICMP response</string>
+    <string name="network_presence">Network presence</string>
+    <string name="network_name_source">Local DNS name</string>
+    <string name="integration_open">Open integration</string>
+    <string name="integration_instance_count">%1$d instance(s)</string>
+    <string name="meross_configuration">Account and general settings</string>
+    <string name="configuration_saved_ip">Saved IP: %1$s</string>
 </resources>

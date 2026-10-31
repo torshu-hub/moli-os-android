@@ -134,7 +134,7 @@
     <string name="network_changed">Réseau changé : relancez la recherche</string>
     <string name="network_unavailable">Réseau indisponible</string>
     <string name="network_count_state">%1$d adresses · %2$s</string>
-    <string name="network_limits">Recherche manuelle, 20 s maximum : annonces mDNS/SSDP et ports TCP 80, 443, 631. Les appareils silencieux peuvent manquer.</string>
+    <string name="network_limits">Recherche ponctuelle, 20 s maximum. Les appareils silencieux peuvent manquer.</string>
     <string name="network_partial">Résultats partiels : grand sous-réseau, limite atteinte ou méthode indisponible. Aucun balayage massif ; les appareils silencieux peuvent manquer.</string>
     <string name="network_unknown">Appareil inconnu</string>
     <string name="network_description">Description d’appareil</string>
@@ -144,7 +144,7 @@
     <string name="network_copy">Copier l’IP</string>
     <string name="network_copied">Adresse IP copiée.</string>
     <string name="network_ip">Adresse IP</string>
-    <string name="network_evidence_help">Un port ouvert ne prouve ni marque ni modèle. Les noms sont annoncés par les appareils. Aucune configuration Moli n’est modifiée.</string>
+    <string name="network_evidence_help">Une réponse réseau prouve seulement une présence ponctuelle. Les noms et modèles sont déclarés par les appareils ou le DNS local. Une IP enregistrée ne garantit pas l’identité. Aucune configuration Moli n’est modifiée.</string>
     <string name="network_close">Fermer</string>
     <string name="network_requirements">Réseau privé IPv4 en Wi-Fi ou Ethernet requis. VPN et réseau mobile exclus.</string>
     <string name="description_meross_mss310">Prise locale : ON/OFF, puissance, intensité, tension et relevé journalier.</string>
@@ -204,4 +204,19 @@
     <string name="meross_find_again">Relancer la recherche</string>
     <string name="meross_host">Adresse IP</string>
     <string name="meross_port">Port</string>
+    <string name="integration_devices">Appareils configurés</string>
+    <string name="configuration_files">Voir les fichiers de configuration</string>
+    <string name="configuration_native">Aucun profil TOML : pilote natif</string>
+    <string name="configuration_no_instance">Aucune instance configurée dans moli.toml</string>
+    <string name="configuration_copy">Copier</string>
+    <string name="network_self">Cet appareil — %1$s · adresse locale</string>
+    <string name="network_reference">Configuré dans %1$s — %2$s (IP à confirmer)</string>
+    <string name="network_used">Utilisé par %1$s — %2$s</string>
+    <string name="network_echo">Réponse ICMP</string>
+    <string name="network_presence">Présence réseau</string>
+    <string name="network_name_source">Nom DNS local</string>
+    <string name="integration_open">Ouvrir l’intégration</string>
+    <string name="integration_instance_count">%1$d instance(s)</string>
+    <string name="meross_configuration">Compte et configuration générale</string>
+    <string name="configuration_saved_ip">IP enregistrée : %1$s</string>
 </resources>
