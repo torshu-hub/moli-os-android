@@ -210,7 +210,7 @@ jobs:
             if not badging.startswith(prefix) or 'application-debuggable' in badging or "sdkVersion:'28'" not in badging or "targetSdkVersion:'35'" not in badging or "native-code: 'arm64-v8a'" not in badging:
                 raise ValueError('Beta APK identity, version, ABI or debugging state mismatch')
             permissions = set(re.findall(r"uses-permission: name='([^']+)'", badging))
-            allowed = {'android.permission.'+p for p in ('INTERNET','FOREGROUND_SERVICE','FOREGROUND_SERVICE_SPECIAL_USE','POST_NOTIFICATIONS')}
+            allowed = {'android.permission.'+p for p in ('INTERNET','FOREGROUND_SERVICE','FOREGROUND_SERVICE_SPECIAL_USE','POST_NOTIFICATIONS','ACCESS_NETWORK_STATE','CHANGE_WIFI_MULTICAST_STATE')}
             if permissions != allowed:
                 raise ValueError('Unexpected APK permissions')
             verifier = str(sdk/'apksigner')
