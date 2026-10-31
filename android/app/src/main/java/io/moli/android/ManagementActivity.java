@@ -18,12 +18,13 @@ import org.json.*;
 
 /** Native presentation only. Catalogue, configuration and lifecycle remain in J1. */
 public final class ManagementActivity extends Activity {
-    private enum Page { HOME, INTEGRATIONS, PARAMETERS, JOURNAL, NETWORK }
+    private enum Page { HOME, INTEGRATIONS, DETAIL, FILES, PARAMETERS, JOURNAL, NETWORK }
     // Transient presentation state, retained across rotation; never a driver configuration store.
     private static final class Screen {
         Page page = Page.HOME;
         final NetworkPanel.State network=new NetworkPanel.State();
         JSONObject catalogue, selected;
+        JSONObject files;Future<JSONObject> filesWork;
         String snapshot, id = "", error;
         final Map<String,String> draft = new LinkedHashMap<>();
         boolean existing, saved, activation;
@@ -77,6 +78,8 @@ public final class ManagementActivity extends Activity {
         build();
         networkPanel=new NetworkPanel(this,screen.network,scroll);
         networkPanel.useMeross=this::useMerossIp;
+        networkPanel.association=this::networkAssociation;
+        networkPanel.openAssociation=this::openNetworkIntegration;
         render();
     }
     private int dp(int value) { return Math.round(value*getResources().getDisplayMetrics().density); }
@@ -181,6 +184,46 @@ public final class ManagementActivity extends Activity {
     private void destination(Page page,int label,int icon,int id) {
         destinations.put(page,navigationButton(label,icon,id,()->navigate(page)));
     }
+    private void openNetworkIntegration(NetworkEvidence.Device device) {
+        if(screen.catalogue==null)return;
+        JSONArray packages=screen.catalogue.optJSONArray("packages");if(packages==null)return;
+        List<JSONObject> linked=new ArrayList<>();List<String> labels=new ArrayList<>();
+        for(int p=0;p<packages.length();p++) {
+            JSONObject item=packages.optJSONObject(p);JSONArray instances=item.optJSONArray("instances");
+            if(instances==null)continue;
+            for(int i=0;i<instances.length();i++) {
+                JSONObject options=instances.optJSONObject(i).optJSONObject("options");
+                if(options!=null && device.ip.equals(options.optString("host"))) {
+                    linked.add(item);labels.add(item.optJSONObject("manifest").optJSONObject("integration").optString("name"));break;
+                }
+            }
+        }
+        if(linked.isEmpty())return;
+        java.util.function.IntConsumer open=index->{networkPanel.leave();screen.selected=linked.get(index);openIntegration();};
+        if(linked.size()==1)open.accept(0);
+        else new android.app.AlertDialog.Builder(this).setTitle(R.string.integrations).setItems(labels.toArray(new String[0]),(d,index)->open.accept(index)).show();
+    }
+    private String networkAssociation(NetworkEvidence.Device device) {
+        if(screen.catalogue==null)return "";
+        List<String> labels=new ArrayList<>();
+        JSONArray packages=screen.catalogue.optJSONArray("packages");
+        if(packages==null)return "";
+        for(int p=0;p<packages.length();p++) {
+            JSONObject item=packages.optJSONObject(p);JSONArray instances=item.optJSONArray("instances");
+            if(instances==null)continue;
+            JSONObject metadata=item.optJSONObject("manifest").optJSONObject("integration");
+            for(int i=0;i<instances.length();i++) {
+                JSONObject instance=instances.optJSONObject(i),options=instance.optJSONObject("options");
+                if(options==null || !device.ip.equals(options.optString("host")))continue;
+                String name=options.optString("name",instance.optString("id"));
+                // Configuration is an IP reference, not proof of the current host's identity.
+                JSONObject vars=options.optJSONObject("vars");String uuid=vars==null?"":vars.optString("expected_uuid");
+                boolean verified=!uuid.isEmpty() && Objects.equals(screen.matchNetwork,screen.network.key) && device.ip.equals(screen.matches.unique(uuid));
+                labels.add(getString(verified?R.string.network_used:R.string.network_reference,metadata.optString("name"),name));
+            }
+        }
+        return String.join(" · ",labels);
+    }
     private void renderHome() {
         LinearLayout engine=card(content); engineCard=engine; styledState=null; engine.setId(R.id.engine_card);
         heading(engine,R.string.engine_card_title,18);
@@ -223,13 +266,15 @@ public final class ManagementActivity extends Activity {
         hideKeyboard(); remember();
         if(page!=Page.INTEGRATIONS)screen.catalogueScroll=-1;
         screen.page=page;
-        if(page==Page.NETWORK)screen.error=null;
+        if(page==Page.NETWORK){screen.error=null;load();}
         if(page==Page.INTEGRATIONS) { screen.error=null; load(); }
         render();
     }
     private void goBack() {
         if(screen.saving!=null || screen.loading!=null || screen.merossWork!=null || screen.finding || screen.identityWork!=null) return;
-        if(screen.page==Page.PARAMETERS) navigate(Page.INTEGRATIONS);
+        if(screen.page==Page.FILES){screen.page=Page.DETAIL;render();}
+        else if(screen.page==Page.PARAMETERS) { openIntegration(); }
+        else if(screen.page==Page.DETAIL) navigate(Page.INTEGRATIONS);
         else if(screen.page!=Page.HOME) navigate(Page.HOME);
         else finish();
     }
@@ -297,6 +342,10 @@ public final class ManagementActivity extends Activity {
     }
     private void complete() {
         completeMerossIdentification();
+        if(screen.filesWork!=null && screen.filesWork.isDone()) {
+            try{screen.files=screen.filesWork.get();}catch(Exception failure){screen.error=getString(HostUi.errorMessage(failure));}
+            screen.filesWork=null;render();
+        }
         if(screen.merossWork!=null && screen.merossWork.isDone()) {
             try {
                 remember();screen.account=screen.merossWork.get();screen.error=null;screen.accountExpired=false;
@@ -430,17 +479,58 @@ public final class ManagementActivity extends Activity {
             TextView label=text(content,group.getKey(),16);label.setPadding(dp(4),dp(14),0,dp(6));
             label.setTypeface(null,android.graphics.Typeface.BOLD);label.setAccessibilityHeading(true);label.setTag("provider:"+group.getKey());
             for(JSONObject item:group.getValue()) {
-                JSONArray instances=item.getJSONArray("instances");
-                if(instances.length()==0)catalogueRow(item,null);
-                else {
-                    for(int i=0;i<instances.length();i++)catalogueRow(item,instances.getJSONObject(i));
-                    if(item.getJSONObject("manifest").getJSONObject("integration").getString("id").equals("meross-mss310")) {
-                        Button add=button(content,R.string.meross_add,()->{screen.selected=item;edit(null);});
-                        add.setTag("meross:add");configurationActions.add(add);
-                    }
-                }
+                catalogueRow(item,null);
             }
         }
+    }
+    private void openIntegration() {
+        try {
+            if("meross-mss310".equals(screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id"))) {
+                edit(null);
+            }
+            screen.page=Page.DETAIL;render();
+        } catch(JSONException failure){HostUi.error(this,failure);}
+    }
+    private void renderIntegration() throws JSONException {
+        title.setText(entry());
+        String profile=screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id");
+        JSONArray instances=screen.selected.getJSONArray("instances");
+        if(instances.length()>0 && !"meross-mss310".equals(profile)) {
+            heading(content,R.string.integration_devices,17);
+            for(int i=0;i<instances.length();i++)catalogueRow(screen.selected,instances.getJSONObject(i));
+        }
+        if("meross-mss310".equals(profile)) {
+            renderForm();
+        } else if(screen.selected.optBoolean("configurable")) {
+            Button add=button(content,R.string.configure,()->edit(null));configurationActions.add(add);
+        } else {
+            text(content,getString(description(profile)),14);
+            button(content,R.string.setup_reason,()->unavailable(screen.selected));
+        }
+        merossLink(content,R.string.configuration_files,this::showConfigurationFiles).setTag("integration:files");
+    }
+    private void showConfigurationFiles() {
+        Context app=getApplicationContext();
+        screen.files=null;screen.page=Page.FILES;screen.error=null;
+        screen.filesWork=EngineHost.inspect(()->{
+            String actual=ProtectedKey.exists(app)?new ConfigStore(app).read():"";
+            return ConfigStore.nativeCall(new JSONObject().put("action","catalogue").put("text",actual));
+        });
+        render();
+    }
+    private void renderFiles() throws JSONException {
+        title.setText(entry());
+        if(screen.filesWork!=null){text(content,getString(R.string.working),16);return;}
+        if(screen.files==null)return;
+        String profile=screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id");
+        JSONArray packages=screen.files.getJSONArray("packages");JSONObject item=null;
+        for(int i=0;i<packages.length();i++)if(profile.equals(packages.getJSONObject(i).getJSONObject("manifest").getJSONObject("integration").getString("id")))item=packages.getJSONObject(i);
+        if(item==null)throw new JSONException("catalogue");
+        String displayed="moli.toml\n\n"+(item.getJSONArray("instances").length()==0?getString(R.string.configuration_no_instance):item.getString("configuration_source"))+
+            "\n\nintegration.toml\n\n"+item.getString("manifest_source")+"\n\nprofile.toml\n\n"+
+            (item.isNull("profile_source")?getString(R.string.configuration_native):item.getString("profile_source"));
+        TextView source=text(content,displayed,13);source.setTypeface(android.graphics.Typeface.MONOSPACE);source.setTextIsSelectable(true);source.setTag("integration:file-text");
+        button(footer,R.string.configuration_copy,()->getSystemService(android.content.ClipboardManager.class).setPrimaryClip(android.content.ClipData.newPlainText(profile,displayed)));
     }
     private void catalogueRow(JSONObject item,JSONObject selected) throws JSONException {
         JSONObject metadata=item.getJSONObject("manifest").getJSONObject("integration");
@@ -448,7 +538,7 @@ public final class ManagementActivity extends Activity {
         boolean valid=selected!=null&&selected.getBoolean("valid");
         String id=selected==null ? null : selected.getString("id"),name=catalogueLabel(metadata);
         if(profile.equals("meross-mss310") && selected!=null)name=selected.getJSONObject("options").optString("name",name);
-        int state=!configurable ? R.string.setup_incomplete : selected==null ? R.string.setup_needed : valid ? R.string.setup_configured : R.string.setup_invalid;
+        int state=!configurable ? R.string.setup_incomplete : selected==null ? item.getJSONArray("instances").length()>0 ? R.string.setup_configured : R.string.setup_needed : valid ? R.string.setup_configured : R.string.setup_invalid;
         String stateText=getString(state);
         LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setTag("package:"+profile);
         row.setBackground(surface(R.color.management_card,0,8));
@@ -462,18 +552,28 @@ public final class ManagementActivity extends Activity {
         title.setSpan(new android.text.style.ForegroundColorSpan(color(state==R.string.setup_invalid ? R.color.management_error : R.color.management_muted)),name.length()+2,title.length(),0);
         TextView label=text(body,title,16);label.setPadding(0,0,0,0);label.setMaxLines(2);label.setEllipsize(android.text.TextUtils.TruncateAt.END);
         label.setTextColor(color(configurable ? R.color.management_ink : R.color.management_muted));
-        String detail=getString(description(profile))+(id==null ? "" : " · "+id);
+        String detail=id==null ? getString(description(profile))+" · "+getString(R.string.integration_instance_count,item.getJSONArray("instances").length()) : id;
+        if(selected!=null) {
+            JSONObject options=selected.optJSONObject("options");
+            if(options!=null && !options.optString("host").isEmpty())detail=options.optString("host")+" · "+id;
+            if(options!=null && profile.equals("meross-mss310")) {
+                JSONObject vars=options.optJSONObject("vars");String uuid=vars==null?"":vars.optString("expected_uuid");
+                String found=screen.matches.unique(uuid);
+                if(found!=null)detail=getString(R.string.meross_verified_ip,found)+" · "+id;
+            }
+        }
         TextView summary=text(body,detail,13);summary.setPadding(0,dp(3),0,0);summary.setSingleLine(true);summary.setEllipsize(android.text.TextUtils.TruncateAt.END);
         summary.setTextColor(color(R.color.management_muted));
         label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);summary.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         body.setContentDescription(name+", "+stateText+", "+detail+(configurable ? ", "+getString(R.string.configure) : ", "+getString(R.string.setup_reason)));
         body.setTag(selected==null ? profile : "configure:"+id);
         body.setOnClickListener(v->{
-            if(!configurable){unavailable(item);return;}
-            screen.catalogueScroll=scroll.getScrollY();screen.selected=item;screen.saved=false;screen.activation=false;screen.error=null;edit(selected);
+            screen.catalogueScroll=scroll.getScrollY();screen.selected=item;screen.saved=false;screen.activation=false;screen.error=null;
+            if(selected!=null){screen.saved=false;edit(selected);}else openIntegration();
         });
         if(profile.equals("open-meteo")&&root.findViewById(R.id.catalogue_entry)==null)body.setId(R.id.catalogue_entry);
-        if(configurable)configurationActions.add(body);else contextActions.add(body);
+        contextActions.add(body);
+        if(selected==null)return;
         boolean enabled=selected!=null&&selected.getBoolean("enabled");
         Switch toggle=new Switch(this);toggle.setChecked(enabled);toggle.setShowText(false);toggle.setMinimumWidth(dp(56));toggle.setMinimumHeight(dp(48));
         toggle.setPadding(dp(8),0,dp(12),0);row.addView(toggle,new LinearLayout.LayoutParams(-2,dp(48)));
@@ -504,7 +604,7 @@ public final class ManagementActivity extends Activity {
         configurationActions.clear();activationActions.clear();contextActions.clear();
         content.removeAllViews(); footer.removeAllViews();
         back.setVisibility(screen.page==Page.HOME ? View.GONE : View.VISIBLE);
-        Page selected=(screen.page==Page.PARAMETERS) ? Page.INTEGRATIONS : screen.page;
+        Page selected=(screen.page==Page.PARAMETERS || screen.page==Page.DETAIL || screen.page==Page.FILES) ? Page.INTEGRATIONS : screen.page;
         for(Map.Entry<Page,Button> item:destinations.entrySet()) {
             boolean active=item.getKey()==selected;
             item.getValue().setSelected(active);
@@ -516,6 +616,8 @@ public final class ManagementActivity extends Activity {
                 renderHome();
             } else if(screen.page==Page.NETWORK) {
                 networkPanel.mount(content);
+            } else if(screen.page==Page.FILES) {
+                renderFiles();
             } else if(screen.page==Page.JOURNAL) {
                 LinearLayout journal=card(content);
                 heading(journal,R.string.export,18);
@@ -533,7 +635,7 @@ public final class ManagementActivity extends Activity {
                 else if(screen.catalogue!=null) {
                     if(screen.page==Page.INTEGRATIONS) {
                         renderCatalogue();
-                    } else renderForm();
+                    } else if(screen.page==Page.DETAIL) renderIntegration(); else renderForm();
                 }
             }
         } catch(JSONException failure) { screen.error=getString(R.string.operation_failed); }
@@ -555,7 +657,7 @@ public final class ManagementActivity extends Activity {
         try {
             screen.existing=selected!=null;
             screen.id=selected==null ? screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id") : selected.getString("id");
-            screen.draft.clear();screen.merossKey="";screen.accountUuid="";screen.manualMeross=false;
+            screen.draft.clear();screen.merossKey="";screen.accountUuid="";screen.manualMeross=selected!=null;
             if(selected==null && screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id").equals("meross-mss310"))screen.id="meross-"+java.util.UUID.randomUUID().toString().substring(0,8);
             JSONObject options=selected==null ? null : selected.optJSONObject("options");
             JSONArray fields=screen.selected.getJSONArray("fields");
@@ -798,13 +900,16 @@ public final class ManagementActivity extends Activity {
     private void renderMerossMatches() throws JSONException {
         if(screen.manualMeross)return;
         JSONArray items=screen.account==null ? null : screen.account.optJSONArray("items");
-        if(items==null || !screen.account.optBoolean("connected")) {
-            text(content,getString(R.string.meross_inventory_empty),14);return;
-        }
         heading(content,R.string.meross_plugs,17);
+        JSONArray configured=screen.selected.getJSONArray("instances");
+        for(int i=0;i<configured.length();i++)catalogueRow(screen.selected,configured.getJSONObject(i));
+        if(items==null || !screen.account.optBoolean("connected")) {
+            if(configured.length()==0)text(content,getString(R.string.meross_inventory_empty),14);return;
+        }
         if(items.length()==0)text(content,getString(R.string.meross_no_devices),14);
         for(int i=0;i<items.length();i++) {
             JSONObject item=items.getJSONObject(i);String uuid=item.getString("uuid"),host=screen.matches.unique(uuid);
+            if(configuredMeross(uuid))continue;
             String state=screen.matches.ambiguous(uuid)?getString(R.string.meross_match_ambiguous):host!=null?getString(R.string.meross_verified_ip,host):getString(screen.finding?R.string.meross_match_pending:screen.identified?R.string.meross_match_missing:R.string.meross_ip_pending);
             String name=item.getString("name"),detail=state+" · "+getString(configuredMeross(uuid)?R.string.meross_in_moli:R.string.meross_to_add);
             android.text.SpannableString label=new android.text.SpannableString(name+" · MSS310\n"+detail);

@@ -11,11 +11,101 @@ pub(crate) fn form(text: &str) -> Result<Value, &'static str> {
 
 pub(crate) fn catalogue(text: &str) -> Result<Value, &'static str> {
     let config: toml::Value = toml::from_str(text).map_err(|_| "configuration")?;
-    let packages: Result<Vec<_>, _> = PACKAGES
+    let document = toml_edit::Document::parse(text).map_err(|_| "configuration")?;
+    let packages: Result<Vec<_>, &'static str> = PACKAGES
         .iter()
-        .map(|(id, _, _)| package_for(&config, id))
+        .map(|(id, _, _)| {
+            let mut package = package_for(&config, id)?;
+            package["configuration_source"] =
+                json!(configuration_source(text, &document, &package));
+            Ok(package)
+        })
         .collect();
     Ok(json!({"packages":packages?}))
+}
+
+// Slice parsed TOML table spans from the original bytes; never regenerate the config.
+fn configuration_source(
+    text: &str,
+    document: &toml_edit::Document<&str>,
+    package: &Value,
+) -> String {
+    fn implicit_value_end(table: &Table, mut end: usize) -> usize {
+        for (_, item) in table {
+            if item.is_value()
+                && let Some(span) = item.span()
+            {
+                end = end.max(span.end);
+            }
+            if let Some(child) = item.as_table().filter(|table| table.span().is_none()) {
+                end = implicit_value_end(child, end);
+            }
+        }
+        end
+    }
+    fn tables(text: &str, table: &Table, ranges: &mut Vec<std::ops::Range<usize>>) {
+        if let Some(mut span) = table.span() {
+            for (_, item) in table {
+                if item.is_value()
+                    && let Some(value) = item.span()
+                {
+                    span.end = span.end.max(value.end);
+                }
+                if let Some(implicit) = item.as_table().filter(|table| table.span().is_none()) {
+                    span.end = implicit_value_end(implicit, span.end);
+                }
+            }
+            span.end += text[span.end..]
+                .find('\n')
+                .map_or(text.len() - span.end, |offset| offset + 1);
+            ranges.push(span);
+        }
+        for (_, item) in table {
+            if let Some(child) = item.as_table() {
+                tables(text, child, ranges);
+            }
+            if let Some(children) = item.as_array_of_tables() {
+                for child in children {
+                    tables(text, child, ranges);
+                }
+            }
+        }
+    }
+    let ids: Vec<_> = package["instances"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|instance| instance["id"].as_str())
+        .collect();
+    let mut ranges = Vec::new();
+    if let Some(drivers) = document.get("driver").and_then(Item::as_array_of_tables) {
+        for driver in drivers {
+            if driver
+                .get("id")
+                .and_then(Item::as_str)
+                .is_some_and(|id| ids.contains(&id))
+            {
+                tables(text, driver, &mut ranges);
+            }
+        }
+    }
+    ranges.sort_by_key(|span| span.start);
+    let mut merged: Vec<std::ops::Range<usize>> = Vec::new();
+    for span in ranges {
+        if let Some(previous) = merged
+            .last_mut()
+            .filter(|previous| previous.end >= span.start)
+        {
+            previous.end = previous.end.max(span.end);
+        } else {
+            merged.push(span);
+        }
+    }
+    merged
+        .into_iter()
+        .map(|span| &text[span])
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn form_for(text: &str, package: &str) -> Result<Value, &'static str> {
@@ -136,11 +226,11 @@ fn validate_options(kind: &str, options: toml::Value) -> bool {
 }
 
 fn package_for(config: &toml::Value, package: &str) -> Result<Value, &'static str> {
-    let (_, manifest, onboarding) = PACKAGES
+    let (_, manifest_source, onboarding) = PACKAGES
         .iter()
         .find(|(id, _, _)| *id == package)
         .ok_or("catalogue")?;
-    let manifest: toml::Value = toml::from_str(manifest).map_err(|_| "catalogue")?;
+    let manifest: toml::Value = toml::from_str(manifest_source).map_err(|_| "catalogue")?;
     let id = manifest["integration"]["id"].as_str().ok_or("catalogue")?;
     let kind = manifest["integration"]["driver"]
         .as_str()
@@ -173,7 +263,7 @@ fn package_for(config: &toml::Value, package: &str) -> Result<Value, &'static st
             json!({"id":identity,"enabled":d.get("enabled").and_then(toml::Value::as_bool).unwrap_or(true),"vars":options.get("vars"),"options":options,"valid":valid})
         }).collect();
     Ok(
-        json!({"manifest":manifest,"onboarding":onboarding,"instances":instances,"configurable":configurable,"fields":if configurable {fields_for(&manifest)} else {Vec::new()}}),
+        json!({"manifest":manifest,"manifest_source":manifest_source,"profile_source":moli_profile::builtin(id),"onboarding":onboarding,"instances":instances,"configurable":configurable,"fields":if configurable {fields_for(&manifest)} else {Vec::new()}}),
     )
 }
 
@@ -328,6 +418,36 @@ pub(crate) fn toggle(input: &Value) -> Result<String, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configuration_files_keep_original_sources_and_selected_instances() {
+        let text = "# saved file\n[[driver]] # first\nid = 'plug-one'\nkind = 'profile'\nenabled = false\n[driver.options]\nprofile = 'meross-mss310'\nhost = '192.168.50.21'\n[driver.options.vars]\nexpected_uuid = '00000000000000000000000000000001'\n\n[[driver]]\nid = 'other'\nkind = 'sonos'\n[driver.options]\nhost = '192.168.50.22'\n\n[[driver]] # second\nid = 'plug-two'\nkind = 'profile'\n[driver.options]\nprofile = 'meross-mss310'\nhost = '192.168.50.23'\n";
+        let state = catalogue(text).unwrap();
+        let packages = state["packages"].as_array().unwrap();
+        let meross = packages
+            .iter()
+            .find(|p| p["manifest"]["integration"]["id"] == "meross-mss310")
+            .unwrap();
+        let source = meross["configuration_source"].as_str().unwrap();
+        assert!(source.contains("[[driver]] # first"), "{source}");
+        assert!(source.contains("[[driver]] # second"));
+        assert!(source.contains("expected_uuid = '00000000000000000000000000000001'"));
+        assert!(!source.contains("id = 'other'"));
+        assert_eq!(
+            meross["manifest_source"],
+            include_str!("../../../integrations/meross-mss310/integration.toml")
+        );
+        assert_eq!(
+            meross["profile_source"].as_str(),
+            moli_profile::builtin("meross-mss310")
+        );
+        let native = packages
+            .iter()
+            .find(|p| p["manifest"]["integration"]["id"] == "host")
+            .unwrap();
+        assert!(native["profile_source"].is_null());
+        assert_eq!(native["configuration_source"], "");
+    }
 
     #[test]
     fn generated_index_lists_every_official_package_with_honest_editor_capabilities() {

@@ -204,4 +204,17 @@
     <string name="meross_find_again">Search again</string>
     <string name="meross_host">IP address</string>
     <string name="meross_port">Port</string>
+    <string name="integration_devices">Configured devices</string>
+    <string name="configuration_files">View configuration files</string>
+    <string name="configuration_native">No TOML profile: native driver</string>
+    <string name="configuration_no_instance">No instance configured in moli.toml</string>
+    <string name="configuration_copy">Copy</string>
+    <string name="network_self">This device — %1$s · local address</string>
+    <string name="network_reference">Configured in %1$s — %2$s (IP unverified)</string>
+    <string name="network_used">Used by %1$s — %2$s</string>
+    <string name="network_echo">ICMP response</string>
+    <string name="network_presence">Network presence</string>
+    <string name="network_name_source">Local DNS name</string>
+    <string name="integration_open">Open integration</string>
+    <string name="integration_instance_count">%1$d instance(s)</string>
 </resources>
