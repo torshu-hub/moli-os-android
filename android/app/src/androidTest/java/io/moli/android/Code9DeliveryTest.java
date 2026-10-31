@@ -100,6 +100,8 @@ public final class Code9DeliveryTest {
         pairedPresentation(3);
         main(()->assertTrue(((TextView)tag("meross:match:"+String.format("%032x",4))).getText().toString().contains(app.getString(R.string.meross_match_missing))));
         capture("meross-missing-portrait");
+        clickTag("meross:manual");
+        main(()->assertEquals("",((EditText)tag("field:host")).getText().toString()));
         // Reused code39 UUID/IP presentation fixtures only; no account, RPC, new simulator or Save.
         click(R.id.management_back);Code9UpgradeSeedTest.sameData(app);
         try(FileOutputStream out=new FileOutputStream(new File(app.getFilesDir(),"code9-captures/update-proof.txt"))){out.write(("code9 -> code9 corrective (versionCode 10), identical config/key/home/automations/files; UI and rotation verified in "+(SystemClock.uptimeMillis()-began)+" ms\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));}

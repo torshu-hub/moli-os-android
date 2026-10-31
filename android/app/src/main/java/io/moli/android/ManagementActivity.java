@@ -572,7 +572,7 @@ public final class ManagementActivity extends Activity {
                 save=button(footer,R.string.meross_add_found,this::addFoundMeross);save.setTag("meross:add-found");
                 save.setBackgroundResource(R.drawable.management_button_primary);save.setTextColor(getColorStateList(R.color.management_primary_text));
                 if(screen.matches.found()<screen.account.optJSONArray("items").length()) {
-                    Button manual=button(content,R.string.meross_manual,()->{screen.manualMeross=true;render();});configurationActions.add(manual);
+                    Button manual=button(content,R.string.meross_manual,()->{screen.manualMeross=true;edit(null);});manual.setTag("meross:manual");configurationActions.add(manual);
                 }
                 return;
             }
