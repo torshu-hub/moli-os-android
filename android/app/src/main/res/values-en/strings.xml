@@ -134,7 +134,7 @@
     <string name="network_changed">Network changed: search again</string>
     <string name="network_unavailable">Network unavailable</string>
     <string name="network_count_state">%1$d addresses · %2$s</string>
-    <string name="network_limits">Manual search, up to 20 s: mDNS/SSDP announcements and TCP ports 80, 443, 631. Silent devices may be missing.</string>
+    <string name="network_limits">One-time search, up to 20 s. Silent devices may be missing.</string>
     <string name="network_partial">Partial results: large subnet, limit reached or method unavailable. No large-scale probing; silent devices may be missing.</string>
     <string name="network_unknown">Unknown device</string>
     <string name="network_description">Device description</string>
@@ -144,7 +144,7 @@
     <string name="network_copy">Copy IP</string>
     <string name="network_copied">IP address copied.</string>
     <string name="network_ip">IP address</string>
-    <string name="network_evidence_help">An open port does not prove a brand or model. Names are announced by devices. No Moli configuration is changed.</string>
+    <string name="network_evidence_help">A network response only proves momentary presence. Names and models are declared by devices or local DNS. A saved IP does not guarantee identity. No Moli configuration is changed.</string>
     <string name="network_close">Close</string>
     <string name="network_requirements">A private IPv4 Wi-Fi or Ethernet network is required. VPN and cellular networks are excluded.</string>
     <string name="description_meross_mss310">Local plug: ON/OFF, power, current, voltage and daily reading.</string>
@@ -217,4 +217,6 @@
     <string name="network_name_source">Local DNS name</string>
     <string name="integration_open">Open integration</string>
     <string name="integration_instance_count">%1$d instance(s)</string>
+    <string name="meross_configuration">Account and general settings</string>
+    <string name="configuration_saved_ip">Saved IP: %1$s</string>
 </resources>

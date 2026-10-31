@@ -387,7 +387,8 @@ public final class ManagementActivity extends Activity {
         }
     }
     private String entry() throws JSONException {
-        return catalogueLabel(screen.selected.getJSONObject("manifest").getJSONObject("integration"));
+        JSONObject metadata=screen.selected.getJSONObject("manifest").getJSONObject("integration");
+        return "meross-mss310".equals(metadata.getString("id"))?brands(metadata):catalogueLabel(metadata);
     }
     private String brands(JSONObject metadata) throws JSONException {
         JSONArray values=metadata.getJSONArray("brands");List<String> names=new ArrayList<>();
@@ -537,6 +538,7 @@ public final class ManagementActivity extends Activity {
         String profile=metadata.getString("id");boolean configurable=item.getBoolean("configurable");
         boolean valid=selected!=null&&selected.getBoolean("valid");
         String id=selected==null ? null : selected.getString("id"),name=catalogueLabel(metadata);
+        if(profile.equals("meross-mss310") && selected==null)name=brands(metadata);
         if(profile.equals("meross-mss310") && selected!=null)name=selected.getJSONObject("options").optString("name",name);
         int state=!configurable ? R.string.setup_incomplete : selected==null ? item.getJSONArray("instances").length()>0 ? R.string.setup_configured : R.string.setup_needed : valid ? R.string.setup_configured : R.string.setup_invalid;
         String stateText=getString(state);
@@ -552,10 +554,10 @@ public final class ManagementActivity extends Activity {
         title.setSpan(new android.text.style.ForegroundColorSpan(color(state==R.string.setup_invalid ? R.color.management_error : R.color.management_muted)),name.length()+2,title.length(),0);
         TextView label=text(body,title,16);label.setPadding(0,0,0,0);label.setMaxLines(2);label.setEllipsize(android.text.TextUtils.TruncateAt.END);
         label.setTextColor(color(configurable ? R.color.management_ink : R.color.management_muted));
-        String detail=id==null ? getString(description(profile))+" · "+getString(R.string.integration_instance_count,item.getJSONArray("instances").length()) : id;
+        String detail=id==null ? getString(profile.equals("meross-mss310")?R.string.meross_configuration:description(profile))+" · "+getString(R.string.integration_instance_count,item.getJSONArray("instances").length()) : id;
         if(selected!=null) {
             JSONObject options=selected.optJSONObject("options");
-            if(options!=null && !options.optString("host").isEmpty())detail=options.optString("host")+" · "+id;
+            if(options!=null && !options.optString("host").isEmpty())detail=getString(R.string.configuration_saved_ip,options.optString("host"))+" · "+id;
             if(options!=null && profile.equals("meross-mss310")) {
                 JSONObject vars=options.optJSONObject("vars");String uuid=vars==null?"":vars.optString("expected_uuid");
                 String found=screen.matches.unique(uuid);
