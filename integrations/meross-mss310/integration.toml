@@ -1,0 +1,34 @@
+[integration]
+id = "meross-mss310"
+name = "MSS310"
+brands = ["Meross"]
+models = ["MSS310"]
+transport = "http"
+driver = "profile"
+[discovery]
+mdns = []
+ssdp = []
+ports = [80]
+[needs]
+secrets = ["key"]
+vars = ["expected_uuid"]
+options = ["host"]
+[origin]
+reused = "krahabb/meross_lan : formats et unités documentés, aucun code copié"
+author = "agent"
+
+[[fixture]]
+file = "fixtures/all.json"
+request = "all"
+
+[[fixture]]
+file = "fixtures/electricity.json"
+request = "electricity"
+
+[[fixture]]
+file = "fixtures/consumption.json"
+request = "consumption"
+
+[[fixture]]
+file = "fixtures/runtime.json"
+request = "runtime"

@@ -1,0 +1,126 @@
+# MSS310 local readings and explicit Hub commands. Electricity: mW, mA, decivolts.
+[profile]
+id = "meross-mss310"
+name = "Prise Meross MSS310"
+manufacturer = "Meross"
+model = "MSS310"
+secret = "key"
+identity = "all.payload.all.system.hardware.uuid"
+
+[[request]]
+id = "all"
+path = "/config"
+format = "json"
+every = "30s"
+transport = "meross"
+namespace = "Appliance.System.All"
+payload = '{}'
+
+[[request]]
+id = "electricity"
+path = "/config"
+format = "json"
+every = "30s"
+transport = "meross"
+namespace = "Appliance.Control.Electricity"
+payload = '{"electricity":{}}'
+
+[[request]]
+id = "consumption"
+path = "/config"
+format = "json"
+every = "5m"
+transport = "meross"
+namespace = "Appliance.Control.ConsumptionX"
+payload = '{"consumptionx":[]}'
+
+[[request]]
+id = "runtime"
+path = "/config"
+format = "json"
+every = "1m"
+transport = "meross"
+namespace = "Appliance.System.Runtime"
+payload = '{"runtime":{}}'
+
+[[point]]
+key = "on"
+label = "État"
+from = "all.payload.all.digest.togglex.[channel=0].onoff"
+kind = "binary"
+
+[[point]]
+key = "power"
+label = "Puissance"
+from = "electricity.payload.electricity.power"
+kind = "numeric"
+unit = "W"
+scale = 0.001
+round = 3
+
+[[point]]
+key = "current"
+label = "Intensité"
+from = "electricity.payload.electricity.current"
+kind = "numeric"
+unit = "A"
+scale = 0.001
+round = 3
+
+[[point]]
+key = "voltage"
+label = "Tension"
+from = "electricity.payload.electricity.voltage"
+kind = "numeric"
+unit = "V"
+scale = 0.1
+round = 3
+
+[[point]]
+key = "energy_recent"
+label = "Dernière consommation journalière rapportée"
+from = "consumption.payload.moli_latest.value"
+kind = "numeric"
+unit = "Wh"
+# Daily report, not a monotonic energy index.
+semantic = "other"
+
+[[point]]
+key = "energy_date"
+label = "Date du relevé journalier"
+from = "consumption.payload.moli_latest.date"
+kind = "text"
+
+[[point]]
+key = "signal"
+label = "Signal Wi-Fi"
+from = "runtime.payload.runtime.signal"
+kind = "numeric"
+unit = "%"
+semantic = "signal_strength"
+
+[[point]]
+key = "reported_model"
+label = "Modèle annoncé"
+from = "all.payload.all.system.hardware.type"
+kind = "text"
+
+[[point]]
+key = "hardware"
+label = "Révision matérielle"
+from = "all.payload.all.system.hardware.version"
+kind = "text"
+
+[[write]]
+point = "on"
+path = "/config"
+transport = "meross"
+namespace = "Appliance.Control.ToggleX"
+channel = 0
+refresh = "all"
+
+[[point]]
+key = "firmware"
+label = "Firmware"
+from = "all.payload.all.system.firmware.version"
+kind = "text"

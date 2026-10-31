@@ -32,6 +32,13 @@ fn fields_for(manifest: &toml::Value) -> Vec<Value> {
     let mut field = |name: &str, location: &str, numeric: bool, required: bool| {
         fields.push(json!({"name":name,"location":location,"numeric":numeric,"required":required}));
     };
+    if manifest["integration"]["id"].as_str() == Some("meross-mss310") {
+        field("host", "options", false, true);
+        field("port", "options", true, false);
+        field("name", "options", false, true);
+        field("expected_uuid", "vars", false, true);
+        return fields;
+    }
     if kind == "profile" {
         for name in manifest["needs"]["vars"]
             .as_array()
@@ -75,6 +82,9 @@ fn fields_for(manifest: &toml::Value) -> Vec<Value> {
 }
 
 fn supported(manifest: &toml::Value) -> bool {
+    if manifest["integration"]["id"].as_str() == Some("meross-mss310") {
+        return true;
+    }
     // Pairing/authentication and discovery-dependent packages stay unavailable.
     if !manifest["needs"]["secrets"]
         .as_array()
@@ -349,6 +359,7 @@ mod tests {
                 "daikin-brp069",
                 "ipp",
                 "klipper",
+                "meross-mss310",
                 "moonraker",
                 "open-meteo",
                 "open-meteo-air",

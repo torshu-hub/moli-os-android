@@ -29,7 +29,11 @@ public final class ManagementActivity extends Activity {
         boolean existing, saved, activation;
         int filter;
         int catalogueScroll=-1;
-        Future<JSONObject> loading;
+        Future<JSONObject> loading, merossWork;
+        JSONObject account;
+        String accountUuid="", merossKey="", pendingMerossHost;
+        boolean merossReturn;
+
         Future<String> saving;
     }
     private Screen screen;
@@ -43,7 +47,7 @@ public final class ManagementActivity extends Activity {
     private ScrollView scroll;
     private TextView status, title, feedback;
     private Button primary, restart, save, back;
-    private EditText instance;
+    private EditText instance, merossKey;
     private final Map<String,EditText> fields = new LinkedHashMap<>();
     private final Map<Page,Button> destinations = new EnumMap<>(Page.class);
     private final List<View> configurationActions=new ArrayList<>(), activationActions=new ArrayList<>(), contextActions=new ArrayList<>();
@@ -65,6 +69,7 @@ public final class ManagementActivity extends Activity {
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         build();
         networkPanel=new NetworkPanel(this,screen.network,scroll);
+        networkPanel.useMeross=this::useMerossIp;
         render();
     }
     private int dp(int value) { return Math.round(value*getResources().getDisplayMetrics().density); }
@@ -206,7 +211,7 @@ public final class ManagementActivity extends Activity {
         startActivity(new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP));
     }
     private void navigate(Page page) {
-        if(screen.saving!=null || screen.loading!=null) return;
+        if(screen.saving!=null || screen.loading!=null || screen.merossWork!=null) return;
         if(screen.page==Page.NETWORK)networkPanel.leave();
         hideKeyboard(); remember();
         if(page!=Page.INTEGRATIONS)screen.catalogueScroll=-1;
@@ -216,7 +221,7 @@ public final class ManagementActivity extends Activity {
         render();
     }
     private void goBack() {
-        if(screen.saving!=null || screen.loading!=null) return;
+        if(screen.saving!=null || screen.loading!=null || screen.merossWork!=null) return;
         if(screen.page==Page.PARAMETERS) navigate(Page.INTEGRATIONS);
         else if(screen.page!=Page.HOME) navigate(Page.HOME);
         else finish();
@@ -258,7 +263,7 @@ public final class ManagementActivity extends Activity {
                 styledState=state;
             }
         }
-        boolean idle=screen.saving==null && screen.loading==null;
+        boolean idle=screen.saving==null && screen.loading==null && screen.merossWork==null;
         boolean actionable=state==EngineHost.State.STOPPED || state==EngineHost.State.ERROR || state==EngineHost.State.RUNNING;
         if(primary!=null) {
             primary.setText(state==EngineHost.State.RUNNING ? R.string.stop : R.string.start);
@@ -284,15 +289,34 @@ public final class ManagementActivity extends Activity {
         });
     }
     private void complete() {
+        if(screen.merossWork!=null && screen.merossWork.isDone()) {
+            try { remember();screen.account=screen.merossWork.get();screen.error=null; }
+            catch(Exception failure) { screen.error=getString(HostUi.errorMessage(failure)); }
+            screen.merossWork=null;render();
+        }
         if(screen.loading!=null && screen.loading.isDone()) {
             try { screen.catalogue=screen.loading.get(); screen.snapshot=screen.catalogue.isNull("text") ? null : screen.catalogue.getString("text"); }
             catch(Exception failure) { screen.error=getString(HostUi.errorMessage(failure)); }
-            screen.loading=null; render();
+            screen.loading=null;
+            if(screen.pendingMerossHost!=null && screen.catalogue!=null) {
+                try {
+                    JSONArray packages=screen.catalogue.getJSONArray("packages");
+                    for(int i=0;i<packages.length();i++) {
+                        JSONObject item=packages.getJSONObject(i);
+                        if(item.getJSONObject("manifest").getJSONObject("integration").getString("id").equals("meross-mss310")) {
+                            screen.selected=item;if(!screen.merossReturn)edit(null);
+                            screen.draft.put("host",screen.pendingMerossHost);screen.page=Page.PARAMETERS;break;
+                        }
+                    }
+                }catch(JSONException failure){screen.error=getString(HostUi.errorMessage(failure));}
+                screen.pendingMerossHost=null;screen.merossReturn=false;
+            }
+            render();
         }
         if(screen.saving!=null && screen.saving.isDone()) {
             try {
                 screen.snapshot=screen.saving.get(); screen.saved=true; screen.error=null;
-                screen.page=Page.INTEGRATIONS; screen.draft.clear(); screen.catalogue=null;
+                screen.page=Page.INTEGRATIONS; screen.draft.clear();screen.merossKey="";screen.accountUuid=""; screen.catalogue=null;
                 load();
             } catch(Exception failure) { screen.error=getString(HostUi.errorMessage(failure)); }
             screen.saving=null; render();
@@ -327,6 +351,7 @@ public final class ManagementActivity extends Activity {
             case "ipp": return R.string.description_ipp;
             case "izypower": return R.string.description_izypower;
             case "klipper": return R.string.description_klipper;
+            case "meross-mss310": return R.string.description_meross_mss310;
             case "meross-em06": return R.string.description_meross_em06;
             case "moonraker": return R.string.description_moonraker;
             case "open-meteo": return R.string.description_open_meteo;
@@ -392,7 +417,13 @@ public final class ManagementActivity extends Activity {
             for(JSONObject item:group.getValue()) {
                 JSONArray instances=item.getJSONArray("instances");
                 if(instances.length()==0)catalogueRow(item,null);
-                else for(int i=0;i<instances.length();i++)catalogueRow(item,instances.getJSONObject(i));
+                else {
+                    for(int i=0;i<instances.length();i++)catalogueRow(item,instances.getJSONObject(i));
+                    if(item.getJSONObject("manifest").getJSONObject("integration").getString("id").equals("meross-mss310")) {
+                        Button add=button(content,R.string.meross_add,()->{screen.selected=item;edit(null);});
+                        add.setTag("meross:add");configurationActions.add(add);
+                    }
+                }
             }
         }
     }
@@ -401,6 +432,7 @@ public final class ManagementActivity extends Activity {
         String profile=metadata.getString("id");boolean configurable=item.getBoolean("configurable");
         boolean valid=selected!=null&&selected.getBoolean("valid");
         String id=selected==null ? null : selected.getString("id"),name=catalogueLabel(metadata);
+        if(profile.equals("meross-mss310") && selected!=null)name=selected.getJSONObject("options").optString("name",name);
         int state=!configurable ? R.string.setup_incomplete : selected==null ? R.string.setup_needed : valid ? R.string.setup_configured : R.string.setup_invalid;
         String stateText=getString(state);
         LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setTag("package:"+profile);
@@ -437,7 +469,7 @@ public final class ManagementActivity extends Activity {
         toggle.setOnClickListener(v->{toggle.setChecked(enabled);setEnabled(selected);});
     }
     private void setEnabled(JSONObject selected) {
-        if(selected==null || screen.saving!=null || screen.loading!=null)return;
+        if(selected==null || screen.saving!=null || screen.loading!=null || screen.merossWork!=null)return;
         Context app=getApplicationContext();
         try {
             String before=screen.snapshot,id=selected.getString("id");boolean enabled=!selected.getBoolean("enabled");
@@ -453,7 +485,7 @@ public final class ManagementActivity extends Activity {
         render();
     }
     private void render() {
-        fields.clear(); instance=null; save=null; status=null; primary=null; restart=null;
+        fields.clear(); instance=null; merossKey=null; save=null; status=null; primary=null; restart=null;
         configurationActions.clear();activationActions.clear();contextActions.clear();
         content.removeAllViews(); footer.removeAllViews();
         back.setVisibility(screen.page==Page.HOME ? View.GONE : View.VISIBLE);
@@ -508,7 +540,8 @@ public final class ManagementActivity extends Activity {
         try {
             screen.existing=selected!=null;
             screen.id=selected==null ? screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id") : selected.getString("id");
-            screen.draft.clear();
+            screen.draft.clear();screen.merossKey="";screen.accountUuid="";
+            if(selected==null && screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id").equals("meross-mss310"))screen.id="meross-"+java.util.UUID.randomUUID().toString().substring(0,8);
             JSONObject options=selected==null ? null : selected.optJSONObject("options");
             JSONArray fields=screen.selected.getJSONArray("fields");
             for(int i=0;i<fields.length();i++) {
@@ -516,20 +549,30 @@ public final class ManagementActivity extends Activity {
                 JSONObject current=options==null ? null : location.equals("vars") ? options.optJSONObject("vars") : options;
                 screen.draft.put(name,current==null ? "" : current.optString(name,""));
             }
-            screen.page=Page.PARAMETERS;render();
+            screen.page=Page.PARAMETERS;
+            if(screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id").equals("meross-mss310") && screen.account==null && screen.merossWork==null) {
+                Context app=getApplicationContext();screen.merossWork=EngineHost.inspect(()->new ConfigStore(app).meross(new JSONObject().put("operation","status")));
+            }
+            render();
         } catch(JSONException failure) { HostUi.error(this,failure); }
     }
     private void renderForm() throws JSONException {
         title.setText(entry());
         String profile=screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id");
         text(content,getString(description(profile)),14).setTextColor(color(R.color.management_muted));
+        if(profile.equals("meross-mss310"))renderMeross();
         JSONArray specs=screen.selected.getJSONArray("fields");
         if(specs.length()==0)text(content,getString(R.string.no_required_parameters),14);
         if(profile.equals("sonos"))text(content,getString(R.string.sonos_basic_only),14);
         for(int i=0;i<specs.length();i++) {
             JSONObject spec=specs.getJSONObject(i);String name=spec.getString("name");
+            if(profile.equals("meross-mss310") && name.equals("expected_uuid")) {
+                String uuid=screen.draft.getOrDefault(name,"");
+                if(!uuid.isEmpty())text(content,getString(R.string.meross_identity,uuid),13);
+                continue;
+            }
             boolean lat="lat".equals(name),lon="lon".equals(name);
-            String label=lat ? getString(R.string.latitude) : lon ? getString(R.string.longitude) : name;
+            String label=lat ? getString(R.string.latitude) : lon ? getString(R.string.longitude) : profile.equals("meross-mss310") && name.equals("name") ? getString(R.string.meross_name) : name;
             if(!spec.getBoolean("required"))label=getString(R.string.optional_parameter,label);
             EditText field=field(label,screen.draft.getOrDefault(name,""),lat ? R.id.variable_lat : lon ? R.id.variable_lon : View.generateViewId());
             field.setTag("field:"+name);
@@ -539,10 +582,10 @@ public final class ManagementActivity extends Activity {
             else field.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             if(!spec.getBoolean("required"))field.setHint(R.string.official_default);
             field.setImeOptions((i==specs.length()-1 ? EditorInfo.IME_ACTION_DONE : EditorInfo.IME_ACTION_NEXT)|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-            fields.put(name,field);
+            fields.put(name,field);configurationActions.add(field);
         }
         if(screen.existing)text(content,getString(R.string.existing_instance,screen.id),13).setTextColor(color(R.color.management_muted));
-        else {
+        else if(!profile.equals("meross-mss310")) {
             instance=field(getString(R.string.instance),screen.id,R.id.integration_instance);
             instance.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             instance.setImeOptions(EditorInfo.IME_ACTION_DONE|EditorInfo.IME_FLAG_NO_EXTRACT_UI);
@@ -552,6 +595,69 @@ public final class ManagementActivity extends Activity {
         save.setId(R.id.save_configuration);
         save.setBackgroundResource(R.drawable.management_button_primary); save.setTextColor(getColorStateList(R.color.management_primary_text));
         for(EditText field:fields.values()) field.setEnabled(screen.saving==null);
+    }
+    private void useMerossIp(String host) {
+        screen.pendingMerossHost=host;screen.page=Page.INTEGRATIONS;networkPanel.leave();load();render();
+    }
+    private void merossAction(JSONObject request) {
+        if(screen.merossWork!=null || screen.saving!=null)return;
+        remember();hideKeyboard();screen.error=null;
+        Context app=getApplicationContext();
+        try {screen.merossWork=EngineHost.maintain(app,()->new ConfigStore(app).meross(request));}
+        catch(Exception failure){screen.error=getString(HostUi.errorMessage(failure));}
+        render();
+    }
+    private void renderMeross() throws JSONException {
+        text(content,getString(R.string.meross_local_help),14);
+        LinearLayout actions=new LinearLayout(this);content.addView(actions);
+        Button account=button(actions,R.string.meross_account,()->accountDialog(false));configurationActions.add(account);
+        Button choose=button(actions,R.string.meross_choose_ip,()->{
+            remember();hideKeyboard();
+            List<NetworkEvidence.Device> devices=screen.network.results.list();
+            try { if(screen.network.factory!=null && !Objects.equals(screen.network.key,screen.network.factory.current().key))devices=Collections.emptyList(); }
+            catch(Exception unavailable){devices=Collections.emptyList();}
+            if(devices.isEmpty()) {screen.merossReturn=true;navigate(Page.NETWORK);return;}
+            final List<NetworkEvidence.Device> candidates=devices;
+            String[] labels=new String[candidates.size()];for(int i=0;i<labels.length;i++)labels[i]=candidates.get(i).ip+" — "+candidates.get(i).name();
+            new android.app.AlertDialog.Builder(this).setTitle(R.string.meross_choose_ip).setItems(labels,(d,n)->{screen.draft.put("host",candidates.get(n).ip);render();}).show();
+        });configurationActions.add(choose);
+        for(Button b:new Button[]{account,choose})b.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
+        if(screen.account!=null && screen.account.optBoolean("connected")) {
+            JSONArray items=screen.account.optJSONArray("items");
+            if(items!=null && items.length()>0) {
+                String[] labels=new String[items.length()];for(int i=0;i<labels.length;i++)labels[i]=items.getJSONObject(i).getString("name");
+                Button select=button(content,R.string.meross_select_account_device,()->{
+                    remember();
+                    new android.app.AlertDialog.Builder(this).setTitle(R.string.meross_select_account_device).setItems(labels,(d,n)->{
+                        try {JSONObject item=items.getJSONObject(n);screen.accountUuid=item.getString("uuid");screen.draft.put("name",item.getString("name"));screen.merossKey="";render();}
+                        catch(JSONException failure){HostUi.error(this,failure);}
+                    }).show();
+                });configurationActions.add(select);
+            } else text(content,getString(R.string.meross_no_devices),14);
+            Button refresh=button(content,R.string.meross_inventory,()->{try{merossAction(new JSONObject().put("operation","inventory"));}catch(JSONException ignored){}});configurationActions.add(refresh);
+            Button forget=button(content,R.string.meross_forget,()->{try{screen.accountUuid="";merossAction(new JSONObject().put("operation","forget"));}catch(JSONException ignored){}});configurationActions.add(forget);
+        }
+        if(!screen.accountUuid.isEmpty())text(content,getString(R.string.meross_identity,screen.accountUuid),13);
+        merossKey=field(getString(R.string.meross_key),screen.merossKey,R.id.meross_key);
+        merossKey.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        merossKey.setHint(screen.existing ? R.string.meross_keep_key : R.string.meross_key_hint);
+        configurationActions.add(merossKey);
+        if(screen.merossWork!=null)text(content,getString(R.string.meross_working),14);
+    }
+    private void accountDialog(boolean otpRequired) {
+        otpRequired=otpRequired || (screen.error!=null && screen.error.equals(getString(R.string.meross_error_mfa)));
+        LinearLayout form=column();form.setPadding(dp(20),dp(8),dp(20),dp(8));
+        Spinner region=new Spinner(this);region.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"EU","US","AP","Global"}));form.addView(region);
+        EditText email=new EditText(this);email.setHint(R.string.meross_email);email.setSingleLine(true);email.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);form.addView(email);
+        EditText password=new EditText(this);password.setHint(R.string.meross_password);password.setSingleLine(true);password.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);form.addView(password);
+        EditText otp=new EditText(this);otp.setHint(R.string.meross_otp);otp.setInputType(InputType.TYPE_CLASS_NUMBER);if(otpRequired)form.addView(otp);
+        for(EditText field:new EditText[]{email,password,otp}) {field.setSaveEnabled(false);field.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);}
+        ScrollView panel=new ScrollView(this);panel.addView(form);
+        new android.app.AlertDialog.Builder(this).setTitle(R.string.meross_account).setView(panel).setPositiveButton(R.string.meross_connect,(dialog,which)->{
+            try {merossAction(new JSONObject().put("operation","signin").put("region",new String[]{"eu","us","ap","global"}[region.getSelectedItemPosition()]).put("email",email.getText().toString()).put("password",password.getText().toString()).put("otp",otp.getText().toString()));}
+            catch(JSONException failure){HostUi.error(this,failure);}
+            email.setText("");password.setText("");otp.setText("");
+        }).setNegativeButton(android.R.string.cancel,null).show();
     }
     private EditText field(String label,String value,int id) {
         TextView caption=text(content,label,16); caption.setLabelFor(id);
@@ -576,6 +682,7 @@ public final class ManagementActivity extends Activity {
         },120);
     }
     private void remember() {
+        if(merossKey!=null)screen.merossKey=merossKey.getText().toString();
         if(instance!=null) screen.id=instance.getText().toString();
         for(Map.Entry<String,EditText> item:fields.entrySet()) screen.draft.put(item.getKey(),item.getValue().getText().toString());
     }
@@ -594,10 +701,12 @@ public final class ManagementActivity extends Activity {
                 JSONObject spec=specs.getJSONObject(i);String name=spec.getString("name");
                 (spec.getString("location").equals("vars") ? vars : options).put(name,screen.draft.getOrDefault(name,""));
             }
-            final String before=screen.snapshot,id=screen.id,profile=screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id");
+            final String before=screen.snapshot,id=screen.id,key=screen.merossKey,accountUuid=screen.accountUuid,profile=screen.selected.getJSONObject("manifest").getJSONObject("integration").getString("id");
             screen.saving=EngineHost.maintain(app,()->{
                 try {
-                    ConfigStore store=new ConfigStore(app); store.save(before,profile,id,vars,options);
+                    ConfigStore store=new ConfigStore(app);
+                    if(profile.equals("meross-mss310"))store.saveMeross(before,id,options,key,accountUuid);
+                    else store.save(before,profile,id,vars,options);
                     GeneralJournal.record(app,GeneralJournal.Event.CONFIGURATION_SAVED); return store.read();
                 } catch(Exception failure) {
                     GeneralJournal.record(app,GeneralJournal.Event.CONFIGURATION_REJECTED); throw failure;

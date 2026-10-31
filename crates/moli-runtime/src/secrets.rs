@@ -83,6 +83,11 @@ pub async fn forget_secret(path: &Path, key: &MasterKey, name: &str) -> io::Resu
     store.remove(name).await
 }
 
+/// Read a secret for a host's provisioning adapter. Never served by API surfaces.
+pub fn read_secret(path: &Path, key: &MasterKey, name: &str) -> io::Result<Option<String>> {
+    Ok(SecretStore::open(path.to_path_buf(), &parse_master_key(&key.0)?)?.get(name))
+}
+
 /// Stores one secret (operator tool: a device key the human provides).
 /// Safe while moli-os runs (each write starts from the file), but a running
 /// hub reads the new value only after its next write or a restart.

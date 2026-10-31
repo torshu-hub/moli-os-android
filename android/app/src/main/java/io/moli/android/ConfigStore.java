@@ -9,10 +9,13 @@ import org.json.JSONObject;
 /** One native file, no Android driver preferences. Called only on EngineHost's queue. */
 final class ConfigStore {
     final File directory;
+    private final String master;
     final ConfigurationTransaction.Disk disk;
     final ConfigurationTransaction transaction;
     ConfigStore(Context context) throws Exception {
-        directory = ProtectedKey.dataDirectory(context, ProtectedKey.open(context));
+        JSONObject keys=ProtectedKey.open(context);
+        master=keys.getString("master");
+        directory = ProtectedKey.dataDirectory(context, keys);
         directory.mkdirs();
         disk = new ConfigurationTransaction.Disk(directory);
         transaction = new ConfigurationTransaction(disk);
@@ -44,12 +47,24 @@ final class ConfigStore {
         transaction.recover();
         if(!Objects.equals(expected, read())) throw new IllegalStateException("conflict");
         String candidate = nativeCall(change.put("text",expected)).getString("text");
+        commitCandidate(expected,candidate);
+    }
+    void saveMeross(String expected, String id, JSONObject options, String key, String accountUuid) throws Exception {
+        transaction.recover();
+        if(!Objects.equals(expected,read()))throw new IllegalStateException("conflict");
+        JSONObject prepared=meross(new JSONObject().put("operation","prepare").put("text",expected).put("id",id).put("options",options).put("key",key).put("account_uuid",accountUuid));
+        commitCandidate(expected,prepared.getString("text"));
+    }
+    private void commitCandidate(String expected,String candidate) throws Exception {
         String name = "moli.toml.validation";
         try {
             disk.write(name, candidate);
             nativeCall(new JSONObject().put("action","validate").put("path",new File(directory,name).getAbsolutePath()));
         } finally { disk.remove(name); }
         transaction.commitExpected(expected,candidate);
+    }
+    JSONObject meross(JSONObject input) throws Exception {
+        return nativeCall(input.put("action","meross").put("data",directory.getAbsolutePath()).put("master",master));
     }
     void restore(String current, String previous) throws Exception { transaction.commitExpected(current, previous); }
 }

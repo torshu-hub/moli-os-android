@@ -12,6 +12,7 @@ moli-core.workspace = true
 moli-runtime.workspace = true
 moli-net.workspace = true
 anyhow.workspace = true
+base64 = "0.22.1"
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true

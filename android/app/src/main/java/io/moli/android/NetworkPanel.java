@@ -24,6 +24,7 @@ final class NetworkPanel {
         int scroll;
     }
     private final Activity activity;
+    java.util.function.Consumer<String> useMeross;
     final State state;
     private final ScrollView scroll;
     private final Handler main=new Handler(Looper.getMainLooper());
@@ -159,11 +160,13 @@ final class NetworkPanel {
             if(!fact.name.isEmpty())facts.append("\n").append(fact.name);
             if(!fact.location.isEmpty())facts.append("\n").append(fact.location);
         }
-        new AlertDialog.Builder(activity).setTitle(device.ip+" — "+(device.name().isEmpty()?activity.getString(R.string.network_unknown):device.name()))
+        AlertDialog.Builder dialog=new AlertDialog.Builder(activity).setTitle(device.ip+" — "+(device.name().isEmpty()?activity.getString(R.string.network_unknown):device.name()))
             .setMessage(facts+"\n\n"+activity.getString(R.string.network_evidence_help))
-            .setPositiveButton(R.string.network_copy,(dialog,which)->{
+            .setPositiveButton(R.string.network_copy,(ignored,which)->{
                 activity.getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText(activity.getString(R.string.network_ip),device.ip));
                 Toast.makeText(activity,R.string.network_copied,Toast.LENGTH_SHORT).show();
-            }).setNegativeButton(R.string.network_close,(dialog,which)->{}).show();
+            }).setNegativeButton(R.string.network_close,(ignored,which)->{});
+        if(useMeross!=null)dialog.setNeutralButton(R.string.meross_use_ip,(ignored,which)->useMeross.accept(device.ip));
+        dialog.show();
     }
 }
