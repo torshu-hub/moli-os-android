@@ -1,6 +1,7 @@
 //! JNI boundary; all business code remains in the official engine.
 mod configuration;
 mod meross;
+mod netatmo;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
@@ -101,6 +102,8 @@ pub extern "system" fn Java_io_moli_android_NativeServer_configuration(
             if slot.is_some()
                 && input["action"] != "form"
                 && input["action"] != "catalogue"
+                && !(input["action"] == "netatmo"
+                    && matches!(input["operation"].as_str(), Some("status" | "cancel")))
                 && !(input["action"] == "meross"
                     && matches!(
                         input["operation"].as_str(),
@@ -110,6 +113,7 @@ pub extern "system" fn Java_io_moli_android_NativeServer_configuration(
                 return Err("running");
             }
             match input["action"].as_str() {
+                Some("netatmo") => netatmo::run(&input),
                 Some("meross") => meross::run(&input),
                 Some("form") => configuration::form(input["text"].as_str().ok_or("input")?),
                 Some("catalogue") => {

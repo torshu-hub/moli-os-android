@@ -11,3 +11,6 @@ web/src/maison/ui/PaperPrinterCard.svelte  STUCK = /papier
 web/src/maison/ui/PaperPrinterCard.svelte  /envoi\|en attente
 web/src/maison/ui/PaperPrinterCard.svelte  /(couleur|noire|jaune)
 web/src/maison/lib/paper.js  /pleine\|full/
+
+# Valeurs du protocole des PAC existantes, traduites par MODES dans ClimateCard.
+web/src/maison/lib/climate-capabilities.js  modes: mode\?\.kind\?\.values \?\? \[

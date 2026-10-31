@@ -1,0 +1,11 @@
+{
+  "status": "ok", "time_server": 1800000000,
+  "body": {"home": {"id": "home-test",
+    "rooms": [{"id": 101, "reachable": true, "therm_measured_temperature": 19.5,
+      "therm_setpoint_temperature": 20.5, "therm_setpoint_mode": "schedule", "heating_power_request": 42}],
+    "modules": [
+      {"id": "aa:bb:cc:dd:ee:02", "type": "NRV", "reachable": true, "battery_state": "high"},
+      {"id": "aa:bb:cc:dd:ee:01", "type": "NATherm1", "reachable": true,
+       "boiler_status": true, "battery_state": "full"}
+    ]}, "errors": []}
+}

@@ -1,19 +1,28 @@
 <script>
   import { onMount } from 'svelte';
-  import { device, value, reachable, num, act } from '../lib/home.svelte.js';
+  import { home, device, value, reachable, num, act } from '../lib/home.svelte.js';
   import { energy, useEnergy, watts, euros } from '../lib/energy-live.svelte.js';
   import { t } from '../../lib/i18n.svelte.js';
   import Icon from './Icon.svelte';
+  import { climateCapabilities, temporarySetpoint } from '../lib/climate-capabilities.js';
 
   let { id, name } = $props();
 
-  const MIN = 16;
-  const MAX = 30;
   const d = $derived(device(id));
-  const on = $derived(value(id, 'on') === true);
+  const caps = $derived(climateCapabilities(d));
+  const MIN = $derived(caps.min), MAX = $derived(caps.max);
+  const on = $derived(d?.points.some((p) => p.key === 'on') ? value(id, 'on') === true : reachable(id));
   const temp = $derived(value(id, 'temperature'));
   const target = $derived(value(id, 'target_temperature'));
   const mode = $derived(value(id, 'mode'));
+  const commandMode = $derived(value(id, caps.mode?.key ?? 'mode'));
+  let temporaryTemperature = $state(null);
+  $effect(() => { if (temporaryTemperature == null && typeof target === 'number') temporaryTemperature = target; });
+  let duration = $state(60);
+  const temporary = $derived(temporarySetpoint(temporaryTemperature, duration, MIN, MAX));
+  const programNames = $derived.by(() => { try { return JSON.parse(value(id, 'program_names') ?? '{}'); } catch { return {}; } });
+  const setTemporary = () => temporary && act(`${id}/setpoint`, temporary, t('commun.clim.temporaire'));
+  const modeChoices = $derived(caps.modes);
   const outdoor = $derived(value(id, 'outdoor_temperature'));
 
   // What it draws, when a measured circuit feeds it (Daikin units do not
@@ -33,7 +42,7 @@
   // The circuit feeds something else too (« PAC salon + pompe piscine »).
   const shared = $derived(!!feeder && (feeder.feeds.length > 1 || feeder.name.includes('+')));
   const writable = $derived(d?.points.some((p) => p.key === 'target_temperature' && p.access?.write));
-  const STEP = 0.5;
+  const STEP = $derived(caps.step);
 
   // Taps on − / + and drags on the dial add up; one order leaves once the
   // finger rests (each order re-reads the unit and sends all its settings: no
@@ -115,10 +124,15 @@
     if (!on && wanted != null) await flush();
     act(`${id}/on`, !on, t(on ? 'commun.clim.label_arret' : 'commun.clim.label_marche', { name }));
   }
-  const setMode = (key) => act(`${id}/mode`, key, t('commun.action', { label: name, action: modeLabel(key).toLowerCase() }));
+  const setMode = (key) => act(`${id}/${caps.mode?.key ?? 'mode'}`, key, t('commun.action', { label: name, action: modeLabel(key).toLowerCase() }));
 
   // The keys are the unit's modes (sent as they are); `label` is a catalogue key.
   const MODES = {
+    schedule: { label: 'commun.clim.mode.schedule', icon: 'clock', tone: 'good' },
+    away: { label: 'commun.clim.mode.away', icon: 'home', tone: 'good' },
+    hg: { label: 'commun.clim.mode.hg', icon: 'snowflake', tone: 'cool' },
+    manual: { label: 'commun.clim.mode.manual', icon: 'fire', tone: 'warm' },
+    home: { label: 'commun.clim.mode.home', icon: 'home', tone: 'good' },
     froid: { label: 'commun.clim.mode.froid', icon: 'snowflake', tone: 'cool' },
     chaud: { label: 'commun.clim.mode.chaud', icon: 'fire', tone: 'warm' },
     auto: { label: 'commun.clim.mode.auto', icon: 'air-conditioner', tone: 'good' },
@@ -182,10 +196,20 @@
   </div>
   <div class="facts">
     <h3>{name}</h3>
-    {#if writable}
-      <button class="chip power {on ? m.tone : ''}" onclick={power} aria-pressed={on}>
+    {#if caps.timed}
+      <span class="chip">{m.label}</span>
+      <div class="temporary">
+        <label>{t('commun.clim.consigne')} <input aria-label={t('commun.clim.consigne')} type="number" min={MIN} max={MAX} step={STEP} bind:value={temporaryTemperature} /></label>
+        <label>{t('commun.clim.duree_minutes')} <input aria-label={t('commun.clim.duree_minutes')} type="number" min="1" max="1440" step="1" bind:value={duration} /></label>
+        <button disabled={!temporary || !reachable(id)} onclick={setTemporary}>{t('commun.clim.temporaire')}</button>
+      </div>
+      {#if caps.resume}<button disabled={!reachable(id)} onclick={() => act(`${id}/resume`, true, t('commun.clim.reprendre'))}>{t('commun.clim.reprendre')}</button>{/if}
+      {#if caps.mode}<label>{t('commun.clim.mode_maison')} <select value={commandMode ?? ''} disabled={!reachable(id)} onchange={(e) => setMode(e.currentTarget.value)}><option disabled value="">—</option>{#each modeChoices as key}<option value={key}>{modeLabel(key)}</option>{/each}</select></label>{/if}
+      {#if caps.program}<label>{t('commun.clim.programme')} <select value={value(id, 'program') ?? ''} disabled={!reachable(id)} onchange={(e) => act(`${id}/program`, e.currentTarget.value, t('commun.clim.programme'))}><option disabled value="">—</option>{#each caps.program.kind.values as key}<option value={key}>{programNames[key] ?? key}</option>{/each}</select></label>{/if}
+    {:else if writable}
+      {#if caps.power}<button class="chip power {on ? m.tone : ''}" onclick={power} aria-pressed={on}>
         <Icon name="power" size={16} />{on ? m.label : t('commun.clim.eteinte')}
-      </button>
+      </button>{/if}
       {#if on}
         <div class="setpoint" role="group" aria-label={t('commun.clim.consigne')}>
           <button onclick={() => nudge(-STEP)} aria-label={t('commun.clim.moins_chaud')} disabled={shownTarget <= MIN}>−</button>
@@ -193,7 +217,8 @@
           <button onclick={() => nudge(STEP)} aria-label={t('commun.clim.plus_chaud')} disabled={shownTarget >= MAX}>+</button>
         </div>
         <div class="modes" role="group" aria-label={t('commun.clim.mode')}>
-          {#each Object.entries(MODES) as [key, it] (key)}
+          {#each modeChoices.filter((key) => MODES[key]) as key (key)}
+            {@const it = MODES[key]}
             <button class:active={mode === key} onclick={() => setMode(key)} title={t(it.label)} aria-label={t(it.label)} aria-pressed={mode === key}>
               <Icon name={it.icon} size={16} />
             </button>
@@ -203,6 +228,7 @@
     {:else}
       <span class="chip {on ? m.tone : ''}"><Icon name={on ? m.icon : 'power'} size={16} />{on ? m.label : t('commun.clim.eteinte')}</span>
     {/if}
+    {#if typeof value(id, 'collected_at') === 'number'}<p class="muted">{t('commun.clim.collecte_age', { seconds: Math.max(0, Math.floor((home.now - value(id, 'collected_at')) / 1000)) })}</p>{/if}
     <p class="muted">
       {t('commun.clim.dehors', { temp: num(outdoor, 0) })}
       {#if draw != null && draw >= 5}
@@ -226,6 +252,10 @@
 </div>
 
 <style>
+  .temporary { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+  .temporary label { display: grid; gap: 4px; font-size: 13px; }
+  .temporary input { width: 82px; min-height: 36px; }
+  .temporary button, select { min-height: 36px; }
   .costs {
     display: flex;
     flex-wrap: wrap;

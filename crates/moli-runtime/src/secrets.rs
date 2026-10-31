@@ -148,7 +148,7 @@ impl SecretStore {
         let _guard = self.write.lock().await;
         let mut next = self.current()?;
         next.insert(name.to_owned(), value.to_owned());
-        self.commit(next).await
+        self.commit(next)
     }
 
     pub(crate) async fn remove(&self, name: &str) -> io::Result<bool> {
@@ -157,7 +157,7 @@ impl SecretStore {
         if next.remove(name).is_none() {
             return Ok(false);
         }
-        self.commit(next).await.map(|()| true)
+        self.commit(next).map(|()| true)
     }
 
     /// The file as it is now, falling back to memory if it vanished.
@@ -176,10 +176,26 @@ impl SecretStore {
         }
     }
 
-    /// Encrypts and writes `next`, then makes it current. Caller holds `write`.
-    async fn commit(&self, next: BTreeMap<String, String>) -> io::Result<()> {
+    /// Persist the complete encrypted generation before acknowledging it.
+    /// This small synchronous critical section cannot be cancelled between
+    /// replacement and the matching in-memory update (OAuth rotation relies on it).
+    fn commit(&self, next: BTreeMap<String, String>) -> io::Result<()> {
+        use std::io::Write as _;
         let bytes = encrypt(&self.key, &next)?;
-        crate::labels::write_atomic(&self.path, &bytes).await?;
+        let mut temporary = self.path.as_os_str().to_owned();
+        temporary.push(".tmp");
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut file = std::fs::File::create(&temporary)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temporary, &self.path)?;
+        #[cfg(unix)]
+        if let Some(parent) = self.path.parent() {
+            std::fs::File::open(parent)?.sync_all()?;
+        }
         set_owner_only(&self.path);
         *self.values.lock().unwrap_or_else(PoisonError::into_inner) = next;
         Ok(())
@@ -235,6 +251,30 @@ mod tests {
     use super::*;
 
     const KEY: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cancelled_token_replacements_leave_memory_and_disk_on_the_same_complete_pair() {
+        let path = std::env::temp_dir().join(format!("moli-vault-cancel-{}", std::process::id()));
+        let store = std::sync::Arc::new(
+            SecretStore::open(path.clone(), &parse_master_key(KEY).unwrap()).unwrap(),
+        );
+        store.set("other", "preserve").await.unwrap();
+        store.set("pair", "old-access|old-refresh").await.unwrap();
+        for n in 0..20 {
+            let writer = store.clone();
+            let value = format!("access-{n}|refresh-{n}");
+            let task = tokio::spawn(async move { writer.set("pair", &value).await });
+            if n % 2 == 0 {
+                tokio::task::yield_now().await;
+            }
+            task.abort();
+            let _ = task.await;
+            let disk = SecretStore::open(path.clone(), &parse_master_key(KEY).unwrap()).unwrap();
+            assert_eq!(store.get("pair"), disk.get("pair"));
+            assert_eq!(disk.get("other").as_deref(), Some("preserve"));
+        }
+        std::fs::remove_file(path).unwrap();
+    }
 
     #[tokio::test]
     async fn round_trip_and_wrong_key() {

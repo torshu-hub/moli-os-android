@@ -119,6 +119,9 @@ fn form_for(text: &str, package: &str) -> Result<Value, &'static str> {
 fn fields_for(manifest: &toml::Value) -> Vec<Value> {
     let kind = manifest["integration"]["driver"].as_str().unwrap_or("");
     let mut fields = Vec::new();
+    if manifest["integration"]["id"].as_str() == Some("netatmo") {
+        return fields;
+    }
     let mut field = |name: &str, location: &str, numeric: bool, required: bool| {
         fields.push(json!({"name":name,"location":location,"numeric":numeric,"required":required}));
     };
@@ -172,7 +175,10 @@ fn fields_for(manifest: &toml::Value) -> Vec<Value> {
 }
 
 fn supported(manifest: &toml::Value) -> bool {
-    if manifest["integration"]["id"].as_str() == Some("meross-mss310") {
+    if matches!(
+        manifest["integration"]["id"].as_str(),
+        Some("meross-mss310" | "netatmo")
+    ) {
         return true;
     }
     // Pairing/authentication and discovery-dependent packages stay unavailable.
@@ -185,7 +191,8 @@ fn supported(manifest: &toml::Value) -> bool {
     matches!(
         manifest["integration"]["id"].as_str(),
         Some(
-            "open-meteo"
+            "netatmo"
+                | "open-meteo"
                 | "open-meteo-air"
                 | "tempo"
                 | "daikin-brp069"
@@ -217,6 +224,10 @@ fn validate_options(kind: &str, options: toml::Value) -> bool {
             .is_ok_and(|config| {
                 moli_profile::ProfileDriver::new(config, std::path::PathBuf::new()).is_ok()
             }),
+        "netatmo" => options
+            .clone()
+            .try_into::<moli_netatmo::Config>()
+            .is_ok_and(|config| moli_netatmo::Netatmo::new(config).is_ok()),
         "solarman" => options.try_into::<moli_solarman::Config>().is_ok(),
         "ipp" => options.try_into::<moli_ipp::Config>().is_ok(),
         "sonos" => options.try_into::<moli_sonos::Config>().is_ok(),
@@ -573,6 +584,7 @@ mod tests {
                 "klipper",
                 "meross-mss310",
                 "moonraker",
+                "netatmo",
                 "open-meteo",
                 "open-meteo-air",
                 "solarman",
