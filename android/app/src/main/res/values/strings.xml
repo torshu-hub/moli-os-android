@@ -55,7 +55,12 @@
     <string name="configure">Configurer</string>
     <string name="native_setup_missing">Le parcours Android de déclaration et des options de ce pilote natif n’est pas disponible.</string>
     <string name="catalogue_count">%1$d intégrations officielles embarquées</string>
-    <string name="activation_help">Activer un pilote ne commande pas l’appareil. Si le moteur tourne, il est arrêté puis relancé automatiquement pour appliquer ce réglage.</string>
+    <string name="activation_help">Désactiver un pilote ne coupe pas le courant d’une prise laissée allumée. Si le moteur tourne, il est arrêté puis relancé automatiquement pour appliquer ce réglage.</string>
+    <string name="integration_all_active">Toutes actives (%2$d)</string>
+    <string name="integration_none_active">Aucune active (0/%2$d)</string>
+    <string name="integration_mixed_active">Mixte : %1$d/%2$d actives</string>
+    <string name="integration_enable_all">Tout activer</string>
+    <string name="integration_disable_all">Tout désactiver</string>
     <string name="no_declared_brand">Sans marque déclarée</string>
     <string name="multiple_brands">Plusieurs marques</string>
     <string name="required_secrets">Authentification et coffre : %1$s</string>

@@ -77,7 +77,6 @@ public final class ManagementActivity extends Activity {
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         build();
         networkPanel=new NetworkPanel(this,screen.network,scroll);
-        networkPanel.useMeross=this::useMerossIp;
         networkPanel.association=this::networkAssociation;
         networkPanel.openAssociation=this::openNetworkIntegration;
         render();
@@ -262,6 +261,7 @@ public final class ManagementActivity extends Activity {
     }
     private void navigate(Page page) {
         if(screen.saving!=null || screen.loading!=null || screen.merossWork!=null || screen.finding || screen.identityWork!=null) return;
+        screen.merossReturn=false;
         if(screen.page==Page.NETWORK)networkPanel.leave();
         hideKeyboard(); remember();
         if(page!=Page.INTEGRATIONS)screen.catalogueScroll=-1;
@@ -467,6 +467,7 @@ public final class ManagementActivity extends Activity {
             contextActions.add(filter);
         }
         if(screen.snapshot==null)text(content,getString(R.string.start_first),14);
+        text(content,getString(R.string.activation_help),13).setTextColor(color(R.color.management_muted));
         Map<String,List<JSONObject>> groups=new TreeMap<>();
         for(int i=0;i<packages.length();i++) {
             JSONObject item=packages.getJSONObject(i),metadata=item.getJSONObject("manifest").getJSONObject("integration");
@@ -575,7 +576,7 @@ public final class ManagementActivity extends Activity {
         });
         if(profile.equals("open-meteo")&&root.findViewById(R.id.catalogue_entry)==null)body.setId(R.id.catalogue_entry);
         contextActions.add(body);
-        if(selected==null)return;
+        if(selected==null){packageActivation(row,item,name);return;}
         boolean enabled=selected!=null&&selected.getBoolean("enabled");
         Switch toggle=new Switch(this);toggle.setChecked(enabled);toggle.setShowText(false);toggle.setMinimumWidth(dp(56));toggle.setMinimumHeight(dp(48));
         toggle.setPadding(dp(8),0,dp(12),0);row.addView(toggle,new LinearLayout.LayoutParams(-2,dp(48)));
@@ -601,7 +602,41 @@ public final class ManagementActivity extends Activity {
         } catch(Exception failure){screen.error=getString(HostUi.errorMessage(failure));}
         render();
     }
+    private void packageActivation(LinearLayout row,JSONObject item,String name) throws JSONException {
+        JSONArray instances=item.getJSONArray("instances");int count=instances.length(),active=0;boolean valid=true;
+        if(count==0)return;
+        for(int i=0;i<count;i++) {
+            JSONObject instance=instances.getJSONObject(i);
+            if(instance.getBoolean("enabled"))active++;
+            if(item.getBoolean("configurable")&&!instance.getBoolean("valid"))valid=false;
+        }
+        final boolean all=active==count;
+        String state=getString(active==0?R.string.integration_none_active:all?R.string.integration_all_active:R.string.integration_mixed_active,active,count);
+        LinearLayout control=column();control.setGravity(Gravity.CENTER);control.setPadding(dp(4),dp(4),dp(8),dp(4));
+        row.addView(control,new LinearLayout.LayoutParams(-2,-2));
+        TextView status=text(control,state,12);status.setTag("group-state:"+item.getJSONObject("manifest").getJSONObject("integration").getString("id"));
+        status.setTextColor(color(R.color.management_muted));
+        Switch toggle=new Switch(this);toggle.setChecked(all);toggle.setShowText(false);toggle.setMinimumHeight(dp(48));toggle.setMinimumWidth(dp(56));
+        control.addView(toggle);toggle.setContentDescription(name+", "+state+", "+getString(all?R.string.integration_disable_all:R.string.integration_enable_all));
+        if(android.os.Build.VERSION.SDK_INT>=30)toggle.setStateDescription(state);
+        String profile=item.getJSONObject("manifest").getJSONObject("integration").getString("id");toggle.setTag("group-toggle:"+profile);
+        toggle.setEnabled(valid);if(valid)activationActions.add(toggle);
+        toggle.setOnClickListener(v->{toggle.setChecked(all);setPackageEnabled(profile,!all);});
+    }
+    private void setPackageEnabled(String profile,boolean enabled) {
+        if(screen.saving!=null || screen.loading!=null || screen.merossWork!=null || screen.finding || screen.identityWork!=null)return;
+        Context app=getApplicationContext();String before=screen.snapshot;
+        screen.catalogueScroll=scroll.getScrollY();screen.activation=true;screen.saved=false;screen.error=null;
+        screen.saving=EngineHost.maintain(app,()->{
+            try {
+                ConfigStore store=new ConfigStore(app);store.setPackageEnabled(before,profile,enabled);
+                GeneralJournal.record(app,GeneralJournal.Event.CONFIGURATION_SAVED);return store.read();
+            } catch(Exception failure){GeneralJournal.record(app,GeneralJournal.Event.CONFIGURATION_REJECTED);throw failure;}
+        });
+        render();
+    }
     private void render() {
+        networkPanel.useMeross=screen.merossReturn ? this::useMerossIp : null;
         fields.clear(); instance=null; merossKey=null; save=null; status=null; primary=null; restart=null;
         configurationActions.clear();activationActions.clear();contextActions.clear();
         content.removeAllViews(); footer.removeAllViews();
@@ -755,7 +790,7 @@ public final class ManagementActivity extends Activity {
         List<NetworkEvidence.Device> devices=screen.network.results.list();
         try {if(screen.network.factory!=null && !Objects.equals(screen.network.key,screen.network.factory.current().key))devices=Collections.emptyList();}
         catch(Exception unavailable){devices=Collections.emptyList();}
-        if(devices.isEmpty()){screen.merossReturn=true;navigate(Page.NETWORK);return;}
+        if(devices.isEmpty()){navigate(Page.NETWORK);screen.merossReturn=true;render();return;}
         final List<NetworkEvidence.Device> candidates=devices;
         String[] labels=new String[candidates.size()];for(int i=0;i<labels.length;i++)labels[i]=candidates.get(i).ip+" — "+candidates.get(i).name();
         new android.app.AlertDialog.Builder(this).setTitle(R.string.meross_choose_ip).setItems(labels,(d,n)->{screen.draft.put("host",candidates.get(n).ip);render();}).show();

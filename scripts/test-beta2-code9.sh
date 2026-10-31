@@ -1,4 +1,4 @@
 #!/bin/sh
-# The existing candidate entry point now validates the dependent code12 milestone.
+# Existing candidate entry point validates the dependent code13 milestone.
 set -eu
-exec sh "$(dirname "$0")/test-beta2-code12.sh"
+exec sh "$(dirname "$0")/test-beta2-code13.sh"

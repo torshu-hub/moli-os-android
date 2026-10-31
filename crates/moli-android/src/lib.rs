@@ -116,6 +116,9 @@ pub extern "system" fn Java_io_moli_android_NativeServer_configuration(
                     configuration::catalogue(input["text"].as_str().ok_or("input")?)
                 }
                 Some("toggle") => Ok(serde_json::json!({"text":configuration::toggle(&input)?})),
+                Some("toggle_package") => {
+                    Ok(serde_json::json!({"text":configuration::toggle_package(&input)?}))
+                }
                 Some("prepare") => Ok(serde_json::json!({"text":configuration::prepare(&input)?})),
                 Some("validate") => {
                     let path = Path::new(input["path"].as_str().ok_or("input")?);
