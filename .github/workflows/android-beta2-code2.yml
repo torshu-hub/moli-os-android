@@ -1,7 +1,7 @@
 name: Android Beta 2 code9
 on:
   push:
-    branches: [android/beta2-code9-meross-mss310, android/beta2-code12-integrations-reseau]
+    branches: [android/beta2-code9-meross-mss310, android/beta2-code12-integrations-reseau, android/beta2-code13-correctifs-ux-carte]
 permissions:
   contents: read
   actions: read
