@@ -163,7 +163,7 @@ final class NetworkPanel {
         }
         scroll.post(()->scroll.scrollTo(0,y));
     }
-    private void details(NetworkEvidence.Device device){
+    AlertDialog details(NetworkEvidence.Device device){
         StringBuilder facts=new StringBuilder();
         for(NetworkEvidence.Entry fact:device.facts){
             if(facts.length()>0)facts.append("\n\n");facts.append(proof(fact)).append(" · ").append(service(fact));
@@ -181,7 +181,8 @@ final class NetworkPanel {
                 Toast.makeText(activity,R.string.network_copied,Toast.LENGTH_SHORT).show();
             }).setNegativeButton(R.string.network_close,(ignored,which)->{});
         if(openAssociation!=null && !association.apply(device).isEmpty())dialog.setNeutralButton(R.string.integration_open,(ignored,which)->openAssociation.accept(device));
+        // Only supplied by the explicit Meross IP picker, never general Network navigation.
         else if(useMeross!=null)dialog.setNeutralButton(R.string.meross_use_ip,(ignored,which)->useMeross.accept(device.ip));
-        dialog.show();
+        return dialog.show();
     }
 }

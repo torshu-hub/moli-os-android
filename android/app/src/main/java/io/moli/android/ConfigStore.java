@@ -44,6 +44,9 @@ final class ConfigStore {
     void setEnabled(String expected, String id, boolean enabled) throws Exception {
         apply(expected,new JSONObject().put("action","toggle").put("id",id).put("enabled",enabled));
     }
+    void setPackageEnabled(String expected, String profile, boolean enabled) throws Exception {
+        apply(expected,new JSONObject().put("action","toggle_package").put("profile",profile).put("enabled",enabled));
+    }
     private void apply(String expected, JSONObject change) throws Exception {
         transaction.recover();
         if(!Objects.equals(expected, read())) throw new IllegalStateException("conflict");

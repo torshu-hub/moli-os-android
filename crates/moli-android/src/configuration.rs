@@ -401,6 +401,52 @@ pub(crate) fn toggle(input: &Value) -> Result<String, &'static str> {
                 .find(|d| d.get("id").and_then(Item::as_str) == Some(id))
         })
         .ok_or("conflict")?;
+    set_enabled(driver, enabled)?;
+    Ok(document.to_string())
+}
+
+/// Resolve membership through the same canonical catalogue as the UI, then
+/// return one candidate for one validation and `ConfigurationTransaction` commit.
+pub(crate) fn toggle_package(input: &Value) -> Result<String, &'static str> {
+    let text = input["text"].as_str().ok_or("input")?;
+    let profile = input["profile"].as_str().ok_or("input")?;
+    let enabled = input["enabled"].as_bool().ok_or("input")?;
+    let package = form_for(text, profile)?;
+    let instances = package["instances"].as_array().ok_or("catalogue")?;
+    if instances.is_empty() {
+        return Err("conflict");
+    }
+    let ids: Vec<_> = instances.iter().filter_map(|i| i["id"].as_str()).collect();
+    if ids.len() != instances.len() || ids.iter().any(|id| id.is_empty()) {
+        return Err("configuration");
+    }
+    let mut document: DocumentMut = text.parse().map_err(|_| "configuration")?;
+    let drivers = document
+        .get_mut("driver")
+        .and_then(Item::as_array_of_tables_mut)
+        .ok_or("conflict")?;
+    if ids.iter().any(|id| {
+        drivers
+            .iter()
+            .filter(|d| d.get("id").and_then(Item::as_str) == Some(*id))
+            .count()
+            != 1
+    }) {
+        return Err("configuration");
+    }
+    for driver in drivers.iter_mut() {
+        if driver
+            .get("id")
+            .and_then(Item::as_str)
+            .is_some_and(|id| ids.contains(&id))
+        {
+            set_enabled(driver, enabled)?;
+        }
+    }
+    Ok(document.to_string())
+}
+
+fn set_enabled(driver: &mut Table, enabled: bool) -> Result<(), &'static str> {
     let decoration = driver
         .get("enabled")
         .and_then(Item::as_value)
@@ -412,12 +458,58 @@ pub(crate) fn toggle(input: &Value) -> Result<String, &'static str> {
             .ok_or("configuration")?
             .decor_mut() = decoration;
     }
-    Ok(document.to_string())
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn package_activation_preserves_other_packages_and_handles_implicit_and_mixed_states() {
+        let before = "# canonical\n[[driver]] # implicit ON\nid = 'one'\nkind = 'profile'\n[driver.options]\nprofile = 'open-meteo'\nvars = { lat = '0', lon = '0' } # keep options\n[[driver]]\nid = 'two'\nkind = 'profile'\nenabled = false # keep flag\n[driver.options]\nprofile = 'open-meteo'\nvars = { lat = '1', lon = '2' }\n[[driver]] # another profile\nid = 'air'\nkind = 'profile'\nenabled = false\n[driver.options]\nprofile = 'open-meteo-air'\nvars = { lat = '0', lon = '0' }\n[[driver]]\nid = 'host'\nkind = 'host'\n[guard]\nprotect_unassigned = true # keep guard\n";
+        let initial = form_for(before, "open-meteo").unwrap();
+        assert_eq!(initial["instances"][0]["enabled"], true);
+        assert_eq!(initial["instances"][1]["enabled"], false);
+        let all =
+            toggle_package(&json!({"text":before,"profile":"open-meteo","enabled":true})).unwrap();
+        let expected = before
+            .replacen(
+                "kind = 'profile'\n",
+                "kind = 'profile'\nenabled = true\n",
+                1,
+            )
+            .replace("enabled = false # keep flag", "enabled = true # keep flag");
+        assert_eq!(all, expected);
+        let none =
+            toggle_package(&json!({"text":all,"profile":"open-meteo","enabled":false})).unwrap();
+        assert_eq!(
+            none,
+            expected.replacen("enabled = true", "enabled = false", 2)
+        );
+        assert!(
+            form_for(&none, "open-meteo").unwrap()["instances"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|i| i["enabled"] == false)
+        );
+        let native =
+            toggle_package(&json!({"text":before,"profile":"host","enabled":false})).unwrap();
+        assert_eq!(
+            native,
+            before.replace("kind = 'host'", "kind = 'host'\nenabled = false")
+        );
+        assert!(toggle_package(&json!({"text":before,"profile":"sonos","enabled":true})).is_err());
+        assert!(
+            toggle_package(&json!({"text":before,"profile":"missing","enabled":true})).is_err()
+        );
+        let duplicate = before.replace("id = 'air'", "id = 'one'");
+        assert!(
+            toggle_package(&json!({"text":duplicate,"profile":"open-meteo","enabled":false}))
+                .is_err()
+        );
+    }
 
     #[test]
     fn configuration_files_keep_original_sources_and_selected_instances() {

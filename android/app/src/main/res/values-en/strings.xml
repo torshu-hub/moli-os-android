@@ -55,7 +55,12 @@
     <string name="configure">Configure</string>
     <string name="native_setup_missing">The Android setup flow for declaring this native driver and its options is not available.</string>
     <string name="catalogue_count">%1$d embedded official integrations</string>
-    <string name="activation_help">Enabling a driver does not control the device. If the engine is running, it is stopped and restarted automatically to apply this setting.</string>
+    <string name="activation_help">Disabling a driver does not cut power to a socket left on. If the engine is running, it is stopped and restarted automatically to apply this setting.</string>
+    <string name="integration_all_active">All active (%2$d)</string>
+    <string name="integration_none_active">None active (0/%2$d)</string>
+    <string name="integration_mixed_active">Mixed: %1$d/%2$d active</string>
+    <string name="integration_enable_all">Enable all</string>
+    <string name="integration_disable_all">Disable all</string>
     <string name="no_declared_brand">No declared brand</string>
     <string name="multiple_brands">Multiple brands</string>
     <string name="required_secrets">Authentication and vault: %1$s</string>

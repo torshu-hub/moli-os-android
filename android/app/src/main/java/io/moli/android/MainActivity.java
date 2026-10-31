@@ -48,7 +48,7 @@ public final class MainActivity extends Activity {
         web.setWebChromeClient(new WebChromeClient(){@Override public boolean onConsoleMessage(ConsoleMessage message){return true;}});
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){return !allowed(r.getUrl());}
-            @Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest r){return allowed(r.getUrl())?null:new WebResourceResponse("text/plain","UTF-8",403,"Blocked",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
+            @Override public WebResourceResponse shouldInterceptRequest(WebView v,WebResourceRequest r){return resourceAllowed(r)?null:new WebResourceResponse("text/plain","UTF-8",403,"Blocked",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
             @Override public void onReceivedError(WebView v,WebResourceRequest r,WebResourceError e){if(r.isForMainFrame())failed();}
             @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse e){if(r.isForMainFrame())failed();}
             @Override public void onPageFinished(WebView v,String url){
@@ -62,6 +62,19 @@ public final class MainActivity extends Activity {
         showDashboard();
     }
     private boolean allowed(Uri uri){String origin=loaded;return origin!=null && EngineHost.state()==EngineHost.State.RUNNING && origin.equals(EngineHost.origin()) && "http".equals(uri.getScheme()) && "127.0.0.1".equals(uri.getHost()) && uri.getPort()==Uri.parse(origin).getPort();}
+    boolean resourceAllowed(WebResourceRequest request) {
+        if(allowed(request.getUrl()))return true;
+        String origin=loaded;
+        return origin!=null && allowed(Uri.parse(origin)) && osmTile(request);
+    }
+    static boolean osmTile(WebResourceRequest request) {
+        Uri uri=request.getUrl();
+        return !request.isForMainFrame() && "GET".equals(request.getMethod())
+            && "https".equals(uri.getScheme()) && "tile.openstreetmap.org".equals(uri.getHost())
+            && ("tile.openstreetmap.org".equals(uri.getEncodedAuthority()) || "tile.openstreetmap.org:443".equals(uri.getEncodedAuthority()))
+            && uri.getEncodedQuery()==null && uri.getEncodedFragment()==null
+            && uri.getEncodedPath()!=null && uri.getEncodedPath().matches("/[0-9]+/[0-9]+/[0-9]+\\.png");
+    }
     private void failed(){runOnUiThread(()->{status.setText(R.string.display_failed);status.setVisibility(View.VISIBLE);});}
     private void invalidate(){++request;loadedLease=-1;authenticating=false;loaded=null;web.stopLoading();web.loadUrl("about:blank");}
     private void authenticate(){
