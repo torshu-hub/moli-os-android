@@ -646,7 +646,7 @@ async fn driver_polls_status_at_30_seconds_and_topology_at_300_and_read_scope_ca
     cancel.cancel();
     task.await.unwrap();
 }
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_optimistic_measurements()
  {
     let vault = DiskVault::new();
@@ -677,6 +677,7 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
     let task = spawn_driver(&hub, instance, Arc::new(driver), cancel.clone());
     settle(|| hub.stats().drivers_running == 1).await;
     assert_eq!(mock.requests.lock().unwrap().len(), 2);
+    tokio::time::advance(Duration::from_secs(10)).await;
     for (key, value, endpoint, field) in [
         (
             "setpoint",
@@ -722,6 +723,11 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
         .value,
         Value::Float(20.5)
     );
+    mock.add(200, &s);
+    mock.add(200, &t);
+    let before = mock.requests.lock().unwrap().len();
+    tokio::time::advance(Duration::from_secs(20)).await;
+    settle(|| mock.requests.lock().unwrap().len() == before + 2).await;
     cancel.cancel();
     task.await.unwrap();
 }

@@ -196,7 +196,7 @@ impl Driver for Netatmo {
                         if let Err(Failure::RateLimited(seconds))=result {quota_until=Instant::now()+Duration::from_secs(seconds.max(self.config.poll_seconds));next=quota_until;}
                         let success=result.is_ok();let topology_changed=command.key.as_ref()=="program";
                         command.reply(result.map_err(|_|tr!("pilotes.netatmo.command_error")));
-                        if success {if topology_changed {cache=None;}next=Instant::now()+Duration::from_secs(self.config.poll_seconds);}
+                        if success {if topology_changed {cache=None;}next=next.min(Instant::now()+Duration::from_secs(self.config.poll_seconds));}
                     }
                     ()=tokio::time::sleep_until(next)=>{
                         let start=Instant::now();
