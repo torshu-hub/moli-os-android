@@ -5,6 +5,7 @@ import java.io.File;
 import java.util.Map;
 import java.util.Objects;
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 /** One native file, no Android driver preferences. Called only on EngineHost's queue. */
 final class ConfigStore {
@@ -53,6 +54,12 @@ final class ConfigStore {
         transaction.recover();
         if(!Objects.equals(expected,read()))throw new IllegalStateException("conflict");
         JSONObject prepared=meross(new JSONObject().put("operation","prepare").put("text",expected).put("id",id).put("options",options).put("key",key).put("account_uuid",accountUuid));
+        commitCandidate(expected,prepared.getString("text"));
+    }
+    void saveFoundMeross(String expected, JSONArray rows) throws Exception {
+        transaction.recover();
+        if(!Objects.equals(expected,read()))throw new IllegalStateException("conflict");
+        JSONObject prepared=meross(new JSONObject().put("operation","prepare_found").put("text",expected).put("rows",rows));
         commitCandidate(expected,prepared.getString("text"));
     }
     private void commitCandidate(String expected,String candidate) throws Exception {

@@ -33,10 +33,10 @@ public final class Code9UpgradeSeedTest {
         for(java.util.Iterator<String> keys=before.keys();keys.hasNext();){String name=keys.next();assertEquals(name,before.getString(name),after.getString(name));}
         assertEquals(proof.getString("key","missing"),Beta2JourneyTest.digest(ProtectedKey.open(app).getString("master")));
     }
-    @Test public void seedRealCode8()throws Exception {
+    @Test public void seedRealCode9()throws Exception {
         Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();
         assertEquals("io.moli.android.app.beta2.test",app.getPackageName());
-        assertEquals(8,app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());assertFalse(ProtectedKey.exists(app));
+        assertEquals(9,app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());assertFalse(ProtectedKey.exists(app));
         ProtectedKey.create(app,"482913");
         app.startForegroundService(new Intent(app,MoliService.class));Beta2JourneyTest.waitState(EngineHost.State.RUNNING);
         app.startForegroundService(new Intent(app,MoliService.class).setAction(MoliService.STOP));Beta2JourneyTest.waitState(EngineHost.State.STOPPED);
@@ -46,6 +46,12 @@ public final class Code9UpgradeSeedTest {
                 store.save(store.read(),profile,profile+"-fixture",profile.equals("tempo")?new JSONObject():vars);store.setEnabled(store.read(),profile+"-fixture",false);
             }
             store.save(store.read(),"ipp","printer-fixture",new JSONObject(),new JSONObject().put("host","192.0.2.1").put("port","631"));store.setEnabled(store.read(),"printer-fixture",false);
+            for(int n=1;n<=4;n++) {
+                String id="existing-plug-"+n;
+                store.save(store.read(),"meross-mss310",id,new JSONObject().put("expected_uuid",String.format("%032x",n)),
+                    new JSONObject().put("host","192.0.2."+n).put("port","80").put("name","Configured plug "+n));
+                store.setEnabled(store.read(),id,false);
+            }
             String before=store.read();store.transaction.commitExpected(before,before+"\n# code8 fixture comment kept verbatim\n");
             store.disk.write("home.json","{\"outdoor\":{\"weather\":\"owner-weather-choice\",\"air\":\"owner-air-choice\"},\"preserve\":{\"nested\":[1,true]}}\n");
             store.disk.write("automations.json","{\"automations\":[]}\n");return null;

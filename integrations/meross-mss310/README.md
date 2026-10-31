@@ -45,3 +45,11 @@ commands from API/UI/automation, no writes at startup, repeated commands, four
 configurations and stable identity after renaming/reassociation. No real account
 or device was accessed by the developer. Cloud/firmware interoperability and
 physical switching remain for the owner's voluntary hardware tests.
+
+Account provisioning reuses code39 UUID/IP matching: one user action reuses the
+code8 LAN discovery and sends one signed identity GET per candidate (four at a
+time). Unique inventory matches are shown by account name, IP and UUID; missing
+or ambiguous plugs are not inferred. One add action rechecks the found targets
+and commits their canonical configuration together, preserving existing IDs,
+names and enabled flags. No persistent IP inventory or additional discovery
+engine is introduced. Local matching does not restart the running Moli engine.

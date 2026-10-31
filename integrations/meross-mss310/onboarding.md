@@ -11,6 +11,15 @@ vérification, rouvrir ce dialogue pour le saisir. La clé et la session vont da
 le coffre Moli ; le mot de passe n'est pas conservé. Le cloud ne sert qu'au
 provisionnement. Une clé manuelle permet de fonctionner sans compte.
 
+Avec le compte connecté, appuyer sur « Retrouver mes prises ». La liste Réseau
+existante est réutilisée, ou sa recherche habituelle est lancée si nécessaire.
+Chaque IP candidate est interrogée par GET signé : seuls les UUID correspondant
+au compte sont associés aux noms des prises. La liste indique IP et UUID vérifiés,
+« Non trouvée » ou une ambiguïté. « Ajouter les prises trouvées » enregistre
+ensemble les correspondances uniques dans la configuration Moli, sans deviner
+les IP ni confirmer chaque prise. Les prises absentes restent absentes ; le
+formulaire manuel permet de corriger une adresse manquante.
+
 Enregistrer utilise la transaction `moli.toml` habituelle. Ajouter les autres
 prises avec « Ajouter une MSS310 ». Réassocier le même UUID garde son instance,
 son historique et ses références, même après changement d'IP ou de nom. Une clé

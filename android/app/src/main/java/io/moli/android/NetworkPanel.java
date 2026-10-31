@@ -79,6 +79,7 @@ final class NetworkPanel {
             state.label=target.label;state.key=target.key;return target;
         }catch(Exception unavailable){state.label=activity.getString(R.string.network_unavailable);state.end=DiscoverySearch.End.UNAVAILABLE;return null;}
     }
+    boolean searching(){return running!=null;}
     void begin(){
         if(running!=null)return;
         Target target=refreshTarget();if(target==null){render();return;}

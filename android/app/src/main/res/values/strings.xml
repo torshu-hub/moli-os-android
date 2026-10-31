@@ -176,4 +176,13 @@
     <string name="meross_error_network">Service Meross indisponible. Réessayez ou utilisez une clé manuelle pour le LAN.</string>
     <string name="meross_error_rate">Meross limite les connexions. Patientez avant de réessayer.</string>
     <string name="meross_error_expired">Session Meross expirée. Reconnectez le compte ; les prises locales restent indépendantes.</string>
+    <string name="meross_find">Retrouver mes prises</string>
+    <string name="meross_add_found">Ajouter les prises trouvées</string>
+    <string name="meross_find_progress">Identification locale : %1$d / %2$d IP</string>
+    <string name="meross_match_ambiguous">Plusieurs IP pour cet UUID — vérifier manuellement</string>
+    <string name="meross_match_pending">Recherche en cours…</string>
+    <string name="meross_match_missing">Non trouvée</string>
+    <string name="meross_match_summary">%1$d / %2$d prises identifiées. Corrigez manuellement les prises manquantes si nécessaire.</string>
+    <string name="meross_manual">Corriger une prise manuellement</string>
+    <string name="meross_other_results">Autres IP : %1$d sans réponse, %2$d clés refusées, %3$d identités absentes du compte ou réponses incompatibles.</string>
 </resources>

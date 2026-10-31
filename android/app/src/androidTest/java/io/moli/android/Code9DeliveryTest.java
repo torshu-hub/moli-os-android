@@ -60,30 +60,48 @@ public final class Code9DeliveryTest {
         main(()->{View v=tag(value);v.requestRectangleOnScreen(new android.graphics.Rect(0,-40,v.getWidth(),v.getHeight()+40),true);});
         ins.waitForIdleSync();main(()->tag(value).performClick());ins.waitForIdleSync();
     }
+    private void pairedPresentation(int found)throws Exception {
+        // Inject only the existing code39 aggregation examples into transient UI state.
+        // No fake cloud, discovery, protocol server or production test hook.
+        java.lang.reflect.Field screenField=ManagementActivity.class.getDeclaredField("screen");screenField.setAccessible(true);
+        java.lang.reflect.Method render=ManagementActivity.class.getDeclaredMethod("render");render.setAccessible(true);
+        main(()->{
+            try {
+                Object screen=screenField.get(current());Class<?> type=screen.getClass();
+                java.lang.reflect.Field account=type.getDeclaredField("account"),identified=type.getDeclaredField("identified"),matches=type.getDeclaredField("matches");
+                account.setAccessible(true);identified.setAccessible(true);matches.setAccessible(true);
+                JSONArray items=new JSONArray(),rows=new JSONArray();
+                for(int n=1;n<=4;n++) {
+                    String uuid=String.format("%032x",n);items.put(new JSONObject().put("uuid",uuid).put("name","Account plug "+n));
+                    if(n<=found)rows.put(new JSONObject().put("uuid",uuid).put("host","192.168.50."+(20+n)).put("result","matched"));
+                }
+                account.set(screen,new JSONObject().put("connected",true).put("items",items));identified.setBoolean(screen,true);
+                MerossMatches value=(MerossMatches)matches.get(screen);value.hosts.clear();while(value.results.length()>0)value.results.remove(0);value.add(rows);
+                assertEquals(found,value.plan(items).length());render.invoke(current());
+            }catch(Exception error){throw new AssertionError(error);}
+        });ins.waitForIdleSync();
+    }
     @Test public void upgradeAndConfigureMerossWithoutTouchingExistingDataOrNetwork()throws Exception {
         assertEquals("io.moli.android.app.beta2.test",app.getPackageName());
-        assertEquals(9,app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());
+        assertEquals(10,app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());
         Code9UpgradeSeedTest.sameData(app);
         long began=SystemClock.uptimeMillis();
         ins.startActivitySync(app.getPackageManager().getLaunchIntentForPackage(app.getPackageName()));
         Activity[] a={null};main(()->a[0]=current());orient(a[0],ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-        click(R.id.navigation_integrations);clickTag("meross-mss310");
+        click(R.id.navigation_integrations);clickTag("configure:existing-plug-1");
         waitUi(()->tag("field:host")!=null&&tag("field:host").isEnabled(),"Meross form did not settle");
         assertEquals(EngineHost.State.STOPPED,EngineHost.state());
-        main(()->{
-            ((EditText)tag("field:host")).setText("192.168.50.7");
-            ((EditText)tag("field:name")).setText("Prise de démonstration");
-        });
-        capture("meross-form-landscape");
+        pairedPresentation(4);
+        main(()->{assertTrue(tag("meross:add-found").isEnabled());assertTrue(((TextView)tag("meross:match:"+String.format("%032x",4))).getText().toString().contains("192.168.50.24"));});
+        capture("meross-paired-landscape");
         main(()->a[0]=current());orient(a[0],ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-        waitUi(()->tag("field:host")!=null,"Meross form lost after rotation");
-        main(()->{
-            assertEquals("192.168.50.7",((EditText)tag("field:host")).getText().toString());
-            assertEquals("Prise de démonstration",((EditText)tag("field:name")).getText().toString());
-        });
-        capture("meross-form-portrait");
-        // No key/account and no Save: there must be no local RPC, discovery or SET.
+        waitUi(()->tag("meross:add-found")!=null,"Matched results lost after rotation");
+        capture("meross-paired-portrait");
+        pairedPresentation(3);
+        main(()->assertTrue(((TextView)tag("meross:match:"+String.format("%032x",4))).getText().toString().contains(app.getString(R.string.meross_match_missing))));
+        capture("meross-missing-portrait");
+        // Reused code39 UUID/IP presentation fixtures only; no account, RPC, new simulator or Save.
         click(R.id.management_back);Code9UpgradeSeedTest.sameData(app);
-        try(FileOutputStream out=new FileOutputStream(new File(app.getFilesDir(),"code9-captures/update-proof.txt"))){out.write(("code8 -> code9, identical config/key/home/automations/files; UI and rotation verified in "+(SystemClock.uptimeMillis()-began)+" ms\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+        try(FileOutputStream out=new FileOutputStream(new File(app.getFilesDir(),"code9-captures/update-proof.txt"))){out.write(("code9 -> code9 corrective (versionCode 10), identical config/key/home/automations/files; UI and rotation verified in "+(SystemClock.uptimeMillis()-began)+" ms\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));}
     }
 }
