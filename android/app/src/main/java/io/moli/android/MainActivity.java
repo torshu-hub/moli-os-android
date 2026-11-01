@@ -97,13 +97,30 @@ public final class MainActivity extends Activity {
     @Override public void onBackPressed(){
         final String origin=loaded;final long current=request;
         if(origin==null || EngineHost.state()!=EngineHost.State.RUNNING){openManagement();return;}
-        // Hash routes and replaceState belong to the document's session history.
-        // Read and traverse that history together rather than a lagging native list.
-        web.evaluateJavascript("(()=>{if(location.origin!=="+JSONObject.quote(origin)+")return false;const route=location.hash.replace(/^#\\/?/,'');if(!route)return false;if(history.length>1)history.back();else location.hash='/';return true})()",handled->{
-            if(isDestroyed() || current!=request || !origin.equals(loaded))return;
-            if("false".equals(handled))openManagement();
+        web.evaluateJavascript("location.origin==="+JSONObject.quote(origin)+"?location.hash:null",result->{
+            if(isDestroyed() || current!=request || !origin.equals(loaded) || !origin.equals(EngineHost.origin()) || EngineHost.state()!=EngineHost.State.RUNNING)return;
+            try {
+                Object value=new org.json.JSONTokener(result).nextValue();
+                if(!(value instanceof String))return;
+                String parent=parentRoute((String)value);
+                if(parent==null){openManagement();return;}
+                web.evaluateJavascript("if(location.origin==="+JSONObject.quote(origin)+")location.hash="+JSONObject.quote(parent),null);
+            }catch(org.json.JSONException invalid){web.evaluateJavascript("if(location.origin==="+JSONObject.quote(origin)+")location.hash='/'",null);}
         });
     }
+    /** Null closes Moli only at its home; unknown/invalid routes return home. */
+    static String parentRoute(String hash) {
+        if(hash==null)return "/";
+        String route=hash.startsWith("#")?hash.substring(1):hash;
+        if(route.isEmpty()||route.equals("/"))return null;
+        if(route.startsWith("/"))route=route.substring(1);
+        String[] parts=route.split("/",-1);
+        java.util.Set<String> roots=new java.util.HashSet<>(java.util.Arrays.asList("moli","salon","pieces","plan","carte","cameras","parler","energie","impression","dehors","automatismes","systeme","infra","parc"));
+        if(!roots.contains(parts[0]))return "/";
+        for(String part:parts)if(part.isEmpty()||part.equals(".")||part.equals("..")||!part.matches("[A-Za-z0-9_%:.-]+"))return "/";
+        return parts.length==1?"/":"/"+String.join("/",java.util.Arrays.copyOf(parts,parts.length-1));
+    }
+
     private void openManagement(){startActivity(new Intent(this,ManagementActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP));finish();}
     @Override protected void onSaveInstanceState(Bundle out){
         super.onSaveInstanceState(out);String url=web.getUrl();
