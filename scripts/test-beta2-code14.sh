@@ -14,16 +14,20 @@ base=83047fdaad43c62f319ba9731151ff86d19ba639
 git fetch --no-tags --depth=1 https://github.com/torshu-hub/moli-os-android.git "$base"
 git archive "$base" | tar -x -C "$fixture"
 cp -a web/dist "$fixture/web/dist"
-(cd "$fixture" && cargo +1.99.1 clean --release -p moli-api -p moli-android --target x86_64-linux-android && sh scripts/build-android.sh x86_64)
+(cd "$fixture" && cargo +1.99.1 clean --release -p moli-net -p moli-runtime -p moli-os -p moli-api -p moli-android --target x86_64-linux-android && sh scripts/build-android.sh x86_64)
 (cd android && ./gradlew -p "$fixture/android" --no-daemon -PmoliAbis=x86_64 -PmoliFixtureVersionCode=13 :app:assembleDebug)
-# The old fixture and code9 share a target directory. Cargo can otherwise keep
-# build.rs output containing absolute include_str! paths into the old fixture.
-cargo +1.99.1 clean --release -p moli-android --target x86_64-linux-android
+# Both checkouts share a target directory and package identities. Invalidate
+# every changed common crate in each direction, plus embedded file/catalogue
+# output: Cargo can otherwise reuse the fixture's older moli-net without
+# web_diagnostics, or build.rs paths pointing into the other checkout.
+cargo +1.99.1 clean --release -p moli-net -p moli-runtime -p moli-os -p moli-api -p moli-android -p moli-netatmo --target x86_64-linux-android
 sh scripts/build-android.sh x86_64
 python3 - <<'PY'
 from pathlib import Path
-manifest = Path('integrations/meross-mss310/integration.toml').read_bytes()
-assert manifest in Path('android/app/src/main/jniLibs/x86_64/libmoli_android.so').read_bytes(), 'The emulator JNI must embed the code9 catalogue'
+engine = Path('android/app/src/main/jniLibs/x86_64/libmoli_android.so').read_bytes()
+for integration in ('meross-mss310', 'netatmo'):
+    manifest = Path(f'integrations/{integration}/integration.toml').read_bytes()
+    assert manifest in engine, f'The emulator JNI must embed the current {integration} catalogue'
 PY
 (cd android && ./gradlew --no-daemon -PmoliAbis=x86_64 -PmoliFixtureVersionCode=14 :app:assembleDebug :app:assembleDebugAndroidTest)
 mkdir -p android/app/build/reports/code14/screenshots
