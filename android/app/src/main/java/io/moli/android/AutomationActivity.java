@@ -67,7 +67,7 @@ public final class AutomationActivity extends Activity {
         }
         button(R.string.auto_new,()->form(null));
     }
-    private String name(JSONObject d){JSONObject label=d.optJSONObject("label");String name=label==null?"":label.optString("name");return name.isEmpty()?d.optString("native_name"):name;}
+    private String name(JSONObject d){return DemandAutomation.name(d);}
     private void form(JSONObject existing){
         root.removeAllViews();text(getString(R.string.auto_new));
         List<String> sources=new ArrayList<>(),targets=new ArrayList<>(),sourceNames=new ArrayList<>(),targetNames=new ArrayList<>();
@@ -86,7 +86,7 @@ public final class AutomationActivity extends Activity {
             submit(()->{
                 if(existing!=null){
                     JSONObject a=new JSONObject(existing.getJSONObject("automation").toString());
-                    a.put("graph",DemandAutomation.graph(from,to));
+                    a.put("graph",DemandAutomation.retarget(a.getJSONObject("graph"),from,to));
                     request("PUT","/api/automations/"+a.getString("id"),a,existing.getString("fingerprint"));read();return;
                 }
                 read();

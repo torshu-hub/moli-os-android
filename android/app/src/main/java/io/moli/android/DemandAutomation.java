@@ -43,5 +43,20 @@ final class DemandAutomation {
         }
         return new String[]{source,target};
     }
+    static String name(JSONObject device) {
+        JSONObject label=device.optJSONObject("label");
+        String custom=label==null||label.isNull("name")?"":label.optString("name");
+        return custom.isEmpty()?device.optString("native_name"):custom;
+    }
+    static JSONObject retarget(JSONObject original,String source,String target)throws JSONException {
+        if(wiring(original)==null)throw new JSONException("unsupported_graph");
+        JSONObject graph=new JSONObject(original.toString());
+        JSONArray nodes=graph.getJSONArray("nodes");
+        for(int i=0;i<nodes.length();i++){
+            JSONObject node=nodes.getJSONObject(i);
+            node.put("point","when_state".equals(node.getString("type"))?source:target);
+        }
+        return graph;
+    }
     private DemandAutomation(){}
 }
