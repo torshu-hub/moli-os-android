@@ -626,5 +626,7 @@
   "pilotes.netatmo.setpoint_start_at": "Temporary setpoint start",
   "pilotes.netatmo.setpoint_end_at": "Temporary setpoint end",
   "pilotes.netatmo.firmware_revision": "Firmware revision",
-  "pilotes.netatmo.rf_strength": "Reported radio signal"
+  "pilotes.netatmo.rf_strength": "Reported radio signal",
+  "pilotes.netatmo.reachability_cause": "Declared reachability reason",
+  "pilotes.netatmo.time_cause": "Timestamp quality reason"
 }

@@ -51,12 +51,33 @@ only. No boiler timer, safety threshold or actuator policy belongs to this drive
 ## Read failures and diagnostics
 
 A request failure clears measured values and marks freshness/error separately from
-physical reachability. It retains the last declared availability only within the
-existing maximum age; expiration still runs during long API quota/auth pauses.
+physical reachability. It retains the last declared availability separately; measurement freshness
+expiration still runs during long API quota/auth pauses.
 An explicit `reachable=false` remains offline. The ordinary Moli journal records
 read-error category/retry deadline, recovery and availability-quality transitions,
 with no device/account identity or credentials. Successful polls are not logged.
 Android TXT export retains only allowlisted diagnostic codes.
+
+## Optional reachability and clock fields (code17)
+
+The cached official Energy OpenAPI 1.1.2 schemas `RoomS`, `NATherm1_S`,
+`OTM_S`, `NRV_S` and `ServerResponse` declare no required-field list for these
+properties; missing fields must not be interpreted as an explicit false.
+
+Read quality does not determine declared connectivity. Only an explicit
+`reachable` boolean (including an explicitly unreachable bridge) changes the
+Hub availability flag. An absent status/reachable field is unknown; an absent,
+invalid or future `time_server` does not declare a device offline. Unconfirmed
+measurements remain null. The existing Hub setter/event carries only a boolean:
+on unknown replies the driver retains the last flag (or leaves initial `None`),
+without asserting a new connection. Native driver-stop handling remains intact.
+Freshness expiry invalidates measurements, not physical reachability. This is a
+minimal last-declaration compromise, not a claim that the device is connected.
+
+Separate allowlisted `reachability_cause`/`time_cause` metadata and journal codes
+identify missing status, absent/explicit reachability and clock quality without
+raw responses or identifiers. Repeated identical causes are not re-journaled;
+normal confirmed reads restore measured state without reauthorization.
 
 ## OAuth and durability
 

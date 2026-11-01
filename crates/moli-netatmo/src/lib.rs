@@ -262,6 +262,8 @@ fn expire(ctx: &DriverCtx, records: &mut Records, max_age: u64) {
     }
 }
 const META: &[&str] = &[
+    "reachability_cause",
+    "time_cause",
     "freshness",
     "collected_at",
     "server_at",
@@ -297,7 +299,7 @@ fn invalidate(ctx: &DriverCtx, id: &DeviceId, quality: &'static str, error: &str
     ctx.set_state(id, "declared_demand", Value::from("unknown"));
     ctx.set_state(id, "freshness", Value::from(quality));
     ctx.set_state(id, "error", Value::from(error_text(error).as_str()));
-    if quality != "error" {
+    if quality == "missing" || quality == "offline" {
         ctx.set_availability(id, false);
     }
 }
@@ -311,6 +313,18 @@ fn publish(
     let id = ctx.device_id(&obs.native);
     if ctx.current(&id, "freshness") != Some(Value::from(obs.quality)) {
         ctx.diagnostic("netatmo_availability", obs.quality, 0);
+    }
+    for (key, event, cause) in [
+        (
+            "reachability_cause",
+            "netatmo_reachability",
+            obs.reachability_cause,
+        ),
+        ("time_cause", "netatmo_time_quality", obs.time_cause),
+    ] {
+        if ctx.current(&id, key) != Some(Value::from(cause)) {
+            ctx.diagnostic(event, cause, 0);
+        }
     }
     ctx.upsert_device(topology.map_or_else(
         || device_base(obs, ctx),
@@ -326,6 +340,12 @@ fn publish(
         };
         ctx.set_state(&id, key, value);
     }
+    ctx.set_state(
+        &id,
+        "reachability_cause",
+        Value::from(obs.reachability_cause),
+    );
+    ctx.set_state(&id, "time_cause", Value::from(obs.time_cause));
     ctx.set_state(&id, "freshness", Value::from(obs.quality));
     ctx.set_state(&id, "error", Value::from(""));
     ctx.set_state(
@@ -349,7 +369,9 @@ fn publish(
     if let Some(topology) = topology {
         commands::publish_metadata(ctx, &id, obs, topology);
     }
-    ctx.set_availability(&id, obs.current());
+    if let Some(reachable) = obs.reachable {
+        ctx.set_availability(&id, reachable);
+    }
     id
 }
 fn device_base(obs: &Observation, ctx: &DriverCtx) -> Device {
@@ -422,6 +444,8 @@ fn numeric() -> Kind {
 fn label(key: &str) -> String {
     // Literal translation keys remain discoverable by the existing i18n checker.
     match key {
+        "reachability_cause" => tr!("pilotes.netatmo.reachability_cause"),
+        "time_cause" => tr!("pilotes.netatmo.time_cause"),
         "anticipating" => tr!("pilotes.netatmo.anticipating"),
         "open_windows" => tr!("pilotes.netatmo.open_windows"),
         "boiler_valve_comfort_boost" => tr!("pilotes.netatmo.boiler_valve_comfort_boost"),

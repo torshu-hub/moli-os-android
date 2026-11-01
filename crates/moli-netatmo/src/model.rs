@@ -17,6 +17,9 @@ pub(crate) struct Observation {
     pub model: String,
     pub collected_at: u64,
     pub server_at: Option<u64>,
+    pub reachable: Option<bool>,
+    pub reachability_cause: &'static str,
+    pub time_cause: &'static str,
     pub quality: &'static str,
     pub readings: BTreeMap<&'static str, Value>,
 }
@@ -117,7 +120,7 @@ pub(crate) fn parse(
     {
         return Err(Failure::Api);
     }
-    let (server_at, cloud_quality) = cloud_time(topology, status, now, max_age_ms);
+    let (server_at, cloud_quality, time_cause) = cloud_time(topology, status, now, max_age_ms);
     let room_status = index(items(&live["rooms"])?)?;
     let module_status = index(items(&live["modules"])?)?;
     let modules = items(&home["modules"])?;
@@ -147,6 +150,7 @@ pub(crate) fn parse(
             now,
             server_at,
             cloud_quality,
+            time_cause,
             values,
         )?);
     }
@@ -171,6 +175,7 @@ pub(crate) fn parse(
             now,
             server_at,
             cloud_quality,
+            time_cause,
             values,
         )?;
         if let Some(bridge) = live.get("bridge").filter(|b| b.is_string())
@@ -179,6 +184,8 @@ pub(crate) fn parse(
                 .is_some_and(|m| m["reachable"] == false)
         {
             obs.quality = "offline";
+            obs.reachable = Some(false);
+            obs.reachability_cause = "bridge_unreachable";
         }
         out.push(obs);
     }
@@ -247,9 +254,11 @@ fn observation(
     now: u64,
     server_at: Option<u64>,
     cloud_quality: &'static str,
+    time_cause: &'static str,
     readings: BTreeMap<&'static str, Value>,
 ) -> Result<Observation> {
-    let quality = match boolean(&live["reachable"])? {
+    let reachable = boolean(&live["reachable"])?;
+    let quality = match reachable {
         Some(false) => "offline",
         None => "unconfirmed",
         Some(true) => cloud_quality,
@@ -260,6 +269,17 @@ fn observation(
         model: model.to_owned(),
         collected_at: now,
         server_at,
+        reachable,
+        reachability_cause: if live.is_null() {
+            "status_missing"
+        } else {
+            match reachable {
+                Some(true) => "reachable_true",
+                Some(false) => "reachable_false",
+                None => "reachable_missing",
+            }
+        },
+        time_cause,
         quality,
         readings,
     })
@@ -321,9 +341,17 @@ fn cloud_time(
     status: &Json,
     now: u64,
     max_age: u64,
-) -> (Option<u64>, &'static str) {
+) -> (Option<u64>, &'static str, &'static str) {
     let Some(live) = timestamp(&status["time_server"]) else {
-        return (None, "unconfirmed");
+        return (
+            None,
+            "unconfirmed",
+            if status["time_server"].is_null() {
+                "timestamp_missing"
+            } else {
+                "timestamp_invalid"
+            },
+        );
     };
     let _ = topology;
     let quality = if live > now {
@@ -333,5 +361,13 @@ fn cloud_time(
     } else {
         "cloud_recent"
     };
-    (Some(live), quality)
+    (
+        Some(live),
+        quality,
+        match quality {
+            "unconfirmed" => "timestamp_future",
+            "stale" => "timestamp_stale",
+            _ => "timestamp_recent",
+        },
+    )
 }
