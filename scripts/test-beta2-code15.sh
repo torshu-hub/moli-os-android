@@ -55,11 +55,11 @@ cat android/app/build/reports/code15/after.txt
 adb shell am force-stop "$app"
 adb shell am instrument -w -r -e class io.moli.android.Code15DeliveryTest#verifySavedAccountAfterRestart "$runner" > android/app/build/reports/code15/reopened.txt
 cat android/app/build/reports/code15/reopened.txt
-grep -Fq 'OK (1 test)' android/app/build/reports/code15/reopened.txt
 for name in climate-empty climate-replaced failure; do
     target="android/app/build/reports/code15/screenshots/$name.png"
     adb exec-out run-as "$app" cat "files/code15-captures/$name.png" > "$target" 2>/dev/null || rm -f "$target"
     if [ -f "$target" ]; then python3 -c 'import sys;from pathlib import Path;p=Path(sys.argv[1]);p.unlink() if not p.read_bytes().startswith(bytes.fromhex("89504e470d0a1a0a")) else None' "$target"; fi
 done
+grep -Fq 'OK (1 test)' android/app/build/reports/code15/reopened.txt
 grep -Fq 'OK (1 test)' android/app/build/reports/code15/after.txt
 adb exec-out run-as "$app" cat files/code15-captures/update-proof.txt > android/app/build/reports/code15/update-proof.txt

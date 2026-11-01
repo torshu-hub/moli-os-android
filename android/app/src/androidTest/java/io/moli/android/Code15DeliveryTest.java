@@ -59,7 +59,9 @@ public final class Code15DeliveryTest {
     }
     @Test public void upgradeAndEditOfficialClimateCard()throws Exception {
         savedAccount();
-        activity=ins.startActivitySync(new Intent(app,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        // Management hosts the isolated WebView without MainActivity's intended
+        // automatic engine start, which would legitimately append to SQLite WAL.
+        activity=ins.startActivitySync(new Intent(app,ManagementActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         String index=asset("code15-web/index.html");
         assertEquals(InstrumentationRegistry.getArguments().getString("expectedIndex"),Beta2JourneyTest.digest(index));
         String html=index.replace("<head>","<head><script>"+asset("code15-bootstrap.js")+"</script>");
@@ -70,13 +72,15 @@ public final class Code15DeliveryTest {
                 @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
                     String path=request.getUrl().getPath();
                     try{
-                        if(!"moli.test".equals(request.getUrl().getHost())||path==null||!path.startsWith("/assets/")||path.contains(".."))throw new IOException();
+                        if(!"moli.test".equals(request.getUrl().getHost())||path==null||path.contains(".."))throw new IOException();
+                        if(path.equals("/"))return new WebResourceResponse("text/html","UTF-8",new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
+                        if(!path.startsWith("/assets/"))throw new IOException();
                         String mime=path.endsWith(".js")?"application/javascript":path.endsWith(".css")?"text/css":path.endsWith(".woff2")?"font/woff2":"application/octet-stream";
                         return new WebResourceResponse(mime,"UTF-8",ins.getContext().getAssets().open("code15-web"+path));
                     }catch(IOException refused){return new WebResourceResponse("text/plain","UTF-8",404,"Offline",Collections.emptyMap(),new ByteArrayInputStream(new byte[0]));}
                 }
             });
-            activity.setContentView(web);web.requestFocus();web.loadDataWithBaseURL("https://moli.test/",html,"text/html","UTF-8",null);
+            activity.setContentView(web);web.requestFocus();web.loadUrl("https://moli.test/");
         });
         waitJs("document.querySelector('.temporary input')?.value === '20.5'");
         js("window.field=document.querySelector('.temporary input');field.scrollIntoView({block:'center'});field.focus();true");
