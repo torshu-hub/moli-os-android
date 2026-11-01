@@ -18,12 +18,10 @@ portal (`POST /api/getdocumentationjson`, form `fileName=Energy`):
   Quotas are shared with other clients of the account (documented 50/10 s and
   500/hour/user). HTTP 429 and both Retry-After forms pause reads and commands.
   Missed periods are skipped; no backlog or automatic command retry is sent.
-- A successful official command advances the next status read to at most **2
-  seconds** later (an already earlier poll is retained). Nearby commands share
-  that read; normal 30-second polling resumes from it. Failed writes schedule no
-  extra read, and a 429 pauses the same reads/writes via Retry-After. Only a
-  program change marks the topology for refresh, keeping the cached capability
-  metadata available to other commands until the coalesced read.
+- Code18 restores normal polling after commands: a successful write never adds
+  an accelerated read. It retains the existing next poll (historical upper bound
+  `now + poll_seconds`), with no burst or automatic command retry. Program changes
+  mark cached topology for refresh at the next normal read.
 - Temperatures, room setpoint/mode, home mode, selected schedule, module
   reachability/battery and `heating_power_request` retain their provider meaning.
   Only an actual boolean `boiler_status` on NATherm1/OTM supplies declared demand.
@@ -78,6 +76,24 @@ Separate allowlisted `reachability_cause`/`time_cause` metadata and journal code
 identify missing status, absent/explicit reachability and clock quality without
 raw responses or identifiers. Repeated identical causes are not re-journaled;
 normal confirmed reads restore measured state without reauthorization.
+
+## Clock boundary (code18)
+
+`time_server` uses seconds (Energy 1.1.2 string example `1553777827`); parsing
+still accepts integer seconds too, with checked conversion to milliseconds.
+A positive offset of at most **1000 ms**, one API timestamp unit, is accepted
+with the explicit cause `timestamp_future_le_1s`, never relabeled as an ordinary
+`timestamp_recent`. The raw `server_at` remains visible unchanged; only the
+internal freshness-expiry reference is capped at collection time, so tolerated
+skew cannot make freshness indefinite. This is a bounded clock-resolution
+compromise, not evidence of the actual S5e offset or physical measurement time.
+
+Greater offsets remain unconfirmed/null. Their anonymized cause gives only a
+bounded category: (1,5] s, (5,30] s, (30,300] s or >300 s. No raw response,
+absolute server timestamp or heating value is journaled. Missing/invalid clock
+and missing element status keep their distinct causes; identical categories are
+not logged on every poll. If the observed offset exceeds the bound, this release
+provides the evidence to decide the next step instead of accepting it blindly.
 
 ## OAuth and durability
 

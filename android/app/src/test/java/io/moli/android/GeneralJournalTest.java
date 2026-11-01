@@ -5,6 +5,7 @@ public final class GeneralJournalTest {
     @Test public void optionalFieldDiagnosticsStayAnonymous() {
         String line="{\"ts\":1,\"duration_ms\":0,\"origin\":\"system\",\"action\":{\"kind\":\"diagnostic\",\"event\":\"netatmo_time_quality\",\"cause\":\"timestamp_missing\",\"retry_seconds\":0},\"outcome\":{\"result\":\"ok\"}}";
         assertTrue(GeneralJournal.redactedEngineEntry(line).contains("netatmo_time_quality | timestamp_missing"));
+        for(String cause:new String[]{"timestamp_future_le_1s","timestamp_future_1_5s","timestamp_future_5_30s","timestamp_future_30_300s","timestamp_future_gt_300s"})assertTrue(GeneralJournal.redactedEngineEntry(line.replace("timestamp_missing",cause)).contains(cause));
         assertTrue(GeneralJournal.redactedEngineEntry(line.replace("netatmo_time_quality","netatmo_reachability").replace("timestamp_missing","reachable_missing")).contains("reachable_missing"));
         assertEquals("",GeneralJournal.redactedEngineEntry(line.replace("timestamp_missing","private-value")));
     }
