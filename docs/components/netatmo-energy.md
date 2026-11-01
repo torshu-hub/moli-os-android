@@ -48,6 +48,16 @@ max_age_seconds = 300
 The existing generic freshness bound is configurable and affects availability
 only. No boiler timer, safety threshold or actuator policy belongs to this driver.
 
+## Read failures and diagnostics
+
+A request failure clears measured values and marks freshness/error separately from
+physical reachability. It retains the last declared availability only within the
+existing maximum age; expiration still runs during long API quota/auth pauses.
+An explicit `reachable=false` remains offline. The ordinary Moli journal records
+read-error category/retry deadline, recovery and availability-quality transitions,
+with no device/account identity or credentials. Successful polls are not logged.
+Android TXT export retains only allowlisted diagnostic codes.
+
 ## OAuth and durability
 
 The selected Android route is an **experimental opt-in personal application**.
