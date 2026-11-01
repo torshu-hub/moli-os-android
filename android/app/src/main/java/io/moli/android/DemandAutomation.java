@@ -37,7 +37,7 @@ final class DemandAutomation {
                 for(int j=0;j<want.length();j++){JSONObject candidate=want.getJSONObject(j);if(key.equals(candidate.optString(collection.equals("nodes")?"id":"from")))match=candidate;}
                 if(match==null)return null;
                 java.util.Iterator<String> keys=item.keys();
-                while(keys.hasNext()){String field=keys.next();if(field.equals("x")||field.equals("y"))continue;if(!match.has(field)||!item.get(field).toString().equals(match.get(field).toString()))return null;}
+                while(keys.hasNext()){String field=keys.next();if(field.equals("x")||field.equals("y"))continue;if(!match.has(field)||!item.get(field).equals(match.get(field)))return null;}
                 keys=match.keys();while(keys.hasNext()){String field=keys.next();if(!field.equals("x")&&!field.equals("y")&&!item.has(field)&&!(field.equals("for_s")||field.equals("port")))return null;}
             }
         }

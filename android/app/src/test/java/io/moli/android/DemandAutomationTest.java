@@ -16,4 +16,9 @@ public final class DemandAutomationTest {
         graph.getJSONArray("nodes").getJSONObject(0).put("x",600);assertNotNull(DemandAutomation.wiring(graph));
         graph.getJSONArray("nodes").getJSONObject(0).put("for_s",60);assertNull(DemandAutomation.wiring(graph));
     }
+    @Test public void webStringCommandMustNotBeRewrittenAsBoolean()throws Exception {
+        JSONObject graph=DemandAutomation.graph("energy-test:room/declared_demand","plug-test:outlet/on");
+        graph.getJSONArray("nodes").getJSONObject(1).put("value","true");
+        assertNull(DemandAutomation.wiring(graph));
+    }
 }

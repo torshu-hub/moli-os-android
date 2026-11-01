@@ -32,8 +32,8 @@ public final class Code19AutomationTest {
             assertTrue(read.getJSONArray("runs").length()==0);
             a.put("name","Synthetic renamed link");
             JSONObject updated=activity.request("PUT","/api/automations/"+id,a,result.getString("fingerprint"));assertFalse(updated.getBoolean("live"));
-            try{activity.request("PUT","/api/automations/"+id,a,result.getString("fingerprint"));fail("stale edit accepted");}catch(java.io.IOException expected){}
-            try{activity.request("POST","/api/automations/"+id+"/approve",new JSONObject().put("fingerprint",updated.getString("fingerprint")),null);fail("approval without human session");}catch(java.io.IOException expected){}
+            try{activity.request("PUT","/api/automations/"+id,a,result.getString("fingerprint"));fail("stale edit accepted");}catch(AutomationActivity.RequestFailure expected){assertEquals(409,expected.status);}
+            try{activity.request("POST","/api/automations/"+id+"/approve",new JSONObject().put("fingerprint",updated.getString("fingerprint")),null);fail("approval without human session");}catch(AutomationActivity.RequestFailure expected){assertEquals(403,expected.status);}
             assertFalse(activity.request("GET","/api/automations/"+id,null,null).getBoolean("live"));
         }finally{
             if(id!=null)activity.request("DELETE","/api/automations/"+id,null,null);

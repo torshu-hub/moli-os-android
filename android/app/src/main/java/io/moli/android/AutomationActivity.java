@@ -34,7 +34,11 @@ public final class AutomationActivity extends Activity {
         busy=true;root.removeAllViews();text(getString(R.string.working));
         worker.submit(()->{String error=null;try{job.run();}catch(Exception failure){if(failure instanceof Conflict)try{read();}catch(Exception ignored){}error=failure instanceof Conflict?getString(R.string.auto_conflict):getString(R.string.auto_error);}final String message=error;runOnUiThread(()->{if(isDestroyed())return;busy=false;show();if(message!=null)text(message);});});
     }
-    private static final class Conflict extends IOException {}
+    static class RequestFailure extends IOException {
+        final int status;
+        RequestFailure(int status){this.status=status;}
+    }
+    private static final class Conflict extends RequestFailure {Conflict(){super(409);}}
     JSONObject request(String method,String path,JSONObject body,String fingerprint)throws Exception {
         if(!Objects.equals(origin,EngineHost.origin()))throw new IOException();
         HttpURLConnection c=(HttpURLConnection)new URL(origin+path).openConnection();
@@ -42,7 +46,7 @@ public final class AutomationActivity extends Activity {
         if(fingerprint!=null)c.setRequestProperty("If-Match",fingerprint);
         try{
             if(body!=null){c.setRequestProperty("Content-Type","application/json");c.setDoOutput(true);try(OutputStream out=c.getOutputStream()){out.write(body.toString().getBytes(StandardCharsets.UTF_8));}}
-            int status=c.getResponseCode();if(status==409)throw new Conflict();if(status!=200)throw new IOException();
+            int status=c.getResponseCode();if(status==409)throw new Conflict();if(status!=200)throw new RequestFailure(status);
             try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
                 byte[] buffer=new byte[4096];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>2_097_152)throw new IOException();out.write(buffer,0,n);}return new JSONObject(out.toString("UTF-8"));
             }
