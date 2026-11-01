@@ -626,5 +626,7 @@
   "pilotes.netatmo.setpoint_start_at": "Début de consigne temporaire",
   "pilotes.netatmo.setpoint_end_at": "Fin de consigne temporaire",
   "pilotes.netatmo.firmware_revision": "Version du micrologiciel",
-  "pilotes.netatmo.rf_strength": "Signal radio déclaré"
+  "pilotes.netatmo.rf_strength": "Signal radio déclaré",
+  "pilotes.netatmo.reachability_cause": "Cause de disponibilité déclarée",
+  "pilotes.netatmo.time_cause": "Cause de qualité temporelle"
 }

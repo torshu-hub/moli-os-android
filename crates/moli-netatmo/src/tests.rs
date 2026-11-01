@@ -838,3 +838,93 @@ async fn failed_commands_do_not_accelerate_reads_and_post_command_checks_share_t
     cancel.cancel();
     task.await.unwrap();
 }
+
+#[test]
+fn optional_fields_do_not_imply_explicit_disconnection() {
+    for (stamp, reason) in [
+        (Json::Null, "timestamp_missing"),
+        (json!("invalid"), "timestamp_invalid"),
+        (json!(1_800_000_100_u64), "timestamp_future"),
+    ] {
+        let mut data = status();
+        data["time_server"] = stamp;
+        let rows = parse(&data, AT);
+        let row = thermostat(&rows);
+        assert_eq!(row.reachable, Some(true));
+        assert!(!row.current());
+        assert_eq!(row.time_cause, reason);
+    }
+    let mut data = status();
+    data["body"]["home"]["modules"][1]
+        .as_object_mut()
+        .unwrap()
+        .remove("reachable");
+    let rows = parse(&data, AT);
+    let row = thermostat(&rows);
+    assert_eq!(row.reachable, None);
+    assert_eq!(row.reachability_cause, "reachable_missing");
+    assert!(!row.current());
+    data["body"]["home"]["modules"][1]["reachable"] = json!(false);
+    let rows = parse(&data, AT);
+    assert_eq!(thermostat(&rows).reachable, Some(false));
+    assert_eq!(thermostat(&rows).quality, "offline");
+    data["body"]["home"]["modules"]
+        .as_array_mut()
+        .unwrap()
+        .pop();
+    let rows = parse(&data, AT);
+    assert_eq!(thermostat(&rows).reachability_cause, "status_missing");
+}
+#[tokio::test(start_paused = true)]
+async fn unconfirmed_reads_keep_declared_contact_but_not_measurements_and_recover() {
+    let mock = Arc::new(Mock::default());
+    let (_vault, hub, cancel, task) = writable_driver(&mock).await;
+    let id = DeviceId::from("energy-test:home-test.room.101");
+    let mut unknown = status();
+    unknown["time_server"] = Json::Null;
+    unknown["body"]["home"]["rooms"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("reachable");
+    let mut notices = 0;
+    for n in 1..=2 {
+        mock.add(200, &unknown);
+        let before = mock.requests.lock().unwrap().len();
+        tokio::time::advance(Duration::from_secs(30)).await;
+        settle(|| mock.requests.lock().unwrap().len() == before + 1).await;
+        assert_eq!(hub.device(&id).unwrap().online, Some(true));
+        assert_eq!(
+            hub.state(&PointId::new(&id, "target_temperature"))
+                .unwrap()
+                .value,
+            Value::Null
+        );
+        let count=hub.journal(100).iter().filter(|e|matches!(&e.action,moli_core::Action::Diagnostic{event,cause,..} if event=="netatmo_time_quality" && cause=="timestamp_missing")).count();
+        if n == 1 {
+            assert!(count > 0);
+            notices = count;
+        } else {
+            assert_eq!(count, notices);
+        }
+    }
+    let mut fresh = status();
+    fresh["time_server"] = json!(now_ms() / 1000);
+    mock.add(200, &fresh);
+    let before = mock.requests.lock().unwrap().len();
+    tokio::time::advance(Duration::from_secs(30)).await;
+    settle(|| mock.requests.lock().unwrap().len() == before + 1).await;
+    assert_eq!(
+        hub.state(&PointId::new(&id, "target_temperature"))
+            .unwrap()
+            .value,
+        Value::Float(20.5)
+    );
+    fresh["body"]["home"]["rooms"][0]["reachable"] = json!(false);
+    mock.add(200, &fresh);
+    let before = mock.requests.lock().unwrap().len();
+    tokio::time::advance(Duration::from_secs(30)).await;
+    settle(|| mock.requests.lock().unwrap().len() == before + 1).await;
+    assert_eq!(hub.device(&id).unwrap().online, Some(false));
+    cancel.cancel();
+    task.await.unwrap();
+}
