@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { home, device, value, reachable, num, act } from '../lib/home.svelte.js';
   import { energy, useEnergy, watts, euros } from '../lib/energy-live.svelte.js';
   import { t } from '../../lib/i18n.svelte.js';
@@ -17,7 +17,22 @@
   const mode = $derived(value(id, 'mode'));
   const commandMode = $derived(value(id, caps.mode?.key ?? 'mode'));
   let temporaryTemperature = $state(null);
-  $effect(() => { if (temporaryTemperature == null && typeof target === 'number') temporaryTemperature = target; });
+  let draftDevice;
+  let draftInitialized = false;
+  $effect(() => {
+    const currentDevice = id, reported = target;
+    untrack(() => {
+      if (draftDevice !== currentDevice) {
+        draftDevice = currentDevice;
+        draftInitialized = false;
+        temporaryTemperature = null;
+      }
+      if (!draftInitialized && Number.isFinite(reported)) {
+        temporaryTemperature = reported;
+        draftInitialized = true;
+      }
+    });
+  });
   let duration = $state(60);
   const temporary = $derived(temporarySetpoint(temporaryTemperature, duration, MIN, MAX));
   const programNames = $derived.by(() => { try { return JSON.parse(value(id, 'program_names') ?? '{}'); } catch { return {}; } });
@@ -199,7 +214,7 @@
     {#if caps.timed}
       <span class="chip">{m.label}</span>
       <div class="temporary">
-        <label>{t('commun.clim.consigne')} <input aria-label={t('commun.clim.consigne')} type="number" min={MIN} max={MAX} step={STEP} bind:value={temporaryTemperature} /></label>
+        <label>{t('commun.clim.consigne')} <input aria-label={t('commun.clim.consigne')} type="number" min={MIN} max={MAX} step={STEP} bind:value={temporaryTemperature} oninput={() => { draftInitialized = true; }} onfocus={(event) => event.currentTarget.select()} /></label>
         <label>{t('commun.clim.duree_minutes')} <input aria-label={t('commun.clim.duree_minutes')} type="number" min="1" max="1440" step="1" bind:value={duration} /></label>
         <button disabled={!temporary || !reachable(id)} onclick={setTemporary}>{t('commun.clim.temporaire')}</button>
       </div>

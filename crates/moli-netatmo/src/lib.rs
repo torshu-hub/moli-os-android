@@ -14,6 +14,10 @@ use serde::Deserialize;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::time::Instant;
 
+// Let the cloud apply a successful write before checking it. Commands arriving
+// before this read share its deadline; only the subsequent read confirms state.
+const POST_COMMAND_DELAY: Duration = Duration::from_secs(2);
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -196,7 +200,7 @@ impl Driver for Netatmo {
                         if let Err(Failure::RateLimited(seconds))=result {quota_until=Instant::now()+Duration::from_secs(seconds.max(self.config.poll_seconds));next=quota_until;}
                         let success=result.is_ok();let topology_changed=command.key.as_ref()=="program";
                         command.reply(result.map_err(|_|tr!("pilotes.netatmo.command_error")));
-                        if success {if topology_changed {cache=None;}next=next.min(Instant::now()+Duration::from_secs(self.config.poll_seconds));}
+                        if success {if topology_changed {cache=None;}next=next.min(Instant::now()+POST_COMMAND_DELAY);}
                     }
                     ()=tokio::time::sleep_until(next)=>{
                         let start=Instant::now();
