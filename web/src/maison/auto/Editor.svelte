@@ -148,13 +148,17 @@
       });
       a.id = v.automation.id;
       a.enabled = v.automation.enabled;
+      a.updated = v.automation.updated;
       meta = metaOf(v);
       dirty = false;
       if (isNew) history.replaceState(null, '', `#/automatismes/${v.automation.id}`);
       note(v.live ? t('automatismes.editeur.enregistre') : t('automatismes.editeur.enregistre_a_valider'));
       return v;
     } catch (err) {
-      note(err.message, 'error');
+      if (err.status === 409) {
+        note(t('automatismes.editeur.change_entre_temps'), 'error');
+        await load();
+      } else note(err.message, 'error');
       throw err;
     } finally {
       busy = '';
@@ -173,6 +177,7 @@
         const v = await api.approve(a.id, fingerprint);
         meta = metaOf(v);
         a.enabled = true;
+        a.updated = v.automation.updated;
         note(imported ? t('automatismes.editeur.parti_import') : t('automatismes.parti'));
       });
     } catch (err) {
@@ -188,6 +193,7 @@
       const v = await api.enabled(a.id, false);
       meta = metaOf(v);
       a.enabled = false;
+      a.updated = v.automation.updated;
       note(t('automatismes.editeur.coupe'));
     } catch (err) {
       note(err.message, 'error');

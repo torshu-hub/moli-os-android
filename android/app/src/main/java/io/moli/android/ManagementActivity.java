@@ -227,6 +227,7 @@ public final class ManagementActivity extends Activity {
         return String.join(" · ",labels);
     }
     private void renderHome() {
+        button(content,R.string.auto_title,()->startActivity(new Intent(this,AutomationActivity.class)));
         LinearLayout engine=card(content); engineCard=engine; styledState=null; engine.setId(R.id.engine_card);
         heading(engine,R.string.engine_card_title,18);
         LinearLayout stateRow=new LinearLayout(this); stateRow.setGravity(Gravity.CENTER_VERTICAL); engine.addView(stateRow);

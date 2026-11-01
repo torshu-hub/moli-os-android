@@ -403,7 +403,17 @@ impl Automations {
     /// a person may only switch off, and never renames what a person
     /// approved. A change of logic stops what the previous version had
     /// started.
-    pub async fn save(&self, mut a: Automation, by: Actor) -> Result<Automation, AutomationError> {
+    pub async fn save(&self, a: Automation, by: Actor) -> Result<Automation, AutomationError> {
+        self.save_seen(a, by, None).await
+    }
+
+    /// Optional optimistic concurrency for surfaces editing a version they read.
+    pub async fn save_seen(
+        &self,
+        mut a: Automation,
+        by: Actor,
+        seen: Option<&str>,
+    ) -> Result<Automation, AutomationError> {
         let now = moli_core::now_ms();
         if a.name.trim().is_empty() {
             return Err(AutomationError::Invalid("give it a name".into()));
@@ -415,6 +425,11 @@ impl Automations {
             let existing = list.iter().position(|x| x.id == a.id && !a.id.is_empty());
             if let Some(i) = existing {
                 let old = &list[i];
+                if (a.updated != 0 && a.updated != old.updated)
+                    || seen.is_some_and(|fp| fp != old.fingerprint())
+                {
+                    return Err(AutomationError::Conflict);
+                }
                 // Outside the fingerprint, but the name heads its messages
                 // (Telegram, notices) and the note is read before trusting
                 // it: once a person approved it, only a person changes them.
@@ -433,11 +448,14 @@ impl Automations {
                 } else {
                     old.enabled && a.enabled
                 };
-                a.updated = now;
+                a.updated = now.max(old.updated.saturating_add(1));
                 list[i] = a.clone();
                 lock(&self.0.fingerprints).remove(&a.id);
                 (a, changed_logic, before)
             } else {
+                if seen.is_some() {
+                    return Err(AutomationError::Conflict);
+                }
                 if list.len() >= MAX_AUTOMATIONS {
                     return Err(AutomationError::Invalid(format!(
                         "at most {MAX_AUTOMATIONS} automations"
@@ -696,7 +714,7 @@ impl Automations {
             .find(|a| a.id == id)
             .ok_or(AutomationError::Unknown)?;
         f(a);
-        a.updated = moli_core::now_ms();
+        a.updated = moli_core::now_ms().max(a.updated.saturating_add(1));
         lock(&self.0.fingerprints).remove(id);
         let a = a.clone();
         drop(list);
