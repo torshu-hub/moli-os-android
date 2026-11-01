@@ -269,11 +269,11 @@
     <string name="auto_error">Action failed. Refresh before retrying; a save may have completed.</string>
     <string name="auto_help">Native Moli rules. Active describes the rule, not the plug. Open Moli to approve this version and enable it with the existing human session.</string>
     <string name="auto_active">Active</string>
-    <string name="auto_inactive">Inactive or awaiting approval</string>
-    <string name="auto_editor">Open in Moli / Enable</string>
+    <string name="auto_inactive">Inactive</string>
+    <string name="auto_editor">Open in Moli</string>
     <string name="auto_disable">Disable rule</string>
     <string name="auto_edit">Edit devices</string>
-    <string name="auto_new">Configure a link</string>
+    <string name="auto_new">New link</string>
     <string name="auto_no_devices">A Netatmo thermostat and Meross MSS310 plug are required in the Hub.</string>
     <string name="auto_source">Netatmo declared demand</string>
     <string name="auto_target">Target Meross plug</string>
@@ -284,4 +284,8 @@
     <string name="auto_on">Reported ON</string>
     <string name="auto_off">Reported OFF</string>
     <string name="auto_unknown">Unconfirmed state</string>
+    <string name="automations_destination">Automations</string>
+    <string name="auto_draft_state">Draft</string>
+    <string name="auto_empty">No rules. Create a new link to get started.</string>
+    <string name="auto_endpoint_missing">Device unavailable</string>
 </resources>

@@ -269,11 +269,11 @@
     <string name="auto_error">Action impossible. Actualiser avant de réessayer ; une sauvegarde peut avoir abouti.</string>
     <string name="auto_help">Règles natives Moli. L’état actif concerne la règle, pas la prise. Ouvrir Moli pour approuver la version et l’activer avec la session humaine existante.</string>
     <string name="auto_active">Active</string>
-    <string name="auto_inactive">Inactive ou à approuver</string>
-    <string name="auto_editor">Ouvrir dans Moli / Activer</string>
+    <string name="auto_inactive">Inactive</string>
+    <string name="auto_editor">Ouvrir dans Moli</string>
     <string name="auto_disable">Désactiver la règle</string>
     <string name="auto_edit">Modifier les équipements</string>
-    <string name="auto_new">Configurer une liaison</string>
+    <string name="auto_new">Nouvelle liaison</string>
     <string name="auto_no_devices">Thermostat Netatmo et prise Meross MSS310 requis dans le Hub.</string>
     <string name="auto_source">Demande déclarée Netatmo</string>
     <string name="auto_target">Prise Meross cible</string>
@@ -284,4 +284,8 @@
     <string name="auto_on">ON déclaré</string>
     <string name="auto_off">OFF déclaré</string>
     <string name="auto_unknown">État non confirmé</string>
+    <string name="automations_destination">Automatisations</string>
+    <string name="auto_draft_state">Brouillon</string>
+    <string name="auto_empty">Aucune règle. Créez une nouvelle liaison pour commencer.</string>
+    <string name="auto_endpoint_missing">Équipement indisponible</string>
 </resources>

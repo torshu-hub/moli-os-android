@@ -28,4 +28,5 @@
     <item name="network_limits" type="id" />
     <item name="network_results" type="id" />
     <item name="meross_key" type="id" />
+    <item name="navigation_automations" type="id" />
 </resources>

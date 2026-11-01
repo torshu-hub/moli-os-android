@@ -18,12 +18,13 @@ import org.json.*;
 
 /** Native presentation only. Catalogue, configuration and lifecycle remain in J1. */
 public final class ManagementActivity extends Activity {
-    private enum Page { HOME, INTEGRATIONS, DETAIL, FILES, PARAMETERS, JOURNAL, NETWORK }
+    private enum Page { HOME, INTEGRATIONS, DETAIL, FILES, PARAMETERS, JOURNAL, NETWORK, AUTOMATIONS }
     // Transient presentation state, retained across rotation; never a driver configuration store.
     private static final class Screen {
         Page page = Page.HOME;
         final NetworkPanel.State network=new NetworkPanel.State();
         final NetatmoPanel.State netatmo=new NetatmoPanel.State();
+        final AutomationPanel.State automations=new AutomationPanel.State();
         JSONObject catalogue, selected;
         JSONObject files;Future<JSONObject> filesWork;
         String snapshot, id = "", error;
@@ -48,6 +49,7 @@ public final class ManagementActivity extends Activity {
     private Screen screen;
     NetworkPanel networkPanel;
     NetatmoPanel netatmoPanel;
+    AutomationPanel automationPanel;
     private LinearLayout root, navigation, body, content, footer;
     private Button moliDestination;
     private LinearLayout engineCard;
@@ -79,6 +81,7 @@ public final class ManagementActivity extends Activity {
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         build();
         netatmoPanel=new NetatmoPanel(this,screen.netatmo,this::render,()->{screen.catalogue=null;load();});
+        automationPanel=new AutomationPanel(this,screen.automations,this::render);
         networkPanel=new NetworkPanel(this,screen.network,scroll);
         networkPanel.association=this::networkAssociation;
         networkPanel.openAssociation=this::openNetworkIntegration;
@@ -133,6 +136,7 @@ public final class ManagementActivity extends Activity {
         }
         destination(Page.HOME,R.string.overview,R.drawable.ic_management_home,R.id.navigation_home);
         destination(Page.INTEGRATIONS,R.string.integrations,R.drawable.ic_management_integrations,R.id.navigation_integrations);
+        destination(Page.AUTOMATIONS,R.string.automations_destination,R.drawable.ic_management_automations,R.id.navigation_automations);
         destination(Page.NETWORK,R.string.network_destination,R.drawable.ic_management_network,R.id.navigation_network);
         destination(Page.JOURNAL,R.string.journal,R.drawable.ic_management_journal,R.id.navigation_journal);
         moliDestination=navigationButton(R.string.moli_os,R.drawable.ic_management_moli,R.id.navigation_moli,this::openMoli);
@@ -142,7 +146,7 @@ public final class ManagementActivity extends Activity {
             navigationContainer=rail;root.addView(rail,new LinearLayout.LayoutParams(dp(224),-1));
         }else{
             HorizontalScrollView rail=new HorizontalScrollView(this);rail.setFillViewport(true);rail.setHorizontalScrollBarEnabled(false);
-            rail.addView(navigation,new android.widget.FrameLayout.LayoutParams(Math.max(dp(560),dp(getResources().getConfiguration().screenWidthDp)),-2));navigationContainer=rail;
+            rail.addView(navigation,new android.widget.FrameLayout.LayoutParams(Math.max(dp(672),dp(getResources().getConfiguration().screenWidthDp)),-2));navigationContainer=rail;
         }
         body=column(); body.setPadding(dp(landscape ? 32 : 20),dp(12),dp(landscape ? 32 : 20),dp(12));
         root.addView(body,new LinearLayout.LayoutParams(landscape ? 0 : -1,landscape ? -1 : 0,1));
@@ -227,7 +231,6 @@ public final class ManagementActivity extends Activity {
         return String.join(" · ",labels);
     }
     private void renderHome() {
-        button(content,R.string.auto_title,()->startActivity(new Intent(this,AutomationActivity.class)));
         LinearLayout engine=card(content); engineCard=engine; styledState=null; engine.setId(R.id.engine_card);
         heading(engine,R.string.engine_card_title,18);
         LinearLayout stateRow=new LinearLayout(this); stateRow.setGravity(Gravity.CENTER_VERTICAL); engine.addView(stateRow);
@@ -270,12 +273,14 @@ public final class ManagementActivity extends Activity {
         hideKeyboard(); remember();
         if(page!=Page.INTEGRATIONS)screen.catalogueScroll=-1;
         screen.page=page;
+        if(page==Page.AUTOMATIONS){automationPanel.load();}
         if(page==Page.NETWORK){screen.error=null;load();}
         if(page==Page.INTEGRATIONS) { screen.error=null; load(); }
         render();
     }
     private void goBack() {
         if(screen.saving!=null || screen.loading!=null || screen.merossWork!=null || screen.finding || screen.identityWork!=null) return;
+        if(screen.page==Page.AUTOMATIONS && automationPanel.back())return;
         if(screen.page==Page.FILES){screen.page=Page.DETAIL;render();}
         else if(screen.page==Page.PARAMETERS) { openIntegration(); }
         else if(screen.page==Page.DETAIL) navigate(Page.INTEGRATIONS);
@@ -345,6 +350,7 @@ public final class ManagementActivity extends Activity {
         });
     }
     private void complete() {
+        automationPanel.complete();
         netatmoPanel.complete();
         if(screen.page==Page.DETAIL && screen.selected!=null && "netatmo".equals(screen.selected.optJSONObject("manifest").optJSONObject("integration").optString("id")) && android.os.SystemClock.elapsedRealtime()-screen.netatmo.checked>5000)netatmoPanel.load();
         completeMerossIdentification();
@@ -666,10 +672,12 @@ public final class ManagementActivity extends Activity {
             item.getValue().setSelected(active);
             item.getValue().setTypeface(null,active ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
         }
-        title.setText(screen.page==Page.HOME ? R.string.management : screen.page==Page.JOURNAL ? R.string.journal : screen.page==Page.NETWORK ? R.string.network_title : R.string.integrations);
+        title.setText(screen.page==Page.HOME ? R.string.management : screen.page==Page.JOURNAL ? R.string.journal : screen.page==Page.NETWORK ? R.string.network_title : screen.page==Page.AUTOMATIONS ? R.string.automations_destination : R.string.integrations);
         try {
             if(screen.page==Page.HOME) {
                 renderHome();
+            } else if(screen.page==Page.AUTOMATIONS) {
+                automationPanel.mount(content);
             } else if(screen.page==Page.NETWORK) {
                 networkPanel.mount(content);
             } else if(screen.page==Page.FILES) {
@@ -1094,7 +1102,7 @@ public final class ManagementActivity extends Activity {
         },"moli-export").start();
     }
     @Override public Object onRetainNonConfigurationInstance() { remember(); return screen; }
-    @Override public void onStart() { super.onStart();if(screen.page==Page.NETWORK)networkPanel.resume();handler.post(refresh); }
+    @Override public void onStart() { super.onStart();if(screen.page==Page.AUTOMATIONS && screen.automations.work==null && !screen.automations.form)automationPanel.load();if(screen.page==Page.NETWORK)networkPanel.resume();handler.post(refresh); }
     @Override public void onStop() { if(screen.finding || screen.findAfterInventory)cancelMerossFind();if(screen.page==Page.NETWORK)networkPanel.leave();remember(); handler.removeCallbacks(refresh); super.onStop(); }
     @Override public void onDestroy() { networkPanel.dispose();handler.removeCallbacksAndMessages(null); super.onDestroy(); }
 }
