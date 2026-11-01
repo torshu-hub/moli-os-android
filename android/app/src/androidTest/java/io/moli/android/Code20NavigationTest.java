@@ -26,7 +26,7 @@ public final class Code20NavigationTest {
     void waitFor(Condition condition)throws Exception{long end=android.os.SystemClock.uptimeMillis()+30000;while(android.os.SystemClock.uptimeMillis()<end){if(condition.ok())return;Thread.sleep(100);}fail("navigation condition timed out");}
     <T>T ui(Callable<T> call)throws Exception{AtomicReference<T> result=new AtomicReference<>();AtomicReference<Exception> error=new AtomicReference<>();ins.runOnMainSync(()->{try{result.set(call.call());}catch(Exception e){error.set(e);}});if(error.get()!=null)throw error.get();return result.get();}
     <T extends Activity>T resumed(Class<T> type)throws Exception{return ui(()->{for(Activity a:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))if(type.isInstance(a))return type.cast(a);return null;});}
-    String js(MainActivity a,String script)throws Exception{CountDownLatch ready=new CountDownLatch(1);AtomicReference<String> out=new AtomicReference<>();ins.runOnMainSync(()->a.web.evaluateJavascript(script,v->{out.set(v);ready.countDown();}));assertTrue("WebView callback",ready.await(10,TimeUnit.SECONDS));return out.get();}
+    String js(MainActivity a,String script)throws Exception{CountDownLatch ready=new CountDownLatch(1);AtomicReference<String> out=new AtomicReference<>();ins.runOnMainSync(()->a.web.evaluateJavascript(script,v->{out.set(v);ready.countDown();}));assertTrue("WebView callback; destroyed="+a.isDestroyed(),ready.await(10,TimeUnit.SECONDS));return out.get();}
     void route(MainActivity a,String route)throws Exception{js(a,"location.hash="+JSONObject.quote(route));waitFor(()->JSONObject.quote("#"+route).equals(js(a,"location.hash")));}
     void back(MainActivity a,String expected)throws Exception{ins.runOnMainSync(a::onBackPressed);waitFor(()->JSONObject.quote("#"+expected).equals(js(a,"location.hash")));}
     View tag(Activity a,String tag)throws Exception{return ui(()->a.findViewById(android.R.id.content).findViewWithTag(tag));}
@@ -54,7 +54,14 @@ public final class Code20NavigationTest {
             ManagementActivity portrait=resumed(ManagementActivity.class);
             assertTrue(ui(()->portrait.findViewById(R.id.navigation_automations).isSelected()));assertNotNull(tag(portrait,"auto:cancel"));
             ins.runOnMainSync(portrait::onBackPressed);waitFor(()->tag(portrait,"auto:state:draft-link")!=null);capture("automations-portrait");
-            ins.runOnMainSync(()->portrait.findViewById(android.R.id.content).findViewWithTag("auto:editor:draft-link").performClick());
+            // Return management to the emulator's natural landscape before
+            // opening an unspecified-orientation WebView Activity. Otherwise
+            // Android can recreate that Activity during the first JS callback.
+            ins.runOnMainSync(()->portrait.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
+            waitFor(()->resumed(ManagementActivity.class)!=null&&resumed(ManagementActivity.class)!=portrait&&resumed(ManagementActivity.class).getResources().getConfiguration().orientation==Configuration.ORIENTATION_LANDSCAPE);
+            ManagementActivity ready=resumed(ManagementActivity.class);
+            waitFor(()->tag(ready,"auto:editor:draft-link")!=null);
+            ins.runOnMainSync(()->ready.findViewById(android.R.id.content).findViewWithTag("auto:editor:draft-link").performClick());
             waitFor(()->resumed(MainActivity.class)!=null);MainActivity moli=resumed(MainActivity.class);
             waitFor(()->"\"#/automatismes/draft-link\"".equals(js(moli,"location.hash")));
             route(moli,"/pieces");route(moli,"/energie");route(moli,"/automatismes/draft-link");
@@ -62,7 +69,7 @@ public final class Code20NavigationTest {
             route(moli,"/pieces");route(moli,"/energie/solaire");back(moli,"/energie");back(moli,"/");
             route(moli,"/unknown/child");back(moli,"/");
             route(moli,"/automatismes/draft-link");
-            ins.runOnMainSync(()->moli.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
+            ins.runOnMainSync(()->moli.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
             waitFor(()->resumed(MainActivity.class)!=null&&resumed(MainActivity.class)!=moli);
             MainActivity rotated=resumed(MainActivity.class);waitFor(()->"\"#/automatismes/draft-link\"".equals(js(rotated,"location.hash")));
             back(rotated,"/automatismes");back(rotated,"/");ins.runOnMainSync(rotated::onBackPressed);

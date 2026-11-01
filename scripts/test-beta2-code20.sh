@@ -66,7 +66,7 @@ adb exec-out run-as "$app" cat files/code15-captures/update-proof.txt > android/
 # Only the changed Android navigation and presentation; no actuator simulation.
 adb shell am instrument -w -r -e class io.moli.android.Code20NavigationTest "$runner" > android/app/build/reports/code20/navigation.txt
 cat android/app/build/reports/code20/navigation.txt
-grep -Fq 'OK (1 test)' android/app/build/reports/code20/navigation.txt
 for name in automations-landscape automations-portrait; do
-    adb exec-out run-as "$app" cat "files/code20-captures/$name.png" > "android/app/build/reports/code20/screenshots/$name.png"
+    adb exec-out run-as "$app" cat "files/code20-captures/$name.png" > "android/app/build/reports/code20/screenshots/$name.png" 2>/dev/null || true
 done
+grep -Fq 'OK (1 test)' android/app/build/reports/code20/navigation.txt
