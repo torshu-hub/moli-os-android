@@ -36,7 +36,8 @@ public final class Code19AutomationTest {
             try{activity.request("POST","/api/automations/"+id+"/approve",new JSONObject().put("fingerprint",updated.getString("fingerprint")),null);fail("approval without human session");}catch(AutomationActivity.RequestFailure expected){assertEquals(403,expected.status);}
             assertFalse(activity.request("GET","/api/automations/"+id,null,null).getBoolean("live"));
         }finally{
-            if(id!=null)activity.request("DELETE","/api/automations/"+id,null,null);
+            // Keep the inactive synthetic draft in this disposable emulator.
+            // Deletion is human-only too; do not bypass it for test cleanup.
             ins.runOnMainSync(activity::finish);
             app.startForegroundService(new Intent(app,MoliService.class).setAction(MoliService.STOP));Beta2JourneyTest.waitState(EngineHost.State.STOPPED);
         }
