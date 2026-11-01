@@ -18,6 +18,12 @@ portal (`POST /api/getdocumentationjson`, form `fileName=Energy`):
   Quotas are shared with other clients of the account (documented 50/10 s and
   500/hour/user). HTTP 429 and both Retry-After forms pause reads and commands.
   Missed periods are skipped; no backlog or automatic command retry is sent.
+- A successful official command advances the next status read to at most **2
+  seconds** later (an already earlier poll is retained). Nearby commands share
+  that read; normal 30-second polling resumes from it. Failed writes schedule no
+  extra read, and a 429 pauses the same reads/writes via Retry-After. Only a
+  program change marks the topology for refresh, keeping the cached capability
+  metadata available to other commands until the coalesced read.
 - Temperatures, room setpoint/mode, home mode, selected schedule, module
   reachability/battery and `heating_power_request` retain their provider meaning.
   Only an actual boolean `boiler_status` on NATherm1/OTM supplies declared demand.
@@ -95,7 +101,10 @@ The shared climate card reads point ranges, writable capabilities and enum
 choices. A timed setpoint shows a duration field; it does not reuse heat-pump
 power or cooling modes. Existing heat-pump controls retain their behavior. A
 successful provider acknowledgement does not invent a new measured state; the
-next normal read confirms it. Unknown command outcome is not automatically retried.
+next status read confirms it. The climate form keeps its initialized or edited
+draft independent of subsequent readings, including an empty draft; only an
+explicit valid submission sends a setpoint. Unknown command outcome is not
+automatically retried.
 
 Sources: [Energy](https://dev.netatmo.com/apidocumentation/energy),
 [OAuth](https://dev.netatmo.com/apidocumentation/oauth),

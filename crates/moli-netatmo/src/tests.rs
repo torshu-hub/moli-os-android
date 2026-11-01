@@ -646,9 +646,14 @@ async fn driver_polls_status_at_30_seconds_and_topology_at_300_and_read_scope_ca
     cancel.cancel();
     task.await.unwrap();
 }
-#[tokio::test(start_paused = true)]
-async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_optimistic_measurements()
- {
+async fn writable_driver(
+    mock: &Arc<Mock>,
+) -> (
+    DiskVault,
+    Hub,
+    CancellationToken,
+    tokio::task::JoinHandle<()>,
+) {
     let vault = DiskVault::new();
     vault.seed(false, true).await;
     let instance = InstanceId::from("energy-test");
@@ -664,7 +669,6 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
     )
     .await
     .unwrap();
-    let mock = Arc::new(Mock::default());
     let mut t = topology();
     t["time_server"] = json!(now_ms() / 1000);
     let mut s = status();
@@ -676,9 +680,22 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
     let cancel = CancellationToken::new();
     let task = spawn_driver(&hub, instance, Arc::new(driver), cancel.clone());
     settle(|| hub.stats().drivers_running == 1).await;
+    (vault, hub, cancel, task)
+}
+#[tokio::test(start_paused = true)]
+async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_optimistic_measurements()
+ {
+    let mock = Arc::new(Mock::default());
+    let (_vault, hub, cancel, task) = writable_driver(&mock).await;
     assert_eq!(mock.requests.lock().unwrap().len(), 2);
     tokio::time::advance(Duration::from_secs(10)).await;
     for (key, value, endpoint, field) in [
+        (
+            "program",
+            Value::from("program-test"),
+            "switchhomeschedule",
+            "schedule_id=program-test",
+        ),
         (
             "setpoint",
             Value::from("{\"temperature\":7,\"duration_minutes\":90}"),
@@ -692,12 +709,6 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
             "mode=home",
         ),
         ("home_mode", Value::from("hg"), "setthermmode", "mode=hg"),
-        (
-            "program",
-            Value::from("program-test"),
-            "switchhomeschedule",
-            "schedule_id=program-test",
-        ),
     ] {
         mock.add(200, &json!({"status":"ok"}));
         hub.command(
@@ -723,11 +734,98 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
         .value,
         Value::Float(20.5)
     );
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    let mut t = topology();
+    t["time_server"] = json!(now_ms() / 1000);
+    s["body"]["home"]["rooms"][0]["therm_setpoint_temperature"] = json!(7.0);
     mock.add(200, &s);
     mock.add(200, &t);
     let before = mock.requests.lock().unwrap().len();
-    tokio::time::advance(Duration::from_secs(20)).await;
+    tokio::time::advance(Duration::from_secs(1)).await;
+    assert_eq!(mock.requests.lock().unwrap().len(), before);
+    tokio::time::advance(Duration::from_secs(1)).await;
     settle(|| mock.requests.lock().unwrap().len() == before + 2).await;
+    assert_eq!(
+        hub.state(&PointId::from(
+            "energy-test:home-test.room.101/target_temperature"
+        ))
+        .unwrap()
+        .value,
+        Value::Float(7.0)
+    );
+    // Four successful commands share one status read (and the one topology
+    // refresh required by the program change). No second write is dispatched.
+    assert_eq!(
+        mock.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.0 == "POST")
+            .count(),
+        4
+    );
+    mock.add(200, &s);
+    tokio::time::advance(Duration::from_secs(29)).await;
+    assert_eq!(mock.requests.lock().unwrap().len(), before + 2);
+    tokio::time::advance(Duration::from_secs(1)).await;
+    settle(|| mock.requests.lock().unwrap().len() == before + 3).await;
+    cancel.cancel();
+    task.await.unwrap();
+}
+#[tokio::test(start_paused = true)]
+async fn failed_commands_do_not_accelerate_reads_and_post_command_checks_share_the_quota_pause() {
+    let mock = Arc::new(Mock::default());
+    let (_vault, hub, cancel, task) = writable_driver(&mock).await;
+    let mut s = status();
+    s["time_server"] = json!(now_ms() / 1000);
+    tokio::time::advance(Duration::from_secs(10)).await;
+    let point = PointId::from("energy-test:home-test.room.101/resume");
+    // A failed write does not schedule a fast read.
+    mock.add(500, &json!({"error":"provider unavailable"}));
+    assert!(
+        hub.command(&point, Value::Bool(true), moli_core::Origin::Ui, None)
+            .await
+            .is_err()
+    );
+    let before = mock.requests.lock().unwrap().len();
+    tokio::time::advance(Duration::from_secs(2)).await;
+    assert_eq!(mock.requests.lock().unwrap().len(), before);
+    // A successful write followed by a throttled check honors the same pause
+    // for reads and writes. Neither the command nor the check is burst-retried.
+    mock.add(200, &json!({"status":"ok"}));
+    hub.command(&point, Value::Bool(true), moli_core::Origin::Ui, None)
+        .await
+        .unwrap();
+    let mut headers = HeaderMap::new();
+    headers.insert(http::header::RETRY_AFTER, "60".parse().unwrap());
+    mock.replies.lock().unwrap().push_back(Ok(Response {
+        status: StatusCode::TOO_MANY_REQUESTS,
+        headers,
+        body: json!({"error":{"code":26}}).to_string().into(),
+    }));
+    let before = mock.requests.lock().unwrap().len();
+    tokio::time::advance(Duration::from_secs(2)).await;
+    settle(|| mock.requests.lock().unwrap().len() == before + 1).await;
+    assert!(
+        hub.command(&point, Value::Bool(true), moli_core::Origin::Ui, None)
+            .await
+            .is_err()
+    );
+    tokio::time::advance(Duration::from_secs(59)).await;
+    assert_eq!(mock.requests.lock().unwrap().len(), before + 1);
+    mock.add(200, &s);
+    tokio::time::advance(Duration::from_secs(1)).await;
+    settle(|| mock.requests.lock().unwrap().len() == before + 2).await;
+    assert_eq!(
+        mock.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.0 == "POST")
+            .count(),
+        2
+    );
     cancel.cancel();
     task.await.unwrap();
 }
