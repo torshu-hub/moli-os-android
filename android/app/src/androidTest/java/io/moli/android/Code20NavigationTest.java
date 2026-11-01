@@ -27,8 +27,14 @@ public final class Code20NavigationTest {
     <T>T ui(Callable<T> call)throws Exception{AtomicReference<T> result=new AtomicReference<>();AtomicReference<Exception> error=new AtomicReference<>();ins.runOnMainSync(()->{try{result.set(call.call());}catch(Exception e){error.set(e);}});if(error.get()!=null)throw error.get();return result.get();}
     <T extends Activity>T resumed(Class<T> type)throws Exception{return ui(()->{for(Activity a:ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED))if(type.isInstance(a))return type.cast(a);return null;});}
     String js(MainActivity a,String script)throws Exception{CountDownLatch ready=new CountDownLatch(1);AtomicReference<String> out=new AtomicReference<>();ins.runOnMainSync(()->a.web.evaluateJavascript(script,v->{out.set(v);ready.countDown();}));assertTrue("WebView callback; destroyed="+a.isDestroyed(),ready.await(10,TimeUnit.SECONDS));return out.get();}
-    void route(MainActivity a,String route)throws Exception{js(a,"location.hash="+JSONObject.quote(route));waitFor(()->JSONObject.quote("#"+route).equals(js(a,"location.hash")));}
-    void back(MainActivity a,String expected)throws Exception{ins.runOnMainSync(a::onBackPressed);waitFor(()->JSONObject.quote("#"+expected).equals(js(a,"location.hash")));}
+    String hash(MainActivity a)throws Exception{return String.valueOf(new JSONTokener(js(a,"location.hash")).nextValue());}
+    void waitHash(MainActivity a,String expected)throws Exception {
+        long end=android.os.SystemClock.uptimeMillis()+30000;
+        while(android.os.SystemClock.uptimeMillis()<end){if(expected.equals(hash(a)))return;Thread.sleep(100);}
+        fail("Expected route "+expected+", got "+hash(a));
+    }
+    void route(MainActivity a,String route)throws Exception{js(a,"location.hash="+JSONObject.quote(route));waitHash(a,"#"+route);}
+    void back(MainActivity a,String expected)throws Exception{ins.runOnMainSync(a::onBackPressed);waitHash(a,"#"+expected);}
     View tag(Activity a,String tag)throws Exception{return ui(()->a.findViewById(android.R.id.content).findViewWithTag(tag));}
     void capture(String name)throws Exception{ins.waitForIdleSync();Thread.sleep(300);File dir=new File(app.getFilesDir(),"code20-captures");dir.mkdirs();try(FileOutputStream out=new FileOutputStream(new File(dir,name+".png"))){assertTrue(ins.getUiAutomation().takeScreenshot().compress(Bitmap.CompressFormat.PNG,100,out));}}
     @Test public void integratedDestinationAndHierarchyIgnoreVisitedScreens()throws Exception {
@@ -63,7 +69,7 @@ public final class Code20NavigationTest {
             waitFor(()->tag(ready,"auto:editor:draft-link")!=null);
             ins.runOnMainSync(()->ready.findViewById(android.R.id.content).findViewWithTag("auto:editor:draft-link").performClick());
             waitFor(()->resumed(MainActivity.class)!=null);MainActivity moli=resumed(MainActivity.class);
-            waitFor(()->"\"#/automatismes/draft-link\"".equals(js(moli,"location.hash")));
+            waitHash(moli,"#/automatismes/draft-link");
             route(moli,"/pieces");route(moli,"/energie");route(moli,"/automatismes/draft-link");
             back(moli,"/automatismes");back(moli,"/");
             route(moli,"/pieces");route(moli,"/energie/solaire");back(moli,"/energie");back(moli,"/");
@@ -71,7 +77,7 @@ public final class Code20NavigationTest {
             route(moli,"/automatismes/draft-link");
             ins.runOnMainSync(()->moli.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
             waitFor(()->resumed(MainActivity.class)!=null&&resumed(MainActivity.class)!=moli);
-            MainActivity rotated=resumed(MainActivity.class);waitFor(()->"\"#/automatismes/draft-link\"".equals(js(rotated,"location.hash")));
+            MainActivity rotated=resumed(MainActivity.class);waitHash(rotated,"#/automatismes/draft-link");
             back(rotated,"/automatismes");back(rotated,"/");ins.runOnMainSync(rotated::onBackPressed);
             waitFor(()->resumed(ManagementActivity.class)!=null);ManagementActivity returned=resumed(ManagementActivity.class);
             assertTrue(ui(()->returned.findViewById(R.id.navigation_automations).isSelected()));assertEquals(EngineHost.State.RUNNING,EngineHost.state());
