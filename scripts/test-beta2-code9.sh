@@ -1,4 +1,4 @@
 #!/bin/sh
-# Existing candidate entry point validates the dependent Netatmo code14 milestone.
+# Existing candidate entry point validates the dependent Netatmo code15 corrective milestone.
 set -eu
-exec sh "$(dirname "$0")/test-beta2-code14.sh"
+exec sh "$(dirname "$0")/test-beta2-code15.sh"
