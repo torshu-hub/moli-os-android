@@ -73,6 +73,14 @@ final class ConfigStore {
         } finally { disk.remove(name); }
         transaction.commitExpected(expected,candidate);
     }
+    JSONObject netatmo(JSONObject input) throws Exception {
+        JSONObject result=nativeCall(input.put("action","netatmo").put("data",directory.getAbsolutePath()).put("master",master));
+        if("prepare_home".equals(input.optString("operation"))) {
+            commitCandidate(result.getString("expected_configuration"),result.getString("configuration"));
+            return nativeCall(new JSONObject().put("action","netatmo").put("operation","status").put("data",directory.getAbsolutePath()).put("master",master).put("instance",input.optString("instance","netatmo-energy")));
+        }
+        return result;
+    }
     JSONObject meross(JSONObject input) throws Exception {
         return nativeCall(input.put("action","meross").put("data",directory.getAbsolutePath()).put("master",master));
     }

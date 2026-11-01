@@ -23,6 +23,7 @@ public final class ManagementActivity extends Activity {
     private static final class Screen {
         Page page = Page.HOME;
         final NetworkPanel.State network=new NetworkPanel.State();
+        final NetatmoPanel.State netatmo=new NetatmoPanel.State();
         JSONObject catalogue, selected;
         JSONObject files;Future<JSONObject> filesWork;
         String snapshot, id = "", error;
@@ -46,6 +47,7 @@ public final class ManagementActivity extends Activity {
     }
     private Screen screen;
     NetworkPanel networkPanel;
+    NetatmoPanel netatmoPanel;
     private LinearLayout root, navigation, body, content, footer;
     private Button moliDestination;
     private LinearLayout engineCard;
@@ -76,6 +78,7 @@ public final class ManagementActivity extends Activity {
         landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         build();
+        netatmoPanel=new NetatmoPanel(this,screen.netatmo,this::render,()->{screen.catalogue=null;load();});
         networkPanel=new NetworkPanel(this,screen.network,scroll);
         networkPanel.association=this::networkAssociation;
         networkPanel.openAssociation=this::openNetworkIntegration;
@@ -341,6 +344,8 @@ public final class ManagementActivity extends Activity {
         });
     }
     private void complete() {
+        netatmoPanel.complete();
+        if(screen.page==Page.DETAIL && screen.selected!=null && "netatmo".equals(screen.selected.optJSONObject("manifest").optJSONObject("integration").optString("id")) && android.os.SystemClock.elapsedRealtime()-screen.netatmo.checked>5000)netatmoPanel.load();
         completeMerossIdentification();
         if(screen.filesWork!=null && screen.filesWork.isDone()) {
             try{screen.files=screen.filesWork.get();}catch(Exception failure){screen.error=getString(HostUi.errorMessage(failure));}
@@ -362,6 +367,9 @@ public final class ManagementActivity extends Activity {
             try { screen.catalogue=screen.loading.get(); screen.snapshot=screen.catalogue.isNull("text") ? null : screen.catalogue.getString("text"); }
             catch(Exception failure) { screen.error=getString(HostUi.errorMessage(failure)); }
             screen.loading=null;
+            if(screen.page==Page.DETAIL && screen.selected!=null && "netatmo".equals(screen.selected.optJSONObject("manifest").optJSONObject("integration").optString("id")) && screen.catalogue!=null) {
+                JSONArray entries=screen.catalogue.optJSONArray("packages");for(int i=0;entries!=null&&i<entries.length();i++){JSONObject item=entries.optJSONObject(i);if("netatmo".equals(item.optJSONObject("manifest").optJSONObject("integration").optString("id")))screen.selected=item;}
+            }
             if(screen.pendingMerossHost!=null && screen.catalogue!=null) {
                 try {
                     JSONArray packages=screen.catalogue.getJSONArray("packages");
@@ -419,6 +427,7 @@ public final class ManagementActivity extends Activity {
             case "meross-mss310": return R.string.description_meross_mss310;
             case "meross-em06": return R.string.description_meross_em06;
             case "moonraker": return R.string.description_moonraker;
+            case "netatmo": return R.string.description_netatmo;
             case "open-meteo": return R.string.description_open_meteo;
             case "open-meteo-air": return R.string.description_open_meteo_air;
             case "philips": return R.string.description_philips;
@@ -501,7 +510,9 @@ public final class ManagementActivity extends Activity {
             heading(content,R.string.integration_devices,17);
             for(int i=0;i<instances.length();i++)catalogueRow(screen.selected,instances.getJSONObject(i));
         }
-        if("meross-mss310".equals(profile)) {
+        if("netatmo".equals(profile)) {
+            netatmoPanel.show(content,screen.selected);
+        } else if("meross-mss310".equals(profile)) {
             renderForm();
         } else if(screen.selected.optBoolean("configurable")) {
             Button add=button(content,R.string.configure,()->edit(null));configurationActions.add(add);
@@ -572,7 +583,8 @@ public final class ManagementActivity extends Activity {
         body.setTag(selected==null ? profile : "configure:"+id);
         body.setOnClickListener(v->{
             screen.catalogueScroll=scroll.getScrollY();screen.selected=item;screen.saved=false;screen.activation=false;screen.error=null;
-            if(selected!=null){screen.saved=false;edit(selected);}else openIntegration();
+            if(selected!=null && profile.equals("netatmo")){screen.netatmo.instance=id;screen.page=Page.DETAIL;render();}
+            else if(selected!=null){screen.saved=false;edit(selected);}else openIntegration();
         });
         if(profile.equals("open-meteo")&&root.findViewById(R.id.catalogue_entry)==null)body.setId(R.id.catalogue_entry);
         contextActions.add(body);

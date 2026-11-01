@@ -1158,8 +1158,10 @@ name = "moli-android"
 version = "0.1.0"
 dependencies = [
  "jni",
+ "moli-core",
  "moli-ipp",
  "moli-moonraker",
+ "moli-netatmo",
  "moli-os",
  "moli-profile",
  "moli-runtime",
@@ -1560,6 +1562,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "moli-netatmo"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "http",
+ "http-body-util",
+ "httpdate",
+ "moli-core",
+ "moli-i18n",
+ "moli-net",
+ "moli-runtime",
+ "ring",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tower",
+]
+
+[[package]]
 name = "moli-os"
 version = "0.1.0"
 dependencies = [
@@ -1590,6 +1613,7 @@ dependencies = [
  "moli-lights",
  "moli-moonraker",
  "moli-net",
+ "moli-netatmo",
  "moli-philips",
  "moli-phones",
  "moli-presence",

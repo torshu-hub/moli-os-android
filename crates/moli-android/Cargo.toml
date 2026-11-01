@@ -10,8 +10,10 @@ rust-version = "1.95"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+moli-core.workspace = true
 moli-os = { path = "../moli-os" }
 moli-runtime.workspace = true
+moli-netatmo = { workspace = true, features = ["personal-oauth"] }
 moli-profile.workspace = true
 moli-solarman.workspace = true
 moli-ipp.workspace = true

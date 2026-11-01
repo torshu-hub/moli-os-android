@@ -117,7 +117,7 @@ final class WeatherBinding {
         outdoor.put(key,id);
         return root.toString(2)+"\n";
     }
-    private static JSONObject snapshot() throws Exception {
+    static JSONObject snapshot() throws Exception {
         String origin=EngineHost.origin(),token=EngineHost.token();
         if(origin==null || token==null) throw new IOException("busy");
         HttpURLConnection connection=(HttpURLConnection)new URL(origin+"/api/devices").openConnection();
