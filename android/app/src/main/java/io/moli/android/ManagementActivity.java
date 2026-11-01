@@ -468,7 +468,7 @@ public final class ManagementActivity extends Activity {
         LinearLayout filters=new LinearLayout(this);content.addView(filters);
         int[] labels={R.string.filter_all,R.string.filter_configurable,R.string.filter_incomplete};
         for(int i=0;i<labels.length;i++) {
-            final int choice=i;Button filter=button(filters,labels[i],()->{screen.filter=choice;screen.catalogueScroll=0;render();});
+            final int choice=i;Button filter=button(filters,labels[i],()->{screen.filter=choice;screen.catalogueScroll=0;renderedPage=null;render();});
             filter.setTag("filter:"+i);filter.setSelected(screen.filter==i);
             filter.setTypeface(null,screen.filter==i ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
             filter.setPadding(dp(6),dp(6),dp(6),dp(6));filter.setTextSize(14);
@@ -647,7 +647,13 @@ public final class ManagementActivity extends Activity {
         });
         render();
     }
+    private Page renderedPage;
+    private String renderedIntegration;
     private void render() {
+        String integration=screen.selected==null ? null : screen.selected.optJSONObject("manifest").optJSONObject("integration").optString("id");
+        final int passiveScroll=renderedPage==screen.page && java.util.Objects.equals(renderedIntegration,integration) && (screen.page==Page.DETAIL || screen.page==Page.INTEGRATIONS) ? scroll.getScrollY() : -1;
+        renderedPage=screen.page;renderedIntegration=integration;
+        if(passiveScroll>=0)remember();
         networkPanel.useMeross=screen.merossReturn ? this::useMerossIp : null;
         fields.clear(); instance=null; merossKey=null; save=null; status=null; primary=null; restart=null;
         configurationActions.clear();activationActions.clear();contextActions.clear();
@@ -698,7 +704,8 @@ public final class ManagementActivity extends Activity {
         if(screen.error!=null && screen.page==Page.PARAMETERS) {
             for(EditText field:fields.values()) field.setError(screen.error);
         }
-        if(screen.page==Page.INTEGRATIONS && screen.catalogueScroll>=0)scroll.post(()->scroll.scrollTo(0,screen.catalogueScroll));
+        if(passiveScroll>=0)scroll.post(()->scroll.scrollTo(0,passiveScroll));
+        else if(screen.page==Page.INTEGRATIONS && screen.catalogueScroll>=0)scroll.post(()->scroll.scrollTo(0,screen.catalogueScroll));
         else if(screen.page!=Page.NETWORK) scroll.scrollTo(0,0);
         updateControls();
     }
@@ -1067,7 +1074,7 @@ public final class ManagementActivity extends Activity {
     }
     private void exportJournal() {
         startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE)
-            .putExtra(Intent.EXTRA_TITLE,"Moli-OS-Beta2-journal.txt"),73);
+            .putExtra(Intent.EXTRA_TITLE,GeneralJournal.exportName(java.time.ZonedDateTime.now())),73);
     }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);

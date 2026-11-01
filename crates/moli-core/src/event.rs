@@ -133,6 +133,12 @@ pub enum Origin {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Action {
+    /// Bounded operational driver diagnostics, with no account/device identity.
+    Diagnostic {
+        event: String,
+        cause: String,
+        retry_seconds: u64,
+    },
     Command {
         point: PointId,
         value: Value,

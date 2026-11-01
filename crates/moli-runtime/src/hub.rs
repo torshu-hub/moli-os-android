@@ -958,6 +958,20 @@ impl Hub {
     }
 
     /// Journals that `instance` found its device at another address.
+    pub fn record_diagnostic(&self, event: &str, cause: &str, retry_seconds: u64) {
+        self.record(
+            Origin::System,
+            None,
+            Action::Diagnostic {
+                event: event.to_owned(),
+                cause: cause.to_owned(),
+                retry_seconds,
+            },
+            Outcome::Ok,
+            Instant::now(),
+        );
+    }
+
     pub fn record_address(
         &self,
         instance: &InstanceId,

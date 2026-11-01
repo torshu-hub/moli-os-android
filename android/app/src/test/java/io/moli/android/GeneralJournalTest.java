@@ -2,6 +2,15 @@ package io.moli.android;
 import org.junit.Test;
 import static org.junit.Assert.*;
 public final class GeneralJournalTest {
+    @Test public void timestampedNameUsesTabletLocalTime() {
+        assertEquals("Moli-OS-Beta2-journal-2026-11-01_12-30-00.txt",GeneralJournal.exportName(java.time.ZonedDateTime.parse("2026-11-01T12:30:00+01:00[Europe/Paris]")));
+    }
+    @Test public void diagnosticExportRetainsOnlyAllowedCodes() {
+        String line="{\"ts\":1,\"duration_ms\":0,\"origin\":\"system\",\"action\":{\"kind\":\"diagnostic\",\"event\":\"netatmo_read_error\",\"cause\":\"oauth\",\"retry_seconds\":30},\"outcome\":{\"result\":\"ok\"}}";
+        assertTrue(GeneralJournal.redactedEngineEntry(line).contains("netatmo_read_error | oauth | retry_s=30"));
+        assertEquals("",GeneralJournal.redactedEngineEntry(line.replace("oauth","private-token")));
+    }
+
     @Test public void healthExportDropsDriverIdsCoordinatesAndFreeErrors()throws Exception{
         String safe=GeneralJournal.redactedHealth("{\"journal_failures\":0,\"drivers\":[{\"instance\":\"private-home\",\"status\":{\"state\":\"backoff\",\"error\":\"latitude=1.234567&token=secret\",\"retry_in_ms\":1000}}]}");
         assertTrue(safe.contains("driver#1 | backoff | retry_ms=1000"));

@@ -19,6 +19,11 @@ final class GeneralJournal {
     private static JSONArray read(Context context) throws Exception {AtomicFile target=file(context);if(!target.getBaseFile().exists()&&!new File(target.getBaseFile()+".bak").exists())return new JSONArray();return new JSONArray(new String(target.readFully(),StandardCharsets.UTF_8));}
     static String redactedEngineEntry(String line) {
         try{JSONObject e=new JSONObject(line);String kind=e.getJSONObject("action").getString("kind"),result=e.getJSONObject("outcome").getString("result"),origin=e.getString("origin");
+            if(kind.equals("diagnostic")) {
+                JSONObject action=e.getJSONObject("action");String event=action.getString("event"),cause=action.getString("cause");
+                if(!Arrays.asList("netatmo_read_error","netatmo_recovered","netatmo_availability").contains(event) || !Arrays.asList("","dns","connect","tls","headers","body","network","api","rate_limit","unauthorized","credentials","ambiguous","application","storage","invalid_response","current","cloud_recent","oauth","oauth_application","oauth_ambiguous","offline","stale","unconfirmed","missing").contains(cause))return "";
+                return Instant.ofEpochMilli(e.getLong("ts"))+" | "+event+" | "+cause+" | retry_s="+Math.max(0,action.getLong("retry_seconds"))+"\n";
+            }
             if(!Arrays.asList("command","label","approval","automation","address").contains(kind)||!Arrays.asList("ok","err","pending").contains(result)||!Arrays.asList("ui","household","api","mcp","cli","system","assistant","automation").contains(origin))return "";
             return Instant.ofEpochMilli(e.getLong("ts"))+" | "+origin+" | "+kind+" | "+result+" | ms="+Math.max(0,e.getLong("duration_ms"))+"\n";
         }catch(Exception ignored){return "";}
@@ -49,8 +54,12 @@ final class GeneralJournal {
             }
         }catch(Exception ignored){return "health=unavailable\n";}finally{if(connection!=null)connection.disconnect();}
     }
+    static String exportName(java.time.ZonedDateTime at) {
+        return "Moli-OS-Beta2-journal-"+at.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss",java.util.Locale.ROOT))+".txt";
+    }
     static synchronized String export(Context context) throws Exception {
         StringBuilder out=new StringBuilder("Moli OS Android Beta 2 — journal TXT\n");
+        out.append("Export: ").append(java.time.ZonedDateTime.now().format(java.time.format.DateTimeFormatter.ISO_ZONED_DATE_TIME)).append("\nEntries: UTC (ISO-8601)\n");
         out.append("Version: ").append(BuildConfig.VERSION_NAME).append("\n");
         JSONArray host=read(context);
         for(int i=0;i<host.length();i++){JSONObject entry=host.getJSONObject(i);try{Event event=Event.valueOf(entry.getString("event"));out.append(Instant.ofEpochMilli(entry.getLong("ts"))).append(" | ").append(event.name()).append('\n');}catch(IllegalArgumentException ignored){}}

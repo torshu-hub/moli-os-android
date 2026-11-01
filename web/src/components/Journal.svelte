@@ -17,6 +17,7 @@
 
   function describe(entry) {
     const a = entry.action;
+    if (a.kind === 'diagnostic') return { target: t('systeme.journal.diagnostic'), detail: `${a.event} · ${a.cause} · ${a.retry_seconds}s` };
     if (a.kind === 'command') {
       const [id, key] = [a.point.slice(0, a.point.indexOf('/')), a.point.slice(a.point.indexOf('/') + 1)];
       const d = hub.devices[id];

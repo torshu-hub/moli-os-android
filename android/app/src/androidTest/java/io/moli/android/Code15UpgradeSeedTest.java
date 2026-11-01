@@ -22,7 +22,7 @@ import static org.junit.Assert.*;
 public final class Code15UpgradeSeedTest {
     @Test public void seedRealCode14() throws Exception {
         Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();
-        Code12UpgradeSeedTest.seed(app,14);
+        Code12UpgradeSeedTest.seed(app,Integer.parseInt(InstrumentationRegistry.getArguments().getString("expectedSeed","14")));
         EngineHost.maintain(app,()->{
             ConfigStore store=new ConfigStore(app);
             store.netatmo(new JSONObject().put("operation","provision").put("consent",true)

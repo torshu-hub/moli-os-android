@@ -807,6 +807,15 @@ async fn failed_commands_do_not_accelerate_reads_and_post_command_checks_share_t
     let before = mock.requests.lock().unwrap().len();
     tokio::time::advance(Duration::from_secs(2)).await;
     settle(|| mock.requests.lock().unwrap().len() == before + 1).await;
+    let id = moli_core::DeviceId::from("energy-test:home-test.room.101");
+    assert_eq!(hub.device(&id).unwrap().online, Some(true));
+    assert_eq!(
+        hub.state(&PointId::new(&id, "target_temperature"))
+            .unwrap()
+            .value,
+        Value::Null
+    );
+    assert!(hub.journal(100).iter().any(|entry| matches!(&entry.action, moli_core::Action::Diagnostic { event, cause, .. } if event == "netatmo_read_error" && cause == "rate_limit")));
     assert!(
         hub.command(&point, Value::Bool(true), moli_core::Origin::Ui, None)
             .await
