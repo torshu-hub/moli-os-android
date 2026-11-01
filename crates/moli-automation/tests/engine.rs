@@ -72,9 +72,58 @@ impl Driver for Fake {
                     semantic: Semantic::Other,
                 }],
             });
+            // A scene switch: each press is an occurrence (`pulse_state`).
+            ctx.upsert_device(Device {
+                id: ctx.device_id("button"),
+                instance: ctx.instance().clone(),
+                native_name: "button".into(),
+                manufacturer: None,
+                model: None,
+                description: None,
+                native_room: None,
+                members: Vec::new(),
+                points: vec![PointSpec {
+                    key: "press".into(),
+                    label: "Appui".into(),
+                    kind: Kind::Text,
+                    access: Access {
+                        read: true,
+                        write: true,
+                    },
+                    unit: None,
+                    semantic: Semantic::Other,
+                }],
+            });
+            let demand = ctx.device_id("demand");
+            ctx.upsert_device(Device {
+                id: demand.clone(),
+                instance: ctx.instance().clone(),
+                native_name: "demand".into(),
+                manufacturer: None,
+                model: None,
+                description: None,
+                native_room: None,
+                members: Vec::new(),
+                points: vec![PointSpec {
+                    key: "declared_demand".into(),
+                    label: "Declared demand".into(),
+                    kind: Kind::Text,
+                    access: Access {
+                        read: true,
+                        write: true,
+                    },
+                    unit: None,
+                    semantic: Semantic::Other,
+                }],
+            });
+            ctx.set_state(&demand, "declared_demand", Value::Null);
             ctx.ready();
             while let Some(cmd) = ctx.next_command().await {
-                ctx.set_state(&cmd.device.id, &cmd.key, cmd.value.clone());
+                if &*cmd.key == "press" {
+                    ctx.pulse_state(&cmd.device.id, &cmd.key, cmd.value.clone());
+                } else {
+                    ctx.set_state(&cmd.device.id, &cmd.key, cmd.value.clone());
+                }
                 cmd.reply(Ok(()));
             }
             Ok(())
@@ -194,6 +243,51 @@ async fn listed_fingerprints_follow_every_change() {
     autos.delete(&a.id, HUMAN).await.unwrap();
     assert_eq!(listed(&autos, &a.id), None);
     cancel.cancel();
+}
+
+async fn press(hub: &Hub, what: &str) {
+    hub.command(
+        &PointId::from("fake:button/press"),
+        Value::from(what),
+        Origin::Api,
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+/// A press repeated is a new press: the lamp lit by a click, put out from
+/// the dashboard, lights again at the next click, the same value as before.
+#[tokio::test]
+async fn the_same_press_twice_runs_twice() {
+    let (hub, autos, _c) = setup().await;
+    let a = approved(
+        &autos,
+        serde_json::json!({
+            "nodes": [
+                { "id": "t", "type": "when_state", "point": "fake:button/press", "to": "click" },
+                { "id": "s", "type": "set", "point": "fake:lamp/on", "value": true }
+            ],
+            "edges": [{ "from": "t", "to": "s" }]
+        }),
+    )
+    .await;
+    // The first press ever seen counts too.
+    press(&hub, "click").await;
+    assert!(lamp_turns(&hub, true).await, "the first click lights");
+    hub.command(
+        &PointId::from("fake:lamp/on"),
+        Value::Bool(false),
+        Origin::Api,
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(lamp_turns(&hub, false).await);
+    press(&hub, "click").await;
+    assert!(lamp_turns(&hub, true).await, "the same click lights again");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(autos.runs(Some(&a.id), 10).len(), 2);
 }
 
 #[tokio::test]
@@ -667,4 +761,72 @@ async fn said_aloud_through_every_speaker() {
         hub.state(&said).map(|s| s.value),
         Some(Value::Text("Quelqu'un est à la porte".into()))
     );
+}
+
+#[tokio::test]
+async fn concurrent_surfaces_cannot_replace_a_newer_graph_or_metadata() {
+    let (_hub, autos, cancel) = setup().await;
+    let a = autos
+        .save(automation(switch_lights_lamp()), HUMAN)
+        .await
+        .unwrap();
+    let fingerprint = a.fingerprint();
+    let mut changed = a.clone();
+    changed.name = "Updated rule".into();
+    let newer = autos
+        .save_seen(changed, HUMAN, Some(&fingerprint))
+        .await
+        .unwrap();
+    assert!(newer.updated > a.updated);
+    assert!(matches!(
+        autos.save_seen(a.clone(), HUMAN, Some(&fingerprint)).await,
+        Err(AutomationError::Conflict)
+    ));
+    assert!(matches!(
+        autos.save(a, HUMAN).await,
+        Err(AutomationError::Conflict)
+    ));
+    assert_eq!(autos.get(&newer.id).unwrap().name, "Updated rule");
+    cancel.cancel();
+}
+
+#[tokio::test]
+async fn declared_demand_only_runs_explicit_fresh_transitions_after_approval() {
+    let (hub, autos, cancel) = setup().await;
+    let graph = serde_json::json!({"nodes":[
+        {"id":"on","type":"when_state","point":"fake:demand/declared_demand","to":"on"},
+        {"id":"off","type":"when_state","point":"fake:demand/declared_demand","to":"off"},
+        {"id":"set-on","type":"set","point":"fake:lamp/on","value":true},
+        {"id":"set-off","type":"set","point":"fake:lamp/on","value":false}],
+        "edges":[{"from":"on","to":"set-on"},{"from":"off","to":"set-off"}]});
+    let a = approved(&autos, graph).await;
+    let point = PointId::from("fake:demand/declared_demand");
+    for value in ["unknown", "missing"] {
+        hub.command(&point, Value::from(value), Origin::Ui, None)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        assert!(autos.runs(Some(&a.id), 10).is_empty());
+    }
+    hub.command(&point, Value::from("on"), Origin::Ui, None)
+        .await
+        .unwrap();
+    assert!(lamp_turns(&hub, true).await);
+    hub.command(&point, Value::from("off"), Origin::Ui, None)
+        .await
+        .unwrap();
+    assert!(lamp_turns(&hub, false).await);
+    autos
+        .set_enabled(&a.id, false, Some(&a.fingerprint()), HUMAN)
+        .await
+        .unwrap();
+    hub.command(&point, Value::from("on"), Origin::Ui, None)
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(80)).await;
+    assert_eq!(
+        hub.state(&PointId::from("fake:lamp/on")).unwrap().value,
+        Value::Bool(false)
+    );
+    cancel.cancel();
 }

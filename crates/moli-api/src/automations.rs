@@ -144,7 +144,14 @@ pub(crate) async fn update(
         return error(StatusCode::NOT_FOUND, "unknown automation");
     }
     a.id = id;
-    save(&autos, a, actor(&headers, &humans, &caller)).await
+    let seen = headers.get("if-match").and_then(|v| v.to_str().ok());
+    match autos
+        .save_seen(a, actor(&headers, &humans, &caller), seen)
+        .await
+    {
+        Ok(a) => axum::Json(view(&autos, &a)).into_response(),
+        Err(e) => failure(&e),
+    }
 }
 
 async fn save(autos: &Automations, a: Automation, by: Actor) -> Response {

@@ -262,4 +262,26 @@
     <string name="netatmo_cancel">Annuler cette autorisation en cours</string>
     <string name="netatmo_provider">Service Netatmo temporairement indisponible. Autorisation conservée.</string>
     <string name="netatmo_application_rejected">Application OAuth refusée : vérifier ses identifiants personnels.</string>
+    <string name="auto_title">Automatisation Netatmo → Meross</string>
+    <string name="auto_engine">Démarrer le moteur depuis Gestion pour accéder aux automatismes.</string>
+    <string name="auto_reload">Actualiser</string>
+    <string name="auto_conflict">La règle a été modifiée ailleurs. Liste relue ; vérifier avant de réessayer.</string>
+    <string name="auto_error">Action impossible. Actualiser avant de réessayer ; une sauvegarde peut avoir abouti.</string>
+    <string name="auto_help">Règles natives Moli. L’état actif concerne la règle, pas la prise. Ouvrir Moli pour approuver la version et l’activer avec la session humaine existante.</string>
+    <string name="auto_active">Active</string>
+    <string name="auto_inactive">Inactive ou à approuver</string>
+    <string name="auto_editor">Ouvrir dans Moli / Activer</string>
+    <string name="auto_disable">Désactiver la règle</string>
+    <string name="auto_edit">Modifier les équipements</string>
+    <string name="auto_new">Configurer une liaison</string>
+    <string name="auto_no_devices">Thermostat Netatmo et prise Meross MSS310 requis dans le Hub.</string>
+    <string name="auto_source">Demande déclarée Netatmo</string>
+    <string name="auto_target">Prise Meross cible</string>
+    <string name="auto_draft">Sauvegarder n’active rien. Seules les transitions explicites ON/OFF de la demande fraîche déclencheront les commandes après activation volontaire.</string>
+    <string name="auto_save">Sauvegarder le graphe Moli</string>
+    <string name="auto_back">Retour à la liste</string>
+    <string name="auto_rule_name">Demande Netatmo vers Meross</string>
+    <string name="auto_on">ON déclaré</string>
+    <string name="auto_off">OFF déclaré</string>
+    <string name="auto_unknown">État non confirmé</string>
 </resources>

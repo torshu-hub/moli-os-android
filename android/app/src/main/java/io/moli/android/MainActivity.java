@@ -58,6 +58,8 @@ public final class MainActivity extends Activity {
             }
         });
         root.addView(web,new LinearLayout.LayoutParams(-1,0,1));
+        String automation=getIntent().getStringExtra("automation");
+        if(automation!=null && automation.matches("[A-Za-z0-9_-]{1,128}"))restoredRoute="/automatismes/"+automation;
         if(saved!=null) restoredRoute=saved.getString("route","/");
         showDashboard();
     }

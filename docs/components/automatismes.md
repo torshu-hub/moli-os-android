@@ -82,6 +82,8 @@ lui fait perdre sa validation, la maison est prévenue (notice dans le dashboard
 ## Moteur
 
 - Abonné au bus du hub : changements d'état (le hub n'émet qu'en cas de changement),
+  et appuis (`pulse`, `pulse_state` d'un pilote) : un appui déclenche même s'il répète le
+  précédent ou s'il est le premier vu depuis le démarrage,
   valeur précédente gardée pour `from` et les franchissements de seuil. `for_s` = minuterie
   annulée si la valeur repart (sans `to` : chaque nouveau changement relance la minuterie).
 - Horloge : un tic par seconde en heure locale (jiff, fuseau de la config) ; chaque
@@ -162,3 +164,28 @@ Garde-fous de l'import (détail dans [moli.md](moli.md)) :
 
 Annonces vocales Sonos (TTS + `audioClip`), présence
 (appli mobile), suggestions d'automatismes tirées de l'historique, Telegram testé en réel.
+
+## Android Beta 2 code19
+
+Gestion Android propose une liaison demande déclarée Netatmo → prise Meross
+MSS310 publiée par le Hub. Elle configure les routes REST Moli officielles,
+jamais les fichiers de stockage. Le graphe contient deux `when_state` (`on`,
+`off`) et deux `set` booléens, sans `on_start`. La sauvegarde crée un brouillon ;
+l'utilisateur ouvre la même règle dans l'éditeur Web pour l'approuver et
+l'activer via la session humaine ordinaire. Aucun PIN ou moteur parallèle.
+Les graphes modifiés dans le Web restent éditables là ; Android n'adapte les
+équipements que si la structure simple est conservée. Une liaison identique
+est réutilisée à la création, pas dupliquée. Une erreur de transport demande
+une relecture avant nouvelle tentative, car la sauvegarde peut avoir abouti.
+
+Les mesures absentes/périmées Netatmo publient `unknown`, pas `on`. Aucun
+ordre d'arrêt de secours ou thermostat logiciel n'est ajouté. L'état actif
+est celui de la règle, distinct du dernier état remonté de la prise. Les
+lectures Android sont explicites (ou à l'ouverture), sans surveillance périodique.
+
+Les mises à jour REST contenant une révision `updated` non nulle sont
+conditionnelles : une ancienne révision renvoie 409. Android joint aussi
+`If-Match` avec l'empreinte officielle. Vérification et remplacement sont sous
+le verrou du magasin ; révision monotone à chaque modification. L'éditeur Web
+conserve la nouvelle révision après sauvegarde/activation/désactivation et
+relit après conflit. Les anciens clients sans révision restent compatibles.
