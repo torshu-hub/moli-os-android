@@ -72,7 +72,10 @@ fn timestamps_reachability_and_partial_errors_fail_closed() {
     assert_eq!(thermostat(&parse(&s, AT)).quality, "unconfirmed");
     s["time_server"] = json!("1800000000"); // official schema also allows string
     assert!(thermostat(&parse(&s, AT)).current());
-    assert_eq!(thermostat(&parse(&s, AT - 1)).quality, "unconfirmed");
+    assert_eq!(
+        thermostat(&parse(&s, AT - 1)).time_cause,
+        "timestamp_future_le_1s"
+    );
     s["body"]["home"]["modules"][1]["reachable"] = json!(false);
     assert_eq!(thermostat(&parse(&s, AT)).quality, "offline");
     s["body"]["errors"] = json!([{"id":"aa:bb:cc:dd:ee:01","code":6}]);
@@ -742,7 +745,7 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
     mock.add(200, &s);
     mock.add(200, &t);
     let before = mock.requests.lock().unwrap().len();
-    tokio::time::advance(Duration::from_secs(1)).await;
+    tokio::time::advance(Duration::from_secs(19)).await;
     assert_eq!(mock.requests.lock().unwrap().len(), before);
     tokio::time::advance(Duration::from_secs(1)).await;
     settle(|| mock.requests.lock().unwrap().len() == before + 2).await;
@@ -754,7 +757,7 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
         .value,
         Value::Float(7.0)
     );
-    // Four successful commands share one status read (and the one topology
+    // Four successful commands wait for the normal status read (and the topology
     // refresh required by the program change). No second write is dispatched.
     assert_eq!(
         mock.requests
@@ -774,7 +777,7 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
     task.await.unwrap();
 }
 #[tokio::test(start_paused = true)]
-async fn failed_commands_do_not_accelerate_reads_and_post_command_checks_share_the_quota_pause() {
+async fn commands_keep_normal_reads_and_share_the_quota_pause() {
     let mock = Arc::new(Mock::default());
     let (_vault, hub, cancel, task) = writable_driver(&mock).await;
     let mut s = status();
@@ -805,7 +808,7 @@ async fn failed_commands_do_not_accelerate_reads_and_post_command_checks_share_t
         body: json!({"error":{"code":26}}).to_string().into(),
     }));
     let before = mock.requests.lock().unwrap().len();
-    tokio::time::advance(Duration::from_secs(2)).await;
+    tokio::time::advance(Duration::from_secs(18)).await;
     settle(|| mock.requests.lock().unwrap().len() == before + 1).await;
     let id = moli_core::DeviceId::from("energy-test:home-test.room.101");
     assert_eq!(hub.device(&id).unwrap().online, Some(true));
@@ -844,7 +847,7 @@ fn optional_fields_do_not_imply_explicit_disconnection() {
     for (stamp, reason) in [
         (Json::Null, "timestamp_missing"),
         (json!("invalid"), "timestamp_invalid"),
-        (json!(1_800_000_100_u64), "timestamp_future"),
+        (json!(1_800_000_100_u64), "timestamp_future_30_300s"),
     ] {
         let mut data = status();
         data["time_server"] = stamp;
@@ -874,6 +877,7 @@ fn optional_fields_do_not_imply_explicit_disconnection() {
         .pop();
     let rows = parse(&data, AT);
     assert_eq!(thermostat(&rows).reachability_cause, "status_missing");
+    assert!(rows.iter().any(Observation::current));
 }
 #[tokio::test(start_paused = true)]
 async fn unconfirmed_reads_keep_declared_contact_but_not_measurements_and_recover() {
@@ -927,4 +931,25 @@ async fn unconfirmed_reads_keep_declared_contact_but_not_measurements_and_recove
     assert_eq!(hub.device(&id).unwrap().online, Some(false));
     cancel.cancel();
     task.await.unwrap();
+}
+
+#[test]
+fn future_clock_tolerance_is_one_api_second_not_a_blanket_acceptance() {
+    for (delta, current, reason) in [
+        (0, true, "timestamp_recent"),
+        (1000, true, "timestamp_future_le_1s"),
+        (2000, false, "timestamp_future_1_5s"),
+        (6000, false, "timestamp_future_5_30s"),
+        (60000, false, "timestamp_future_30_300s"),
+        (86_400_000, false, "timestamp_future_gt_300s"),
+    ] {
+        let mut data = status();
+        data["time_server"] = json!((AT + delta) / 1000);
+        let rows = parse(&data, AT);
+        let row = thermostat(&rows);
+        assert_eq!(row.current(), current);
+        assert_eq!(row.time_cause, reason);
+        assert_eq!(row.server_at, Some(AT + delta));
+        assert_eq!(row.reachable, Some(true));
+    }
 }

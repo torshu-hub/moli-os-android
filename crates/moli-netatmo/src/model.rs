@@ -354,9 +354,22 @@ fn cloud_time(
         );
     };
     let _ = topology;
-    let quality = if live > now {
-        "unconfirmed"
-    } else if now - live > max_age {
+    // The API field is expressed in whole seconds. Accept at most one unit of
+    // clock quantization/skew, explicitly classified; larger advances stay unknown.
+    if live > now {
+        let delta = live - now;
+        if delta <= 1000 {
+            return (Some(live), "cloud_recent", "timestamp_future_le_1s");
+        }
+        let reason = match delta {
+            1001..=5000 => "timestamp_future_1_5s",
+            5001..=30000 => "timestamp_future_5_30s",
+            30_001..=300_000 => "timestamp_future_30_300s",
+            _ => "timestamp_future_gt_300s",
+        };
+        return (Some(live), "unconfirmed", reason);
+    }
+    let quality = if now - live > max_age {
         "stale"
     } else {
         "cloud_recent"
@@ -365,7 +378,6 @@ fn cloud_time(
         Some(live),
         quality,
         match quality {
-            "unconfirmed" => "timestamp_future",
             "stale" => "timestamp_stale",
             _ => "timestamp_recent",
         },
