@@ -22,7 +22,8 @@ portal (`POST /api/getdocumentationjson`, form `fileName=Energy`):
   seconds** later (an already earlier poll is retained). Nearby commands share
   that read; normal 30-second polling resumes from it. Failed writes schedule no
   extra read, and a 429 pauses the same reads/writes via Retry-After. Only a
-  program change invalidates the topology cache.
+  program change marks the topology for refresh, keeping the cached capability
+  metadata available to other commands until the coalesced read.
 - Temperatures, room setpoint/mode, home mode, selected schedule, module
   reachability/battery and `heating_power_request` retain their provider meaning.
   Only an actual boolean `boiler_status` on NATherm1/OTM supplies declared demand.

@@ -691,6 +691,12 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
     tokio::time::advance(Duration::from_secs(10)).await;
     for (key, value, endpoint, field) in [
         (
+            "program",
+            Value::from("program-test"),
+            "switchhomeschedule",
+            "schedule_id=program-test",
+        ),
+        (
             "setpoint",
             Value::from("{\"temperature\":7,\"duration_minutes\":90}"),
             "setroomthermpoint",
@@ -703,12 +709,6 @@ async fn guarded_hub_commands_send_official_payloads_without_startup_writes_or_o
             "mode=home",
         ),
         ("home_mode", Value::from("hg"), "setthermmode", "mode=hg"),
-        (
-            "program",
-            Value::from("program-test"),
-            "switchhomeschedule",
-            "schedule_id=program-test",
-        ),
     ] {
         mock.add(200, &json!({"status":"ok"}));
         hub.command(
