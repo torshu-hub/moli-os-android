@@ -653,7 +653,7 @@ public final class ManagementActivity extends Activity {
         String integration=screen.selected==null ? null : screen.selected.optJSONObject("manifest").optJSONObject("integration").optString("id");
         final int passiveScroll=renderedPage==screen.page && java.util.Objects.equals(renderedIntegration,integration) && (screen.page==Page.DETAIL || screen.page==Page.INTEGRATIONS) ? scroll.getScrollY() : -1;
         renderedPage=screen.page;renderedIntegration=integration;
-        remember();
+        if(passiveScroll>=0)remember();
         networkPanel.useMeross=screen.merossReturn ? this::useMerossIp : null;
         fields.clear(); instance=null; merossKey=null; save=null; status=null; primary=null; restart=null;
         configurationActions.clear();activationActions.clear();contextActions.clear();
