@@ -187,11 +187,20 @@ impl Driver for Netatmo {
             let mut next = Instant::now();
             let mut force = false;
             let mut retry = 30;
+            let mut last_error = None;
             let mut quota_until = Instant::now();
             for id in ctx.devices() {
                 invalidate(ctx, &id, "unconfirmed", "");
             }
             loop {
+                let expiry = records
+                    .values()
+                    .filter(|(_, _, current)| *current)
+                    .map(|(_, received, _)| {
+                        *received + Duration::from_millis(self.config.max_age_seconds * 1000 + 1)
+                    })
+                    .min()
+                    .unwrap_or(next);
                 tokio::select! {
                     command=ctx.next_command()=>{
                         let Some(command)=command else {return Ok(());};
@@ -207,7 +216,8 @@ impl Driver for Netatmo {
                             next=next.min(Instant::now()+POST_COMMAND_DELAY);
                         }
                     }
-                    ()=tokio::time::sleep_until(next)=>{
+                    ()=tokio::time::sleep_until(next.min(expiry))=>{
+                        if Instant::now()<next {expire(ctx,&mut records,self.config.max_age_seconds*1000);continue;}
                         let start=Instant::now();
                         match self.collect(ctx,&mut account,force,&mut cache,start).await {
                             Ok((observations,write))=>{
@@ -217,6 +227,7 @@ impl Driver for Netatmo {
                                     let id=publish(ctx,&observation,self.config.max_age_seconds,cache.as_ref(),write);
                                     records.insert(id,(observation.server_at,Instant::now(),observation.current()));
                                 }
+                                if last_error.take().is_some() {ctx.diagnostic("netatmo_recovered","",0);}
                                 force=false;retry=30;ctx.ready();
                                 next=(start+Duration::from_secs(self.config.poll_seconds)).max(Instant::now()+Duration::from_millis(1));
                             }
@@ -226,6 +237,7 @@ impl Driver for Netatmo {
                                 force=failure==Failure::Unauthorized;
                                 let delay=if failure.network(){let d=retry;retry=(retry*2).min(300);d}else{failure.retry_seconds(self.config.poll_seconds)};
                                 next=Instant::now()+Duration::from_secs(delay.max(self.config.poll_seconds));
+                                if last_error!=Some(failure) {ctx.diagnostic("netatmo_read_error",failure.code(),delay.max(self.config.poll_seconds));last_error=Some(failure);}
                                 if matches!(failure,Failure::RateLimited(_)){quota_until=next;}
                             }
                         }
@@ -257,7 +269,10 @@ const META: &[&str] = &[
     "error",
     "max_age_seconds",
 ];
-fn invalidate(ctx: &DriverCtx, id: &DeviceId, quality: &str, error: &str) {
+fn invalidate(ctx: &DriverCtx, id: &DeviceId, quality: &'static str, error: &str) {
+    if quality != "error" && ctx.current(id, "freshness") != Some(Value::from(quality)) {
+        ctx.diagnostic("netatmo_availability", quality, 0);
+    }
     // Fixed union: clears formerly present fields too (omission is never a hold).
     for key in [
         "temperature",
@@ -282,7 +297,9 @@ fn invalidate(ctx: &DriverCtx, id: &DeviceId, quality: &str, error: &str) {
     ctx.set_state(id, "declared_demand", Value::from("unknown"));
     ctx.set_state(id, "freshness", Value::from(quality));
     ctx.set_state(id, "error", Value::from(error_text(error).as_str()));
-    ctx.set_availability(id, false);
+    if quality != "error" {
+        ctx.set_availability(id, false);
+    }
 }
 fn publish(
     ctx: &DriverCtx,
@@ -292,6 +309,9 @@ fn publish(
     write: bool,
 ) -> DeviceId {
     let id = ctx.device_id(&obs.native);
+    if ctx.current(&id, "freshness") != Some(Value::from(obs.quality)) {
+        ctx.diagnostic("netatmo_availability", obs.quality, 0);
+    }
     ctx.upsert_device(topology.map_or_else(
         || device_base(obs, ctx),
         |topology| commands::definition(ctx, obs, topology, write),

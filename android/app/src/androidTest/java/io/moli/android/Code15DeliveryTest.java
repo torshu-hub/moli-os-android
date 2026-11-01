@@ -50,7 +50,7 @@ public final class Code15DeliveryTest {
         }
     }
     void savedAccount()throws Exception {
-        assertEquals(15,app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());
+        assertEquals(Integer.parseInt(InstrumentationRegistry.getArguments().getString("expectedVersion","15")),app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());
         Code12UpgradeSeedTest.sameData(app);
         JSONObject state=EngineHost.inspect(()->new ConfigStore(app).netatmo(new JSONObject().put("operation","status"))).get(15,TimeUnit.SECONDS);
         assertTrue(state.getBoolean("credential_present"));assertTrue(state.getBoolean("write_allowed"));
@@ -104,7 +104,7 @@ public final class Code15DeliveryTest {
         assertEquals("\"21.5\"",js("field.value"));capture("climate-replaced");
         savedAccount();
         File dir=new File(app.getFilesDir(),"code15-captures");dir.mkdirs();
-        try(FileOutputStream out=new FileOutputStream(new File(dir,"update-proof.txt"))){out.write(("code14 -> code15; synthetic OAuth pair/application/home, files/config/master and four disabled Meross instances identical; production dashboard bytes in Android WebView; focus/delete, empty draft surviving a state event, keyboard replacement, bounds, explicit duration/payload, one captured offline command; no provider traffic or physical commands.\n").getBytes(StandardCharsets.UTF_8));}
+        try(FileOutputStream out=new FileOutputStream(new File(dir,"update-proof.txt"))){out.write(("update; synthetic OAuth pair/application/home, files/config/master and four disabled Meross instances identical; production dashboard bytes in Android WebView; focus/delete, empty draft surviving a state event, keyboard replacement, bounds, explicit duration/payload, one captured offline command; no provider traffic or physical commands.\n").getBytes(StandardCharsets.UTF_8));}
         main(()->{web.destroy();activity.finish();});
     }
     @Test public void verifySavedAccountAfterRestart()throws Exception {savedAccount();}

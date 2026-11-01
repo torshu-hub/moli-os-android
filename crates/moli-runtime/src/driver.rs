@@ -247,6 +247,11 @@ impl DriverCtx {
         }
     }
 
+    /// Write a compact diagnostic through the existing bounded journal.
+    pub fn diagnostic(&self, event: &'static str, cause: &'static str, retry_seconds: u64) {
+        self.hub.record_diagnostic(event, cause, retry_seconds);
+    }
+
     pub fn set_availability(&self, device: &DeviceId, online: bool) {
         if self.owns(device) {
             self.hub.set_availability(device, online);
