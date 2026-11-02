@@ -67,6 +67,7 @@ fn prepare(raw: &str, id: &str, config: &Config, enable: bool) -> Result<String>
     row["options"] = Item::Table(options.as_table().clone());
     Ok(doc.to_string())
 }
+#[allow(clippy::too_many_lines)] // Serialized native setup dispatch keeps the vault transaction together.
 pub(crate) fn run(input: &Value) -> Result<Value> {
     let data = Path::new(input["data"].as_str().ok_or("input")?);
     let key = MasterKey::new(input["master"].as_str().ok_or("input")?.into());
@@ -98,7 +99,10 @@ pub(crate) fn run(input: &Value) -> Result<Value> {
                 let last = secret(data, &key, id, "login_attempt")?
                     .and_then(|s| s.parse::<u64>().ok())
                     .unwrap_or(0);
-                if now.saturating_sub(last) < 60_000 {
+                let blocked = secret(data, &key, id, "login_blocked_until")?
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(0);
+                if now < blocked || now.saturating_sub(last) < 60_000 {
                     return Err("rate_limit");
                 }
                 set_secret(
@@ -118,8 +122,19 @@ pub(crate) fn run(input: &Value) -> Result<Value> {
                     input["password"].as_str().ok_or("input")?,
                     pin,
                 )
-                .await
-                .map_err(moli_hyundai::Error::code)?;
+                .await;
+                if let Err(moli_hyundai::Error::RateLimit(seconds)) = &account {
+                    set_secret(
+                        &data.join("secrets.enc"),
+                        &key,
+                        &format!("{id}/login_blocked_until"),
+                        &now.saturating_add(seconds.saturating_mul(1000).max(60_000))
+                            .to_string(),
+                    )
+                    .await
+                    .map_err(|_| "storage")?;
+                }
+                let account = account.map_err(moli_hyundai::Error::code)?;
                 set_secret(
                     &data.join("secrets.enc"),
                     &key,

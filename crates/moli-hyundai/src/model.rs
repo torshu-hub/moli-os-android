@@ -373,6 +373,32 @@ pub fn validate_id(id: &str) -> Result<&str, Error> {
 mod tests {
     use super::*;
     #[test]
+    fn eu_derived_states_and_units_remain_explicit() {
+        let s = Snapshot::parse(
+            &json!({"state":{"Vehicle":{
+                "Body":{"Windshield":{"Front":{"Defog":{"State":2}}}},
+                "Cabin":{"SteeringWheel":{"Heat":{"State":1}}},
+                "Green":{"ChargingDoor":{"State":3},"Reservation":{"Departure":{"Schedule1":{"HVAC":{"Temperature":{"Value":68,"Unit":1}}}}},"ChargingInformation":{"DTE":{"TargetSoC":{"Standard":100}}}},
+                "Drivetrain":{"FuelSystem":{"DTE":{"Unit":3}}}
+            }}}),
+            1_800_000_000_000,
+            1000,
+        );
+        assert_eq!(s.values["defrost_is_on"], false);
+        assert_eq!(s.values["steering_wheel_heater_is_on"], true);
+        assert!(s.values["ev_charge_port_door_is_open"].is_null());
+        assert_eq!(s.values["ev_first_departure_climate_temperature"], 20.0);
+        assert_eq!(s.values["ev_target_range_charge_AC"], 160.9344);
+        let coverage = coverage(&s.values);
+        let defrost = coverage
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["ha"] == "defrost_is_on")
+            .unwrap();
+        assert_eq!(defrost["available"], true);
+    }
+    #[test]
     fn missing_and_sentinel_values_never_become_zero() {
         let s = Snapshot::parse(
             &json!({"state":{"Vehicle":{"Electronics":{"Battery":{"Level":255}},"Green":{"BatteryManagement":{"SoH":{"Ratio":0}}},"Location":{"GeoCoord":{"Latitude":1,"Longitude":2}}}}}),
@@ -426,6 +452,15 @@ fn aliases_into(state: &Json, values: &mut BTreeMap<String, Json>) {
                     _ => None,
                 })
                 .map_or(Json::Null, |v| json!(v)),
+            "distance" => number(raw)
+                .zip(at(state, "Drivetrain.FuelSystem.DTE.Unit").as_u64())
+                .and_then(|(n, u)| match u {
+                    1 => Some(n),
+                    2 | 3 => Some(n * 1.609_344),
+                    _ => None,
+                })
+                .filter(|n| *n >= 0.0)
+                .map_or(Json::Null, |n| json!(n)),
             "pressure" => {
                 let (scale, unit) = match at(state, "Chassis.Axle.Tire.PressureUnit").as_u64() {
                     Some(0) => (Some(1.0), Some("psi")),
@@ -543,6 +578,12 @@ pub fn coverage(values: &BTreeMap<String, Json>) -> Json {
                     "last_updated_at" => "vehicle_at",
                     "last_scanned_at" => "received_at",
                     "ev_battery_soh_percentage" => "soh",
+                    "ev_battery_is_charging" => "charging",
+                    "front_left_seat_heater_on" => "front_left_seat_status",
+                    "front_right_seat_heater_on" => "front_right_seat_status",
+                    "rear_left_seat_heater_on" => "rear_left_seat_status",
+                    "rear_right_seat_heater_on" => "rear_right_seat_status",
+                    "ev_charge_complete_alarm" => "ev_charge_complete_alarm_off",
                     "dtc_count" | "dtc_descriptions" => "diagnostics",
                     "power_consumption_30d" => "driving_history",
                     _ => bare,

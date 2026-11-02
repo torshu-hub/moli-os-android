@@ -30,7 +30,7 @@ impl Private {
                 .filter(|n| (-90.0..=90.0).contains(n));
             let lon = number(at(state, "Location.GeoCoord.Longitude"))
                 .filter(|n| (-180.0..=180.0).contains(n));
-            json!({"latitude":lat,"longitude":lon,"vehicle_at":timestamp(&state["Date"]),"cloud_at":timestamp(&payload["lastUpdateTime"]),"received_at":moli_core::now_ms(),"source":"Hyundai cached location","ephemeral":true})
+            json!({"latitude":lat,"longitude":lon,"vehicle_at":timestamp(&state["Date"]),"location_at":location_time(at(state,"Location.TimeStamp")),"cloud_at":timestamp(&payload["lastUpdateTime"]),"received_at":moli_core::now_ms(),"source":"Hyundai cached location","ephemeral":true})
         } else {
             json!({"available":false,"reason":"location_disabled"})
         };
@@ -177,4 +177,36 @@ fn numeric_array(value: Option<&Json>) -> Json {
         .map_or(Json::Null, |a| {
             json!(a.iter().filter_map(number).collect::<Vec<_>>())
         })
+}
+
+fn location_time(value: &Json) -> Option<u64> {
+    if !value.is_object() {
+        return timestamp(value);
+    }
+    let p = ["Year", "Month", "Day", "Hour", "Min", "Sec"].map(|k| value[k].as_u64());
+    if p.iter().any(Option::is_none) {
+        return None;
+    }
+    timestamp(&json!(format!(
+        "{:04}{:02}{:02}{:02}{:02}{:02}",
+        p[0]?, p[1]?, p[2]?, p[3]?, p[4]?, p[5]?
+    )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn location_timestamp_is_distinct_and_never_falls_back_to_now() {
+        assert_eq!(
+            location_time(&json!({"Year":2026,"Month":11,"Day":2,"Hour":12,"Min":30,"Sec":15})),
+            timestamp(&json!("20261102123015"))
+        );
+        assert_eq!(location_time(&Json::Null), None);
+        assert_eq!(location_time(&json!({"Year":2026,"Month":11})), None);
+        assert_eq!(
+            location_time(&json!({"Year":2026,"Month":13,"Day":2,"Hour":12,"Min":30,"Sec":15})),
+            None
+        );
+    }
 }

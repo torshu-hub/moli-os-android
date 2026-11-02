@@ -423,13 +423,13 @@
     "key": "air_temperature",
     "path": "Cabin.HVAC.Row1.Driver.Temperature.Value",
     "conversion": "temperature",
-    "unit": "\u00b0C"
+    "unit": "°C"
   },
   {
     "key": "outside_temperature",
     "path": "Cabin.HVAC.OutsideTemperature.Value",
     "conversion": "temperature",
-    "unit": "\u00b0C"
+    "unit": "°C"
   },
   {
     "key": "front_left_window_is_open",
@@ -730,5 +730,59 @@
     "path": "Green.Electric.SmartGrid.TotalPowerRegeneration",
     "conversion": "scalar",
     "unit": "Wh"
+  },
+  {
+    "key": "defrost_is_on",
+    "path": "Body.Windshield.Front.Defog.State",
+    "conversion": "flag",
+    "unit": ""
+  },
+  {
+    "key": "steering_wheel_heater_is_on",
+    "path": "Cabin.SteeringWheel.Heat.State",
+    "conversion": "flag",
+    "unit": ""
+  },
+  {
+    "key": "back_window_heater_is_on",
+    "path": "Body.Windshield.Rear.Defog.State",
+    "conversion": "flag",
+    "unit": ""
+  },
+  {
+    "key": "ev_charge_port_door_is_open",
+    "path": "Green.ChargingDoor.State",
+    "conversion": "flag",
+    "unit": ""
+  },
+  {
+    "key": "ev_first_departure_climate_temperature",
+    "path": "Green.Reservation.Departure.Schedule1.HVAC.Temperature.Value",
+    "conversion": "temperature",
+    "unit": "°C"
+  },
+  {
+    "key": "ev_second_departure_climate_temperature",
+    "path": "Green.Reservation.Departure.Schedule2.HVAC.Temperature.Value",
+    "conversion": "temperature",
+    "unit": "°C"
+  },
+  {
+    "key": "fuel_driving_range",
+    "path": "Drivetrain.FuelSystem.DTE.Fuel",
+    "conversion": "distance",
+    "unit": "km"
+  },
+  {
+    "key": "ev_target_range_charge_AC",
+    "path": "Green.ChargingInformation.DTE.TargetSoC.Standard",
+    "conversion": "distance",
+    "unit": "km"
+  },
+  {
+    "key": "ev_target_range_charge_DC",
+    "path": "Green.ChargingInformation.DTE.TargetSoC.Quick",
+    "conversion": "distance",
+    "unit": "km"
   }
 ]

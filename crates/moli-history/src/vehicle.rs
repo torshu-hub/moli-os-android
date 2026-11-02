@@ -489,15 +489,7 @@ impl Store {
                 })
                 .collect();
             let weather=row.and_then(|r|r.weather.as_ref()).map(|w|json!({"source_point":w.point,"first":w.first,"last":w.last,"count":w.count,"mean_celsius":w.sum/f64::from(w.count),"min_celsius":w.min,"max_celsius":w.max}));
-            let prices: Vec<_> = finance
-                .iter()
-                .filter(|r| r.day == key)
-                .filter_map(|r| r.driving_price_eur_kwh)
-                .collect();
-            let estimated_price = prices
-                .first()
-                .copied()
-                .filter(|p| prices.iter().all(|v| (v - p).abs() < 1e-9));
+            let estimated_price = price_for(&finance, &key, &key);
             let driving_cost_estimated = wh
                 .zip(estimated_price)
                 .map(|(wh, price)| wh / 1000.0 * price);
@@ -507,7 +499,7 @@ impl Store {
         let mut stmt = conn.prepare(
             "SELECT payload FROM vehicle_intervals WHERE vehicle=?1 ORDER BY id DESC LIMIT 1000",
         )?;
-        let intervals: Vec<Json> = stmt
+        let mut intervals: Vec<Json> = stmt
             .query_map([vehicle], |r| r.get::<_, String>(0))?
             .map(|r| decode(&r?))
             .collect::<Result<_, _>>()?;
@@ -518,12 +510,61 @@ impl Store {
                 |r| r.get(0),
             )
             .optional()?;
+        for interval in &mut intervals {
+            annotate_estimate(interval, &finance);
+        }
         let progress: Option<Progress> = last.map(|s| decode(&s)).transpose()?;
-        let current=progress.and_then(|p|{let s=p.last_charge_end?;Some(json!({"kind":"since_last_charge","from":s.at,"to":p.last.at,"distance_km":delta(s.odometer_km,p.last.odometer_km,100_000.0),"consumed_wh":delta(s.consumed_wh,p.last.consumed_wh,500_000.0),"quality":"observed_boundaries_incomplete","cost_eur":null}))});
+        let charging = progress
+            .as_ref()
+            .is_some_and(|p| p.last.charging == Some(true) || p.charge_start.is_some());
+        let current_charge = progress.as_ref().filter(|_| charging).map(|p| {
+            let start = p.charge_start.as_ref();
+            json!({"kind":"charge_in_progress","from":start.map(|s|s.at),"to":p.last.at,"soc_start":start.and_then(|s|s.soc),"soc_end":p.last.soc,"grid_kwh":start.and_then(|s|s.grid.as_ref()).zip(p.last.grid.as_ref()).filter(|(a,b)|a.point==b.point&&b.at>a.at).and_then(|(a,b)|delta(Some(a.kwh),Some(b.kwh),1000.0)),"quality":"observed_boundaries_incomplete","gap":p.gap,"cost_eur":null})
+        });
+        let current=progress.filter(|_| !charging).and_then(|p|{let s=p.last_charge_end?;Some(json!({"kind":"since_last_charge","from":s.at,"to":p.last.at,"distance_km":delta(s.odometer_km,p.last.odometer_km,5_000.0),"consumed_wh":delta(s.consumed_wh,p.last.consumed_wh,500_000.0),"quality":"observed_boundaries_incomplete","gap":p.gap,"cost_eur":null}))});
         Ok(
-            json!({"schema":1,"vehicle":vehicle,"timezone":"Europe/Paris","provider_day_timezone":"UTC in reference parser; provider day boundaries unconfirmed","units":{"vehicle_energy":"Wh","grid_energy":"kWh","distance":"km","money":"EUR"},"days":days,"intervals":intervals,"current_interval":current,"rolling_24h":{"quality":"unavailable_without_exact_boundary_samples"},"gaps":"Absent Hyundai day is unknown; provider zero distance is no driving. SOC is never converted to kWh.","grid_source":"Only explicitly bound dedicated EV meter or owner invoice; whole-home Linky and ordinary Meross are never assigned automatically."}),
+            json!({"schema":1,"vehicle":vehicle,"timezone":"Europe/Paris","provider_day_timezone":"UTC in reference parser; provider day boundaries unconfirmed","units":{"vehicle_energy":"Wh","grid_energy":"kWh","distance":"km","money":"EUR"},"days":days,"intervals":intervals,"current_charge":current_charge,"current_interval":current.map(|mut v|{annotate_estimate(&mut v,&finance);v}),"rolling_24h":{"quality":"unavailable_without_exact_boundary_samples"},"gaps":"Absent Hyundai day is unknown; provider zero distance is no driving. SOC is never converted to kWh.","grid_source":"Only explicitly bound dedicated EV meter or owner invoice; whole-home Linky and ordinary Meross are never assigned automatically."}),
         )
     }
+}
+
+fn price_for(rows: &[Finance], from: &str, to: &str) -> Option<f64> {
+    let last = rows
+        .iter()
+        .filter(|r| r.tariff_from.as_str() <= from && r.driving_price_eur_kwh.is_some())
+        .map(|r| r.tariff_from.as_str())
+        .max()?;
+    let prices = rows
+        .iter()
+        .filter(|r| r.tariff_from.as_str() >= last && r.tariff_from.as_str() <= to)
+        .filter_map(|r| r.driving_price_eur_kwh)
+        .collect::<Vec<_>>();
+    let price = *prices.first()?;
+    prices
+        .iter()
+        .all(|p| (*p - price).abs() < 1e-9)
+        .then_some(price)
+}
+fn annotate_estimate(value: &mut Json, finance: &[Finance]) {
+    let price = value["from"]
+        .as_u64()
+        .zip(value["to"].as_u64())
+        .and_then(|(a, b)| Some((day(a).ok()?, day(b).ok()?)))
+        .and_then(|(a, b)| price_for(finance, &a, &b));
+    let wh = value["consumed_wh"].as_f64();
+    let km = value["distance_km"].as_f64();
+    let cost = price.zip(wh).map(|(p, wh)| p * wh / 1000.0);
+    value["estimated_driving_cost_eur"] = json!(cost);
+    value["estimated_driving_eur_100km"] = json!(
+        cost.zip(km)
+            .filter(|(_, km)| *km > 0.0)
+            .map(|(c, km)| c * 100.0 / km)
+    );
+    value["energy_basis"] =
+        json!("provider counter delta; period/epoch unconfirmed, observed boundaries incomplete");
+    value["estimate_basis"] = json!(
+        "explicit dated owner price hypothesis; excludes charge losses and residual battery mix; tariff changes without split remain unknown"
+    );
 }
 
 #[cfg(test)]
@@ -638,6 +679,11 @@ mod tests {
         let report = store
             .vehicle_report("hyundai:v_test", "2026-10-31", "2026-10-31")
             .unwrap();
+        assert!(
+            report["current_interval"].is_null(),
+            "completed driving interval must not also appear as current during charge"
+        );
+        assert_eq!(report["current_charge"]["kind"], "charge_in_progress");
         assert_eq!(report["intervals"][0]["distance_km"], 100.0);
         assert_eq!(report["intervals"][0]["consumed_wh"], 16_000.0);
         assert_eq!(report["intervals"][1]["grid_kwh"], 20.0);
@@ -684,6 +730,22 @@ mod tests {
         assert_eq!(v["days"][0]["charges"][0]["cost_eur"], 4.25);
         assert_eq!(v["days"][0]["estimated_driving_cost_eur"], 3.2);
         assert!(v["days"][0]["driving_cost_eur"].is_null());
+        assert_eq!(
+            price_for(&[row.clone()], "2026-11-02", "2026-11-03"),
+            Some(0.2)
+        );
+        assert_eq!(price_for(&[row.clone()], "2026-10-31", "2026-11-01"), None);
+        let mut later = row.clone();
+        later.tariff_from = "2026-11-02".into();
+        later.driving_price_eur_kwh = Some(0.3);
+        assert_eq!(
+            price_for(&[row.clone(), later.clone()], "2026-11-01", "2026-11-02"),
+            None
+        );
+        assert_eq!(
+            price_for(&[row.clone(), later], "2026-11-02", "2026-11-03"),
+            Some(0.3)
+        );
         row.hp_kwh = Some(10.0);
         assert!(store.vehicle_finance("hyundai:v_test", &row).is_err());
         drop(store);

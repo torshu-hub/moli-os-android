@@ -83,16 +83,16 @@ public final class Code21HyundaiTest {
 
         waitJs("document.querySelector('[data-testid=vehicle-card]') != null");
         assertEquals("true",js("code21Commands.length===0 && code21Reads.every(p=>!p.includes('/private/'))"));
-        js("document.querySelector('.vehicle > button').click();true");waitJs("document.querySelector('.vehicle nav') != null");capture("vehicle-readings-landscape");
+        js("document.querySelector('.vehicle > button').click();true");waitJs("document.querySelector('.vehicle nav') != null");js("document.querySelector('.vehicle nav').scrollIntoView({block:'start'});true");capture("vehicle-readings-landscape");
         js("document.querySelectorAll('.vehicle nav button')[1].click();true");waitJs("document.querySelector('.vehicle .controls button') != null");
         assertEquals("true",js("code21Commands.length===0"));
         js("document.querySelector('.vehicle .controls button').click();true");waitJs("document.querySelector('.vehicle form') != null");
         assertEquals("true",js("document.querySelector('.vehicle form button[type=submit]').disabled && code21Commands.length===0"));
         js("const c=document.querySelector('.vehicle .confirmation input');c.click();true");waitJs("!document.querySelector('.vehicle form button[type=submit]').disabled");
         js("document.querySelector('.vehicle form button[type=submit]').click();true");waitJs("code21Commands.length===1");
-        assertEquals("true",js("code21Commands[0].point==='hyundai-test:v_synthetic/lock' && code21Commands[0].value==='{}'"));capture("vehicle-commands-landscape");
+        assertEquals("true",js("code21Commands[0].point==='hyundai-test:v_synthetic/lock' && code21Commands[0].value==='{}'"));js("document.querySelector('.vehicle nav').scrollIntoView({block:'start'});true");Thread.sleep(3500);capture("vehicle-commands-landscape");
         js("document.querySelectorAll('.vehicle nav button')[2].click();true");waitJs("document.querySelector('.vehicle .dates button') != null");js("document.querySelector('.vehicle .dates button').click();true");waitJs("document.querySelectorAll('.vehicle tbody tr').length===2");
-        assertEquals("true",js("document.querySelector('.vehicle tbody').innerText.includes('16') && document.querySelector('.vehicle tbody').innerText.includes('Trou de collecte')"));capture("vehicle-journal-landscape");
+        assertEquals("true",js("document.querySelector('.vehicle tbody').innerText.includes('16') && document.querySelector('.vehicle tbody').innerText.includes('Trou de collecte')"));js("document.querySelector('.vehicle .dates').scrollIntoView({block:'start'});true");capture("vehicle-journal-landscape");
         assertEquals("true",js("code21Commands.length===1 && code21Reads.every(p=>!p.includes('/private/'))"));
         main(()->{web.destroy();activity.finish();});
     }
