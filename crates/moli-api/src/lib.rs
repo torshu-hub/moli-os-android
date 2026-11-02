@@ -37,6 +37,7 @@ mod session;
 pub mod settings;
 mod sse;
 mod system;
+mod vehicles;
 mod weather;
 
 use std::sync::Arc;
@@ -327,6 +328,9 @@ pub fn router(hub: Hub, shutdown: CancellationToken, options: &Options) -> Route
             get(rest::session).post(rest::login).delete(rest::logout),
         )
         .route("/api/history", get(rest::history))
+        .route("/api/vehicles/{id}/journal", get(vehicles::journal))
+        .route("/api/vehicles/{id}/finance", post(vehicles::finance))
+        .route("/api/vehicles/{id}/private/{field}", get(vehicles::private))
         .route("/api/bench", get(rest::bench))
         .route("/api/home", get(rest::home))
         .merge(house_routes(&humans, options))

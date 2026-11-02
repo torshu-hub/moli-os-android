@@ -1,0 +1,20 @@
+[
+  {
+    "tsid": "synthetic-request",
+    "user": "synthetic-user",
+    "seconds": 1800000000,
+    "stamp": "NyIGMseKeRsFawUNFNM1ulEFcbMNStJfsNCuHPON9ghTVBGliFpYDhs1uQ=="
+  },
+  {
+    "tsid": "AAAAAAAAAAAAAAAAAAA",
+    "user": "",
+    "seconds": 1800000000,
+    "stamp": "BRopB+6uTDMnBzYpJOcRiLT4iiKCl9pYYSjjYzhMOA=="
+  },
+  {
+    "tsid": "request-with-more-than-one-block",
+    "user": "test",
+    "seconds": 1800000000,
+    "stamp": "Nj4ZM8qceV8RLwMASMs/u+nzmZBdIygSjQuniNXyeFnyut1N1vLlSBQHgP1gLUt+"
+  }
+]

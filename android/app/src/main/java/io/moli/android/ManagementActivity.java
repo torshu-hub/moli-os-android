@@ -24,6 +24,7 @@ public final class ManagementActivity extends Activity {
         Page page = Page.HOME;
         final NetworkPanel.State network=new NetworkPanel.State();
         final NetatmoPanel.State netatmo=new NetatmoPanel.State();
+        final HyundaiPanel.State hyundai=new HyundaiPanel.State();
         final AutomationPanel.State automations=new AutomationPanel.State();
         JSONObject catalogue, selected;
         JSONObject files;Future<JSONObject> filesWork;
@@ -49,6 +50,7 @@ public final class ManagementActivity extends Activity {
     private Screen screen;
     NetworkPanel networkPanel;
     NetatmoPanel netatmoPanel;
+    HyundaiPanel hyundaiPanel;
     AutomationPanel automationPanel;
     private LinearLayout root, navigation, body, content, footer;
     private Button moliDestination;
@@ -80,6 +82,7 @@ public final class ManagementActivity extends Activity {
         landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         build();
+        hyundaiPanel=new HyundaiPanel(this,screen.hyundai,this::render,()->{screen.catalogue=null;load();});
         netatmoPanel=new NetatmoPanel(this,screen.netatmo,this::render,()->{screen.catalogue=null;load();});
         automationPanel=new AutomationPanel(this,screen.automations,this::render);
         networkPanel=new NetworkPanel(this,screen.network,scroll);
@@ -352,6 +355,8 @@ public final class ManagementActivity extends Activity {
     private void complete() {
         automationPanel.complete();
         netatmoPanel.complete();
+        hyundaiPanel.complete();
+        if(screen.page==Page.DETAIL && screen.selected!=null && "hyundai".equals(screen.selected.optJSONObject("manifest").optJSONObject("integration").optString("id")) && android.os.SystemClock.elapsedRealtime()-screen.hyundai.checked>5000)hyundaiPanel.load();
         if(screen.page==Page.DETAIL && screen.selected!=null && "netatmo".equals(screen.selected.optJSONObject("manifest").optJSONObject("integration").optString("id")) && android.os.SystemClock.elapsedRealtime()-screen.netatmo.checked>5000)netatmoPanel.load();
         completeMerossIdentification();
         if(screen.filesWork!=null && screen.filesWork.isDone()) {
@@ -434,6 +439,7 @@ public final class ManagementActivity extends Activity {
             case "meross-mss310": return R.string.description_meross_mss310;
             case "meross-em06": return R.string.description_meross_em06;
             case "moonraker": return R.string.description_moonraker;
+            case "hyundai": return R.string.hyundai_description;
             case "netatmo": return R.string.description_netatmo;
             case "open-meteo": return R.string.description_open_meteo;
             case "open-meteo-air": return R.string.description_open_meteo_air;
@@ -517,7 +523,8 @@ public final class ManagementActivity extends Activity {
             heading(content,R.string.integration_devices,17);
             for(int i=0;i<instances.length();i++)catalogueRow(screen.selected,instances.getJSONObject(i));
         }
-        if("netatmo".equals(profile)) {
+        if("hyundai".equals(profile)){hyundaiPanel.show(content,screen.selected);
+        } else if("netatmo".equals(profile)) {
             netatmoPanel.show(content,screen.selected);
         } else if("meross-mss310".equals(profile)) {
             renderForm();
@@ -590,7 +597,8 @@ public final class ManagementActivity extends Activity {
         body.setTag(selected==null ? profile : "configure:"+id);
         body.setOnClickListener(v->{
             screen.catalogueScroll=scroll.getScrollY();screen.selected=item;screen.saved=false;screen.activation=false;screen.error=null;
-            if(selected!=null && profile.equals("netatmo")){screen.netatmo.instance=id;screen.page=Page.DETAIL;render();}
+            if(selected!=null && profile.equals("hyundai")){screen.hyundai.instance=id;screen.hyundai.snapshot=null;screen.page=Page.DETAIL;render();}
+            else if(selected!=null && profile.equals("netatmo")){screen.netatmo.instance=id;screen.page=Page.DETAIL;render();}
             else if(selected!=null){screen.saved=false;edit(selected);}else openIntegration();
         });
         if(profile.equals("open-meteo")&&root.findViewById(R.id.catalogue_entry)==null)body.setId(R.id.catalogue_entry);

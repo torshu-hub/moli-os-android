@@ -952,6 +952,7 @@ fn start_history(
 /// catalogue checks packages against, without building anything. A kind
 /// missing here is unknown, whatever `build_driver`'s match says.
 const KINDS: &[&str] = &[
+    "hyundai",
     "netatmo",
     "z2m",
     "hue",
@@ -1151,6 +1152,10 @@ fn build_driver(
         "moonraker" => Arc::new(moli_moonraker::Moonraker::new(
             config.options.clone().try_into().with_context(context)?,
         )),
+        "hyundai" => Arc::new(moli_hyundai::Hyundai::new(
+            config.options.clone().try_into().with_context(context)?,
+            data_dir,
+        )?),
         "netatmo" => Arc::new(moli_netatmo::Netatmo::new(
             config.options.clone().try_into().with_context(context)?,
         )?),

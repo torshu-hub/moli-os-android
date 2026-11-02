@@ -119,7 +119,10 @@ fn form_for(text: &str, package: &str) -> Result<Value, &'static str> {
 fn fields_for(manifest: &toml::Value) -> Vec<Value> {
     let kind = manifest["integration"]["driver"].as_str().unwrap_or("");
     let mut fields = Vec::new();
-    if manifest["integration"]["id"].as_str() == Some("netatmo") {
+    if manifest["integration"]["id"]
+        .as_str()
+        .is_some_and(|id| matches!(id, "netatmo" | "hyundai"))
+    {
         return fields;
     }
     let mut field = |name: &str, location: &str, numeric: bool, required: bool| {
@@ -177,7 +180,7 @@ fn fields_for(manifest: &toml::Value) -> Vec<Value> {
 fn supported(manifest: &toml::Value) -> bool {
     if matches!(
         manifest["integration"]["id"].as_str(),
-        Some("meross-mss310" | "netatmo")
+        Some("meross-mss310" | "netatmo" | "hyundai")
     ) {
         return true;
     }
@@ -224,6 +227,9 @@ fn validate_options(kind: &str, options: toml::Value) -> bool {
             .is_ok_and(|config| {
                 moli_profile::ProfileDriver::new(config, std::path::PathBuf::new()).is_ok()
             }),
+        "hyundai" => options
+            .try_into::<moli_hyundai::Config>()
+            .is_ok_and(|c| c.validate().is_ok()),
         "netatmo" => options
             .clone()
             .try_into::<moli_netatmo::Config>()
@@ -580,6 +586,7 @@ mod tests {
             editable,
             [
                 "daikin-brp069",
+                "hyundai",
                 "ipp",
                 "klipper",
                 "meross-mss310",

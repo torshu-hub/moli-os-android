@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { home, hub, value, device, isOn, clock, num, relative, lastSeen, roomList, lampsOf, nameOf, doorOpen, leak, lowBattery, act, pending } from '../lib/home.svelte.js';
+  import { home, hub, hidden, deviceKind, value, device, isOn, clock, num, relative, lastSeen, roomList, lampsOf, nameOf, doorOpen, leak, lowBattery, act, pending } from '../lib/home.svelte.js';
   import { isPrinter, phase } from '../lib/printers.js';
   import { t, locale } from '../../lib/i18n.svelte.js';
   import Icon from '../ui/Icon.svelte';
@@ -10,8 +10,10 @@
   import CameraTile from '../ui/CameraTile.svelte';
   import AmbiancePicker from '../ui/AmbiancePicker.svelte';
   import Routines from '../ui/Routines.svelte';
+  import VehicleCard from '../ui/VehicleCard.svelte';
   import SkyHero from '../ui/SkyHero.svelte';
 
+  const vehicles = $derived(Object.values(hub.devices).filter((d) => deviceKind(d) === 'vehicle' && !hidden(d.id)));
   const cfg = $derived(home.config ?? {});
   const out = $derived(cfg.outdoor ?? {});
 
@@ -216,6 +218,8 @@
       </section>
     {/if}
 
+    {#each vehicles as vehicle (vehicle.id)}<div class="vehicle-card"><VehicleCard id={vehicle.id} /></div>{/each}
+
     {#if bell}
       <section class="card doorbell">
         <div class="card-head">
@@ -254,6 +258,7 @@
 </div>
 
 <style>
+  .vehicle-card{grid-column:1 / -1;min-width:0}
   .accueil {
     display: grid;
     gap: 22px;

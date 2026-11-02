@@ -1,0 +1,19 @@
+[integration]
+id = "hyundai"
+name = "Bluelink / myHyundai"
+brands = ["Hyundai"]
+models = ["Europe CCI", "IONIQ 5"]
+transport = "https"
+driver = "hyundai"
+crate = "moli-hyundai"
+[needs]
+secrets = ["hyundai_account"]
+options = []
+[origin]
+reused = "Hyundai-Kia-Connect kia_uvo v3.22.0 / hyundai_kia_connect_api v4.45.0 (MIT); native Rust EU CCI/GSPA port"
+author = "agent"
+
+[[fixture]]
+file = "fixtures/stored-status.json"
+[[fixture]]
+file = "fixtures/driving-history.json"

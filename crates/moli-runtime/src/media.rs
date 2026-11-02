@@ -84,3 +84,9 @@ pub enum SnapshotError {
     #[error("image unavailable: {0}")]
     Failed(String),
 }
+
+/// Private on-demand views which must never enter persisted Hub state/history.
+/// API surfaces must require a proven human session and send no-store responses.
+pub trait PrivateSource: std::fmt::Debug + Send + Sync + 'static {
+    fn read<'a>(&'a self, field: &'a str) -> BoxFuture<'a, anyhow::Result<serde_json::Value>>;
+}

@@ -26,7 +26,7 @@ public final class Code20UpgradeSeedTest {
     }
     @Test public void seedCode19WithDraftInactiveAndActiveRules()throws Exception {
         new Code15UpgradeSeedTest().seedRealCode14();
-        Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(19,app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());
+        Context app=InstrumentationRegistry.getInstrumentation().getTargetContext();assertEquals(Integer.parseInt(InstrumentationRegistry.getArguments().getString("expectedSeed","19")),app.getPackageManager().getPackageInfo(app.getPackageName(),0).getLongVersionCode());
         app.startForegroundService(new Intent(app,MoliService.class));Beta2JourneyTest.waitState(EngineHost.State.RUNNING);
         try{
             cookie="moli_android="+EngineHost.token();

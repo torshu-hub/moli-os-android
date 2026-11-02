@@ -6,6 +6,7 @@
   import CameraTile from '../ui/CameraTile.svelte';
   import CoverTile from '../ui/CoverTile.svelte';
   import SpeakerCard from '../ui/SpeakerCard.svelte';
+  import VehicleCard from '../ui/VehicleCard.svelte';
   import SensorCard from '../ui/SensorCard.svelte';
   import WeatherCard from './WeatherCard.svelte';
 
@@ -21,6 +22,8 @@
   <section class="card"><p class="muted">{t('moli.appareil.introuvable')}</p></section>
 {:else if id === home.config?.outdoor?.weather}
   <WeatherCard />
+{:else if kind === 'vehicle'}
+  <VehicleCard {id} name={title} />
 {:else if kind === 'camera'}
   <CameraTile {id} name={title ?? cam?.name ?? nameOf(id)} refresh={cam?.refresh ?? 10} battery={cam?.battery} onopen={() => (location.hash = '#/cameras')} />
 {:else if kind === 'climate'}
