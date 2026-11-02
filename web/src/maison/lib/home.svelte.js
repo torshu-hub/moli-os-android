@@ -226,6 +226,7 @@ const has = (d, key, write = false) => d.points.some((p) => p.key === key && (!w
 /** What a device is, for choosing how to show it. */
 export function deviceKind(d) {
   if (!d) return 'unknown';
+  if (d.manufacturer === 'Hyundai' && has(d, 'capabilities')) return 'vehicle';
   if (has(d, 'progress') && has(d, 'nozzle_temperature')) return 'printer';
   // `camera` means « makes images »: a printer or a TV may too, and stays what it is.
   if (has(d, 'key', true)) return 'tv';
@@ -272,7 +273,7 @@ export function roomList() {
         covers: by('cover'),
         climates: by('climate'),
         media: by('tv', 'speaker'),
-        sensors: [...by('sensor', 'camera', 'printer'), ...by('plug').filter((d) => quiet(d.id))],
+        sensors: [...by('sensor', 'camera', 'printer', 'vehicle'), ...by('plug').filter((d) => quiet(d.id))],
         lit: by('light').filter((d) => isOn(d.id)).length,
       };
     });

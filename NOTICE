@@ -18,3 +18,8 @@ reference krahabb/meross_lan (merossclient/cloudapi.py, commit
 bafedb4f8563153f9e3494292073551bb28f5f9a). MIT License; copyright (c) 2020
 Joakim Sørensen @ludeeus. See licenses/meross-lan-MIT.txt. No Home Assistant
 components are embedded.
+
+Hyundai Europe CCI/GSPA interoperability code and public cipher tables are ported
+from Hyundai-Kia-Connect/hyundai_kia_connect_api v4.45.0 (MIT). Functional entity
+coverage references Kia Uvo v3.22.0 (MIT). See licenses/hyundai-kia-connect-api-MIT.txt
+and crates/moli-hyundai/data/ for notices and synthetic reference vectors.

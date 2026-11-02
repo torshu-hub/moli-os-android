@@ -94,8 +94,8 @@ pub struct SqlResult {
 
 pub struct Store {
     path: PathBuf,
-    writer: Mutex<Connection>,
-    reader: Mutex<Connection>,
+    pub(crate) writer: Mutex<Connection>,
+    pub(crate) reader: Mutex<Connection>,
     agents: Mutex<Connection>,
     ids: Mutex<HashMap<String, i64>>,
 }
@@ -154,6 +154,7 @@ impl Store {
         writer.pragma_update(None, "synchronous", "NORMAL")?;
         writer.busy_timeout(Duration::from_secs(5))?;
         writer.execute_batch(SCHEMA)?;
+        writer.execute_batch(crate::vehicle::SCHEMA)?;
 
         let read_only = || -> Result<Connection, HistoryError> {
             let conn = Connection::open_with_flags(

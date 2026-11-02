@@ -274,6 +274,7 @@ struct Model {
     drivers: BTreeMap<InstanceId, DriverSlot>,
     labels: BTreeMap<DeviceId, Label>,
     snapshots: HashMap<DeviceId, Arc<dyn crate::media::SnapshotSource>>,
+    private_sources: HashMap<DeviceId, Arc<dyn crate::media::PrivateSource>>,
     printers: HashMap<DeviceId, Arc<dyn crate::media::PrintSink>>,
 }
 
@@ -499,7 +500,7 @@ impl Hub {
         let result = match self.prepare(point, &value) {
             Err(e) => Err(e),
             Ok(prepared) => match self.verdict_for(point, &value, origin) {
-                Verdict::Allow => self.send(prepared).await,
+                Verdict::Allow => self.send(prepared, origin).await,
                 Verdict::Approval(reason) => {
                     let id = self.hold(point, &value, origin, actor.clone(), &reason);
                     Err(CommandError::NeedsApproval { id, reason })
@@ -822,7 +823,7 @@ impl Hub {
         }
         let (decision, outcome, result) = if approve {
             let sent = match self.prepare(&request.point, &request.value) {
-                Ok(prepared) => self.send(prepared).await,
+                Ok(prepared) => self.send(prepared, origin).await,
                 Err(e) => Err(e),
             };
             match sent {
@@ -1200,7 +1201,7 @@ impl Hub {
     }
 
     /// Hands a prepared order to its driver and waits for the answer.
-    async fn send(&self, prepared: Prepared) -> Result<(), CommandError> {
+    async fn send(&self, prepared: Prepared, origin: Origin) -> Result<(), CommandError> {
         let Prepared {
             point,
             device,
@@ -1211,6 +1212,7 @@ impl Hub {
         let (reply, answer) = oneshot::channel();
         commands
             .try_send(CommandRequest {
+                origin,
                 point,
                 device,
                 key,
@@ -1476,6 +1478,7 @@ impl Hub {
             model.states.remove(id);
             model.availability.remove(id);
             model.snapshots.remove(id);
+            model.private_sources.remove(id);
             model.printers.remove(id);
             model.devices.remove(id).is_some()
         };
@@ -1489,6 +1492,44 @@ impl Hub {
         }
     }
 
+    pub(crate) fn provide_private(
+        &self,
+        device: &DeviceId,
+        source: Arc<dyn crate::media::PrivateSource>,
+    ) {
+        self.write().private_sources.insert(device.clone(), source);
+    }
+    pub async fn private_read(
+        &self,
+        device: &DeviceId,
+        field: &str,
+    ) -> anyhow::Result<serde_json::Value> {
+        let source = self
+            .read()
+            .private_sources
+            .get(device)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("private source unavailable"))?;
+        tokio::time::timeout(Duration::from_secs(8), source.read(field))
+            .await
+            .map_err(|_| anyhow::anyhow!("private source timeout"))?
+    }
+    pub async fn private_prepare(
+        &self,
+        device: &DeviceId,
+        field: &str,
+        input: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let source = self
+            .read()
+            .private_sources
+            .get(device)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("private source unavailable"))?;
+        tokio::time::timeout(Duration::from_secs(8), source.prepare(field, input))
+            .await
+            .map_err(|_| anyhow::anyhow!("private source timeout"))?
+    }
     pub(crate) fn provide_snapshots(
         &self,
         device: &DeviceId,

@@ -1,0 +1,1323 @@
+[
+  {
+    "platform": "sensor",
+    "key": "_total_driving_range",
+    "translation_key": "total_driving_range",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "_odometer",
+    "translation_key": "odometer",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "_last_service_distance",
+    "translation_key": "last_service_distance",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "_next_service_distance",
+    "translation_key": "next_service_distance",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "car_battery_percentage",
+    "translation_key": "car_battery_percentage",
+    "vehicle_fields": [],
+    "unit": "%"
+  },
+  {
+    "platform": "sensor",
+    "key": "last_updated_at",
+    "translation_key": "last_updated_at",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "last_scanned_at",
+    "translation_key": "last_scanned_at",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_battery_percentage",
+    "translation_key": "ev_battery_percentage",
+    "vehicle_fields": [],
+    "unit": "%"
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_battery_soh_percentage",
+    "translation_key": "ev_battery_soh_percentage",
+    "vehicle_fields": [],
+    "unit": "%"
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_battery_remain",
+    "translation_key": "ev_battery_remain",
+    "vehicle_fields": [],
+    "unit": "kJ"
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_battery_capacity",
+    "translation_key": "ev_battery_capacity",
+    "vehicle_fields": [],
+    "unit": "kJ"
+  },
+  {
+    "platform": "sensor",
+    "key": "_ev_driving_range",
+    "translation_key": "ev_driving_range",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "_fuel_driving_range",
+    "translation_key": "fuel_driving_range",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "fuel_level",
+    "translation_key": "fuel_level",
+    "vehicle_fields": [],
+    "unit": "%"
+  },
+  {
+    "platform": "sensor",
+    "key": "_air_temperature",
+    "translation_key": "air_temperature",
+    "vehicle_fields": [
+      "_air_temperature",
+      "air_control_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_estimated_current_charge_duration",
+    "translation_key": "ev_estimated_current_charge_duration",
+    "vehicle_fields": [],
+    "unit": "min"
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_estimated_fast_charge_duration",
+    "translation_key": "ev_estimated_fast_charge_duration",
+    "vehicle_fields": [],
+    "unit": "min"
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_estimated_portable_charge_duration",
+    "translation_key": "ev_estimated_portable_charge_duration",
+    "vehicle_fields": [],
+    "unit": "min"
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_estimated_station_charge_duration",
+    "translation_key": "ev_estimated_station_charge_duration",
+    "vehicle_fields": [],
+    "unit": "min"
+  },
+  {
+    "platform": "sensor",
+    "key": "_ev_target_range_charge_AC",
+    "translation_key": "ev_target_range_charge_ac",
+    "vehicle_fields": [
+      "_ev_target_range_charge_AC"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "_ev_target_range_charge_DC",
+    "translation_key": "ev_target_range_charge_dc",
+    "vehicle_fields": [
+      "_ev_target_range_charge_DC"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "total_power_consumed",
+    "translation_key": "total_power_consumed",
+    "vehicle_fields": [],
+    "unit": "Wh"
+  },
+  {
+    "platform": "sensor",
+    "key": "total_power_regenerated",
+    "translation_key": "total_power_regenerated",
+    "vehicle_fields": [],
+    "unit": "Wh"
+  },
+  {
+    "platform": "sensor",
+    "key": "power_consumption_30d",
+    "translation_key": "power_consumption_30d",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "front_left_seat_status",
+    "translation_key": "front_left_seat_status",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "front_right_seat_status",
+    "translation_key": "front_right_seat_status",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "rear_left_seat_status",
+    "translation_key": "rear_left_seat_status",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "rear_right_seat_status",
+    "translation_key": "rear_right_seat_status",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "_geocode_name",
+    "translation_key": "geocode_name",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "dtc_count",
+    "translation_key": "dtc_count",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_first_departure_time",
+    "translation_key": "ev_first_departure_time",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_second_departure_time",
+    "translation_key": "ev_second_departure_time",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_off_peak_start_time",
+    "translation_key": "ev_off_peak_start_time",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_off_peak_end_time",
+    "translation_key": "ev_off_peak_end_time",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_charge_complete_alarm",
+    "translation_key": "ev_charge_complete_alarm",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_charging_current",
+    "translation_key": "ev_charging_current",
+    "vehicle_fields": [],
+    "unit": "%"
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_charging_power",
+    "translation_key": "ev_charging_power",
+    "vehicle_fields": [
+      "ev_charging_power"
+    ],
+    "unit": "kW"
+  },
+  {
+    "platform": "sensor",
+    "key": "VIN",
+    "translation_key": "vehicle_identification_number",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "_outside_temperature",
+    "translation_key": "outside_temperature",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "engine_type",
+    "translation_key": "engine_type",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_battery_chiller_rpm",
+    "translation_key": "ev_battery_chiller_rpm",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_first_departure_days",
+    "translation_key": "ev_first_departure_days",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_second_departure_days",
+    "translation_key": "ev_second_departure_days",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "_ev_first_departure_climate_temperature",
+    "translation_key": "ev_first_departure_climate_temperature",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "_ev_second_departure_climate_temperature",
+    "translation_key": "ev_second_departure_climate_temperature",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_battery_pack_voltage",
+    "translation_key": "ev_battery_pack_voltage",
+    "vehicle_fields": [],
+    "unit": "V"
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_battery_temperature_min",
+    "translation_key": "ev_battery_temperature_min",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_battery_temperature_max",
+    "translation_key": "ev_battery_temperature_max",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_battery_water_temperature",
+    "translation_key": "ev_battery_water_temperature",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_power_consumption_air_conditioning",
+    "translation_key": "ev_power_consumption_air_conditioning",
+    "vehicle_fields": [],
+    "unit": "W"
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_power_consumption_battery_cooling",
+    "translation_key": "ev_power_consumption_battery_cooling",
+    "vehicle_fields": [],
+    "unit": "W"
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_power_consumption_battery_heater",
+    "translation_key": "ev_power_consumption_battery_heater",
+    "vehicle_fields": [],
+    "unit": "W"
+  },
+  {
+    "platform": "sensor",
+    "key": "location_last_updated_at",
+    "translation_key": "location_last_updated_at",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "tire_pressure_front_left",
+    "translation_key": "tire_pressure_front_left",
+    "vehicle_fields": [
+      "tire_pressure_front_left",
+      "tire_pressure_unit"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "tire_pressure_front_right",
+    "translation_key": "tire_pressure_front_right",
+    "vehicle_fields": [
+      "tire_pressure_front_right",
+      "tire_pressure_unit"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "tire_pressure_rear_left",
+    "translation_key": "tire_pressure_rear_left",
+    "vehicle_fields": [
+      "tire_pressure_rear_left",
+      "tire_pressure_unit"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "tire_pressure_rear_right",
+    "translation_key": "tire_pressure_rear_right",
+    "vehicle_fields": [
+      "tire_pressure_rear_right",
+      "tire_pressure_unit"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "drive_mode",
+    "translation_key": "drive_mode",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "gear_position",
+    "translation_key": "gear_position",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "steering_wheel_heat_step",
+    "translation_key": "steering_wheel_heat_step",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_v2l_discharge_remain_time",
+    "translation_key": "ev_v2l_discharge_remain_time",
+    "vehicle_fields": [
+      "ev_v2l_discharge_dte",
+      "ev_v2l_discharge_limit",
+      "ev_v2l_mode"
+    ],
+    "unit": "min"
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_v2l_discharge_dte",
+    "translation_key": "ev_v2l_discharge_dte",
+    "vehicle_fields": [
+      "ev_v2l_discharge_dte",
+      "ev_v2l_discharge_limit",
+      "ev_v2l_mode"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "ev_v2l_mode",
+    "translation_key": "ev_v2l_mode",
+    "vehicle_fields": [
+      "ev_v2l_discharge_dte",
+      "ev_v2l_discharge_limit",
+      "ev_v2l_mode"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "average_fuel_economy_accumulated",
+    "translation_key": "average_fuel_economy_accumulated",
+    "vehicle_fields": [
+      "average_fuel_economy_unit"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "average_fuel_economy_drive",
+    "translation_key": "average_fuel_economy_drive",
+    "vehicle_fields": [
+      "average_fuel_economy_unit"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "sensor",
+    "key": "average_fuel_economy_after_refuel",
+    "translation_key": "average_fuel_economy_after_refuel",
+    "vehicle_fields": [
+      "average_fuel_economy_unit"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "engine_is_running",
+    "translation_key": "engine_is_running",
+    "vehicle_fields": [
+      "engine_is_running"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "defrost_is_on",
+    "translation_key": "defrost_is_on",
+    "vehicle_fields": [
+      "defrost_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "steering_wheel_heater_is_on",
+    "translation_key": "steering_wheel_heater_is_on",
+    "vehicle_fields": [
+      "steering_wheel_heater_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "back_window_heater_is_on",
+    "translation_key": "back_window_heater_is_on",
+    "vehicle_fields": [
+      "back_window_heater_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "side_mirror_heater_is_on",
+    "translation_key": "side_mirror_heater_is_on",
+    "vehicle_fields": [
+      "side_mirror_heater_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "front_left_door_is_open",
+    "translation_key": "front_left_door_is_open",
+    "vehicle_fields": [
+      "front_left_door_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "front_right_door_is_open",
+    "translation_key": "front_right_door_is_open",
+    "vehicle_fields": [
+      "front_right_door_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "back_left_door_is_open",
+    "translation_key": "back_left_door_is_open",
+    "vehicle_fields": [
+      "back_left_door_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "back_right_door_is_open",
+    "translation_key": "back_right_door_is_open",
+    "vehicle_fields": [
+      "back_right_door_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "trunk_is_open",
+    "translation_key": "trunk_is_open",
+    "vehicle_fields": [
+      "trunk_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "hood_is_open",
+    "translation_key": "hood_is_open",
+    "vehicle_fields": [
+      "hood_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "front_left_window_is_open",
+    "translation_key": "front_left_window_is_open",
+    "vehicle_fields": [
+      "front_left_window_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "front_right_window_is_open",
+    "translation_key": "front_right_window_is_open",
+    "vehicle_fields": [
+      "front_right_window_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "back_left_window_is_open",
+    "translation_key": "back_left_window_is_open",
+    "vehicle_fields": [
+      "back_left_window_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "back_right_window_is_open",
+    "translation_key": "back_right_window_is_open",
+    "vehicle_fields": [
+      "back_right_window_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "ev_battery_is_charging",
+    "translation_key": "ev_battery_is_charging",
+    "vehicle_fields": [
+      "ev_battery_is_charging"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "ev_battery_is_plugged_in",
+    "translation_key": "ev_battery_is_plugged_in",
+    "vehicle_fields": [
+      "ev_battery_is_plugged_in"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "fuel_level_is_low",
+    "translation_key": "fuel_level_is_low",
+    "vehicle_fields": [
+      "fuel_level_is_low"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "smart_key_battery_warning_is_on",
+    "translation_key": "smart_key_battery_warning_is_on",
+    "vehicle_fields": [
+      "smart_key_battery_warning_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "air_cleaning_is_on",
+    "translation_key": "air_cleaning_is_on",
+    "vehicle_fields": [
+      "air_cleaning_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "auto_cut_battery_prewarning_on",
+    "translation_key": "auto_cut_battery_prewarning_on",
+    "vehicle_fields": [
+      "auto_cut_battery_prewarning_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "hazard_lights_on",
+    "translation_key": "hazard_lights_on",
+    "vehicle_fields": [
+      "hazard_lights_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "windshield_front_heater_is_on",
+    "translation_key": "windshield_front_heater_is_on",
+    "vehicle_fields": [
+      "windshield_front_heater_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "washer_fluid_warning_is_on",
+    "translation_key": "washer_fluid_warning_is_on",
+    "vehicle_fields": [
+      "washer_fluid_warning_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "tire_pressure_all_warning_is_on",
+    "translation_key": "tire_pressure_all_warning_is_on",
+    "vehicle_fields": [
+      "tire_pressure_all_warning_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "tire_pressure_rear_left_warning_is_on",
+    "translation_key": "tire_pressure_rear_left_warning_is_on",
+    "vehicle_fields": [
+      "tire_pressure_rear_left_warning_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "tire_pressure_front_left_warning_is_on",
+    "translation_key": "tire_pressure_front_left_warning_is_on",
+    "vehicle_fields": [
+      "tire_pressure_front_left_warning_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "tire_pressure_front_right_warning_is_on",
+    "translation_key": "tire_pressure_front_right_warning_is_on",
+    "vehicle_fields": [
+      "tire_pressure_front_right_warning_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "tire_pressure_rear_right_warning_is_on",
+    "translation_key": "tire_pressure_rear_right_warning_is_on",
+    "vehicle_fields": [
+      "tire_pressure_rear_right_warning_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "air_control_is_on",
+    "translation_key": "air_control_is_on",
+    "vehicle_fields": [
+      "air_control_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "ev_charge_port_door_is_open",
+    "translation_key": "ev_charge_port_door_is_open",
+    "vehicle_fields": [
+      "ev_charge_port_door_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "brake_fluid_warning_is_on",
+    "translation_key": "brake_fluid_warning_is_on",
+    "vehicle_fields": [
+      "brake_fluid_warning_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "sunroof_is_open",
+    "translation_key": "sunroof_is_open",
+    "vehicle_fields": [
+      "sunroof_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "accessory_on",
+    "translation_key": "accessory_on",
+    "vehicle_fields": [
+      "accessory_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "ign3",
+    "translation_key": "ign3",
+    "vehicle_fields": [
+      "ign3"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "remote_ignition",
+    "translation_key": "remote_ignition",
+    "vehicle_fields": [
+      "remote_ignition"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "transmission_condition",
+    "translation_key": "transmission_condition",
+    "vehicle_fields": [
+      "transmission_condition"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "sleep_mode_check",
+    "translation_key": "sleep_mode_check",
+    "vehicle_fields": [
+      "sleep_mode_check"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "headlamp_status",
+    "translation_key": "headlamp_status",
+    "vehicle_fields": [
+      "headlamp_status"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "headlamp_left_low",
+    "translation_key": "headlamp_left_low",
+    "vehicle_fields": [
+      "headlamp_left_low"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "headlamp_right_low",
+    "translation_key": "headlamp_right_low",
+    "vehicle_fields": [
+      "headlamp_right_low"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "headlamp_left_high",
+    "translation_key": "headlamp_left_high",
+    "vehicle_fields": [
+      "headlamp_left_high"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "headlamp_right_high",
+    "translation_key": "headlamp_right_high",
+    "vehicle_fields": [
+      "headlamp_right_high"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "headlamp_left_bifunc",
+    "translation_key": "headlamp_left_bifunc",
+    "vehicle_fields": [
+      "headlamp_left_bifunc"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "headlamp_right_bifunc",
+    "translation_key": "headlamp_right_bifunc",
+    "vehicle_fields": [
+      "headlamp_right_bifunc"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "stop_lamp_left",
+    "translation_key": "stop_lamp_left",
+    "vehicle_fields": [
+      "stop_lamp_left"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "stop_lamp_right",
+    "translation_key": "stop_lamp_right",
+    "vehicle_fields": [
+      "stop_lamp_right"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "turn_signal_left_front",
+    "translation_key": "turn_signal_left_front",
+    "vehicle_fields": [
+      "turn_signal_left_front"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "turn_signal_right_front",
+    "translation_key": "turn_signal_right_front",
+    "vehicle_fields": [
+      "turn_signal_right_front"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "turn_signal_left_rear",
+    "translation_key": "turn_signal_left_rear",
+    "vehicle_fields": [
+      "turn_signal_left_rear"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "turn_signal_right_rear",
+    "translation_key": "turn_signal_right_rear",
+    "vehicle_fields": [
+      "turn_signal_right_rear"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "is_locked",
+    "translation_key": "is_locked",
+    "vehicle_fields": [
+      "is_locked"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "front_left_seat_heater_on",
+    "translation_key": "front_left_seat_heater_on",
+    "vehicle_fields": [
+      "front_left_seat_status"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "front_right_seat_heater_on",
+    "translation_key": "front_right_seat_heater_on",
+    "vehicle_fields": [
+      "front_right_seat_status"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "rear_left_seat_heater_on",
+    "translation_key": "rear_left_seat_heater_on",
+    "vehicle_fields": [
+      "rear_left_seat_status"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "rear_right_seat_heater_on",
+    "translation_key": "rear_right_seat_heater_on",
+    "vehicle_fields": [
+      "rear_right_seat_status"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "front_left_door_is_locked",
+    "translation_key": "front_left_door_is_locked",
+    "vehicle_fields": [
+      "front_left_door_is_locked"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "front_right_door_is_locked",
+    "translation_key": "front_right_door_is_locked",
+    "vehicle_fields": [
+      "front_right_door_is_locked"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "back_left_door_is_locked",
+    "translation_key": "back_left_door_is_locked",
+    "vehicle_fields": [
+      "back_left_door_is_locked"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "back_right_door_is_locked",
+    "translation_key": "back_right_door_is_locked",
+    "vehicle_fields": [
+      "back_right_door_is_locked"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "ev_battery_winter_mode",
+    "translation_key": "ev_battery_winter_mode",
+    "vehicle_fields": [
+      "ev_battery_winter_mode"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "ev_battery_precondition_enabled",
+    "translation_key": "ev_battery_precondition_enabled",
+    "vehicle_fields": [
+      "ev_battery_precondition_enabled"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "ev_battery_heating_state",
+    "translation_key": "ev_battery_heating_state",
+    "vehicle_fields": [
+      "ev_battery_heating_state"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "ev_v2l_status",
+    "translation_key": "ev_v2l_status",
+    "vehicle_fields": [
+      "ev_v2l_status"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "ev_v2x_status",
+    "translation_key": "ev_v2x_status",
+    "vehicle_fields": [
+      "ev_v2x_status"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "oil_level_warning_is_on",
+    "translation_key": "oil_level_warning_is_on",
+    "vehicle_fields": [
+      "oil_level_warning_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "binary_sensor",
+    "key": "battery_auxiliary_fail_warning_is_on",
+    "translation_key": "battery_auxiliary_fail_warning_is_on",
+    "vehicle_fields": [
+      "battery_auxiliary_fail_warning_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "button",
+    "key": "force_refresh",
+    "translation_key": "force_refresh",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "button",
+    "key": "start_hazard_lights",
+    "translation_key": "start_hazard_lights",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "button",
+    "key": "start_hazard_lights_and_horn",
+    "translation_key": "start_hazard_lights_and_horn",
+    "vehicle_fields": [],
+    "unit": ""
+  },
+  {
+    "platform": "button",
+    "key": "start_valet_mode",
+    "translation_key": "start_valet_mode",
+    "vehicle_fields": [
+      "supports_valet_mode"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "button",
+    "key": "stop_valet_mode",
+    "translation_key": "stop_valet_mode",
+    "vehicle_fields": [
+      "supports_valet_mode"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "button",
+    "key": "open_all_windows",
+    "translation_key": "open_all_windows",
+    "vehicle_fields": [
+      "front_left_window_is_open",
+      "supports_window_control"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "button",
+    "key": "close_all_windows",
+    "translation_key": "close_all_windows",
+    "vehicle_fields": [
+      "front_left_window_is_open",
+      "supports_window_control"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "button",
+    "key": "vent_all_windows",
+    "translation_key": "vent_all_windows",
+    "vehicle_fields": [
+      "front_left_window_is_open",
+      "supports_window_control"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "button",
+    "key": "capture_svm_image",
+    "translation_key": "capture_svm_image",
+    "vehicle_fields": [
+      "supports_svm"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "ev_battery_is_charging",
+    "translation_key": "ev_charging",
+    "vehicle_fields": [
+      "ev_battery_is_charging"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "air_control_is_on",
+    "translation_key": "climate",
+    "vehicle_fields": [
+      "air_control_is_on"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "ev_first_departure_enabled",
+    "translation_key": "ev_first_departure_enabled",
+    "vehicle_fields": [
+      "ev_first_departure_enabled"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "ev_second_departure_enabled",
+    "translation_key": "ev_second_departure_enabled",
+    "vehicle_fields": [
+      "ev_second_departure_enabled"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "ev_first_departure_climate_enabled",
+    "translation_key": "ev_first_departure_climate_enabled",
+    "vehicle_fields": [
+      "ev_first_departure_climate_enabled"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "ev_second_departure_climate_enabled",
+    "translation_key": "ev_second_departure_climate_enabled",
+    "vehicle_fields": [
+      "ev_second_departure_climate_enabled"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "ev_first_departure_climate_defrost",
+    "translation_key": "ev_first_departure_climate_defrost",
+    "vehicle_fields": [
+      "ev_first_departure_climate_defrost"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "ev_second_departure_climate_defrost",
+    "translation_key": "ev_second_departure_climate_defrost",
+    "vehicle_fields": [
+      "ev_second_departure_climate_defrost"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "ev_schedule_charge_enabled",
+    "translation_key": "ev_schedule_charge_enabled",
+    "vehicle_fields": [
+      "ev_schedule_charge_enabled"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "ev_off_peak_charge_only_enabled",
+    "translation_key": "ev_off_peak_charge_only_enabled",
+    "vehicle_fields": [
+      "ev_off_peak_charge_only_enabled"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "ev_charge_port_door_is_open",
+    "translation_key": "ev_charge_port_door",
+    "vehicle_fields": [
+      "ev_charge_port_door_is_open"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "switch",
+    "key": "valet_mode_control",
+    "translation_key": "valet_mode_control",
+    "vehicle_fields": [
+      "supports_valet_mode",
+      "valet_mode_active"
+    ],
+    "unit": ""
+  },
+  {
+    "platform": "number",
+    "key": "ev_charge_limits_ac",
+    "translation_key": "ev_charge_limits_ac",
+    "vehicle_fields": [],
+    "unit": "%"
+  },
+  {
+    "platform": "number",
+    "key": "ev_charge_limits_dc",
+    "translation_key": "ev_charge_limits_dc",
+    "vehicle_fields": [],
+    "unit": "%"
+  },
+  {
+    "platform": "number",
+    "key": "ev_v2l_discharge_limit",
+    "translation_key": "ev_v2l_discharge_limit",
+    "vehicle_fields": [],
+    "unit": "%"
+  },
+  {
+    "platform": "climate",
+    "key": "climate_control",
+    "translation_key": "climate_control",
+    "vehicle_fields": [
+      "_air_temperature_unit"
+    ],
+    "unit": ""
+  }
+]

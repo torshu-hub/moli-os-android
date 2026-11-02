@@ -48,6 +48,21 @@ async fn bounded<T, E>(
 /// Only the failed phase and timeout flag are returned.
 pub async fn https(
     host: &str,
+    request: Request<Full<Body>>,
+    limit: Duration,
+    max_body: usize,
+) -> Result<(StatusCode, HeaderMap, Body), Failure> {
+    https_port(host, 443, request, limit, max_body).await
+}
+
+/// Same bounded, certificate-verified HTTPS exchange on an explicit TLS port.
+/// The caller must restrict the endpoint/port; this function never follows redirects.
+///
+/// # Errors
+/// Only the failed network phase and timeout flag are returned.
+pub async fn https_port(
+    host: &str,
+    port: u16,
     mut request: Request<Full<Body>>,
     limit: Duration,
     max_body: usize,
@@ -55,12 +70,18 @@ pub async fn https(
     let deadline = Instant::now() + limit;
     request.headers_mut().insert(
         http::header::HOST,
-        host.parse().map_err(|_| Failure {
+        (if port == 443 {
+            host.to_owned()
+        } else {
+            format!("{host}:{port}")
+        })
+        .parse()
+        .map_err(|_| Failure {
             phase: Phase::Headers,
             timeout: false,
         })?,
     );
-    let addresses: Vec<_> = bounded(deadline, Phase::Dns, tokio::net::lookup_host((host, 443)))
+    let addresses: Vec<_> = bounded(deadline, Phase::Dns, tokio::net::lookup_host((host, port)))
         .await?
         .collect();
     let tcp = bounded(

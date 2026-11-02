@@ -8,6 +8,7 @@
 //! (« combien de fois la porte s'est ouverte cette semaine ? »).
 
 mod store;
+pub mod vehicle;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -85,6 +86,23 @@ impl History {
         blocking(move || store.series(&point, from_ms, to_ms, max_points)).await
     }
 
+    pub async fn vehicle_report(
+        &self,
+        vehicle: String,
+        from: String,
+        to: String,
+    ) -> Result<serde_json::Value, HistoryError> {
+        let store = Arc::clone(&self.store);
+        blocking(move || store.vehicle_report(&vehicle, &from, &to)).await
+    }
+    pub async fn vehicle_finance(
+        &self,
+        vehicle: String,
+        row: vehicle::Finance,
+    ) -> Result<(), HistoryError> {
+        let store = Arc::clone(&self.store);
+        blocking(move || store.vehicle_finance(&vehicle, &row)).await
+    }
     pub async fn sql(&self, sql: &str, max_rows: usize) -> Result<SqlResult, HistoryError> {
         let (store, sql) = (Arc::clone(&self.store), sql.to_owned());
         blocking(move || store.query_sql(&sql, max_rows)).await

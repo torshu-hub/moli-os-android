@@ -1301,3 +1301,104 @@ async fn an_invited_person_reaches_the_house_from_the_internet() {
     assert_eq!(status, 401);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+struct VehicleFixture;
+impl Driver for VehicleFixture {
+    fn kind(&self) -> &'static str {
+        "synthetic-hyundai"
+    }
+    fn run<'a>(&'a self, ctx: &'a mut DriverCtx) -> BoxFuture<'a, anyhow::Result<()>> {
+        Box::pin(async move {
+            let id = ctx.device_id("v_test");
+            ctx.upsert_device(Device {
+                id,
+                instance: ctx.instance().clone(),
+                native_name: "Synthetic Ioniq".into(),
+                manufacturer: Some("Hyundai".into()),
+                model: None,
+                description: None,
+                native_room: None,
+                members: vec![],
+                points: vec![],
+            });
+            ctx.ready();
+            while let Some(cmd) = ctx.next_command().await {
+                cmd.reply(Err("no synthetic actuator".into()));
+            }
+            Ok(())
+        })
+    }
+}
+#[tokio::test]
+async fn vehicle_journal_and_private_views_require_human_session_and_preserve_units() {
+    let dir = std::env::temp_dir().join(format!("moli-http-vehicle-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store = Arc::new(moli_history::Store::open(&dir.join("history.db")).unwrap());
+    let row = moli_history::vehicle::DrivingDay {
+        day: "2026-11-01".into(),
+        distance_km: Some(100.0),
+        consumed_wh: Some(16_000.0),
+        source: "synthetic provider".into(),
+        ..moli_history::vehicle::DrivingDay::default()
+    };
+    store.vehicle_day("hyundai-test:v_test", &row).unwrap();
+    let hub = Hub::new(HubOptions::default()).unwrap();
+    let cancel = CancellationToken::new();
+    spawn_driver(
+        &hub,
+        InstanceId::from("hyundai-test"),
+        Arc::new(VehicleFixture),
+        cancel.clone(),
+    );
+    for _ in 0..100 {
+        if hub
+            .describe(&moli_core::DeviceId::from("hyundai-test:v_test"))
+            .is_some()
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let options = moli_api::Options {
+        ui_pin: Some(moli_api::UiPin::new("482915")),
+        history: Some(moli_history::History::from_store(store.clone())),
+        ..moli_api::Options::default()
+    };
+    let addr = serve(&hub, &options).await;
+    let path = "/api/vehicles/hyundai-test:v_test/journal?from=2026-11-01&to=2026-11-02";
+    assert_eq!(request(&addr, "GET", path, None).await.0, 403);
+    assert_eq!(
+        request(
+            &addr,
+            "GET",
+            "/api/vehicles/hyundai-test:v_test/private/gps",
+            None
+        )
+        .await
+        .0,
+        403
+    );
+    assert_eq!(
+        request(
+            &addr,
+            "POST",
+            "/api/vehicles/hyundai-test:v_test/private/navigation",
+            Some(&json!({"latitude":1.0,"longitude":2.0,"name":"synthetic","consent":true}))
+        )
+        .await
+        .0,
+        403
+    );
+    let session = pin_session(&addr, "482915").await;
+    let (status, body) = request_with(&addr, "GET", path, None, &session).await;
+    assert_eq!(status, 200, "{body}");
+    let value: Json = serde_json::from_str(&body).unwrap();
+    assert_eq!(value["units"]["vehicle_energy"], "Wh");
+    assert_eq!(value["days"][0]["kwh_per_100km"], 16.0);
+    assert_eq!(value["days"][1]["status"], "collection_gap");
+    assert!(!body.contains("Latitude"));
+    cancel.cancel();
+    drop(options);
+    drop(store);
+    let _ = std::fs::remove_dir_all(dir);
+}

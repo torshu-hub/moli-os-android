@@ -24,6 +24,7 @@ moli-energy = { path = "crates/moli-energy" }
 moli-tuya = { path = "crates/moli-tuya" }
 moli-net = { path = "crates/moli-net" }
 moli-netatmo = { path = "crates/moli-netatmo" }
+moli-hyundai = { path = "crates/moli-hyundai" }
 moli-reolink = { path = "crates/moli-reolink" }
 moli-sonos = { path = "crates/moli-sonos" }
 moli-bambu = { path = "crates/moli-bambu" }

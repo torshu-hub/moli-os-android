@@ -1,4 +1,4 @@
 #!/bin/sh
-# Existing candidate entry point validates the dependent Netatmo code20 corrective milestone.
+# Existing candidate entry point validates the dependent Hyundai code23 authentication milestone.
 set -eu
-exec sh "$(dirname "$0")/test-beta2-code20.sh"
+exec sh "$(dirname "$0")/test-beta2-code23.sh"

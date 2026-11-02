@@ -1,0 +1,782 @@
+[
+  {
+    "key": "vehicle_body_hood_open",
+    "path": "Body.Hood.Open",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_front_headlamp_systemwarning",
+    "path": "Body.Lights.Front.HeadLamp.SystemWarning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_front_left_bifunc_warning",
+    "path": "Body.Lights.Front.Left.Bifunc.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_front_left_high_warning",
+    "path": "Body.Lights.Front.Left.High.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_front_left_low_warning",
+    "path": "Body.Lights.Front.Left.Low.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_front_left_turnsignal_warning",
+    "path": "Body.Lights.Front.Left.TurnSignal.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_front_right_bifunc_warning",
+    "path": "Body.Lights.Front.Right.Bifunc.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_front_right_high_warning",
+    "path": "Body.Lights.Front.Right.High.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_front_right_low_warning",
+    "path": "Body.Lights.Front.Right.Low.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_front_right_turnsignal_warning",
+    "path": "Body.Lights.Front.Right.TurnSignal.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_hazard_alert",
+    "path": "Body.Lights.Hazard.Alert",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_rear_left_stoplamp_warning",
+    "path": "Body.Lights.Rear.Left.StopLamp.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_rear_left_turnsignal_warning",
+    "path": "Body.Lights.Rear.Left.TurnSignal.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_rear_right_stoplamp_warning",
+    "path": "Body.Lights.Rear.Right.StopLamp.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_lights_rear_right_turnsignal_warning",
+    "path": "Body.Lights.Rear.Right.TurnSignal.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_sunroof_glass_open",
+    "path": "Body.Sunroof.Glass.Open",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_trunk_open",
+    "path": "Body.Trunk.Open",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_windshield_front_defog_state",
+    "path": "Body.Windshield.Front.Defog.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_windshield_front_heat_state",
+    "path": "Body.Windshield.Front.Heat.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_windshield_front_washerfluid_levellow",
+    "path": "Body.Windshield.Front.WasherFluid.LevelLow",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_body_windshield_rear_defog_state",
+    "path": "Body.Windshield.Rear.Defog.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_door_row1_driver_lock",
+    "path": "Cabin.Door.Row1.Driver.Lock",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_door_row1_driver_open",
+    "path": "Cabin.Door.Row1.Driver.Open",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_door_row1_passenger_lock",
+    "path": "Cabin.Door.Row1.Passenger.Lock",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_door_row1_passenger_open",
+    "path": "Cabin.Door.Row1.Passenger.Open",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_door_row2_left_lock",
+    "path": "Cabin.Door.Row2.Left.Lock",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_door_row2_left_open",
+    "path": "Cabin.Door.Row2.Left.Open",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_door_row2_right_lock",
+    "path": "Cabin.Door.Row2.Right.Lock",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_door_row2_right_open",
+    "path": "Cabin.Door.Row2.Right.Open",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_hvac_outsidetemperature_unit",
+    "path": "Cabin.HVAC.OutsideTemperature.Unit",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_hvac_outsidetemperature_value",
+    "path": "Cabin.HVAC.OutsideTemperature.Value",
+    "unit": "provider (see temperature unit point)"
+  },
+  {
+    "key": "vehicle_cabin_hvac_row1_driver_blower_speedlevel",
+    "path": "Cabin.HVAC.Row1.Driver.Blower.SpeedLevel",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_hvac_row1_driver_temperature_unit",
+    "path": "Cabin.HVAC.Row1.Driver.Temperature.Unit",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_hvac_row1_driver_temperature_value",
+    "path": "Cabin.HVAC.Row1.Driver.Temperature.Value",
+    "unit": "provider (see temperature unit point)"
+  },
+  {
+    "key": "vehicle_cabin_hvac_vent_aircleaning_indicator",
+    "path": "Cabin.HVAC.Vent.AirCleaning.Indicator",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_seat_row1_driver_climate_state",
+    "path": "Cabin.Seat.Row1.Driver.Climate.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_seat_row1_passenger_climate_state",
+    "path": "Cabin.Seat.Row1.Passenger.Climate.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_seat_row2_left_climate_state",
+    "path": "Cabin.Seat.Row2.Left.Climate.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_seat_row2_right_climate_state",
+    "path": "Cabin.Seat.Row2.Right.Climate.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_sidemirror_heating_state",
+    "path": "Cabin.SideMirror.Heating.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_steeringwheel_heat_remotecontrol_step",
+    "path": "Cabin.SteeringWheel.Heat.RemoteControl.Step",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_steeringwheel_heat_state",
+    "path": "Cabin.SteeringWheel.Heat.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_window_row1_driver_open",
+    "path": "Cabin.Window.Row1.Driver.Open",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_window_row1_driver_openlevel",
+    "path": "Cabin.Window.Row1.Driver.OpenLevel",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_window_row1_passenger_open",
+    "path": "Cabin.Window.Row1.Passenger.Open",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_window_row1_passenger_openlevel",
+    "path": "Cabin.Window.Row1.Passenger.OpenLevel",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_window_row2_left_open",
+    "path": "Cabin.Window.Row2.Left.Open",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_window_row2_left_openlevel",
+    "path": "Cabin.Window.Row2.Left.OpenLevel",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_window_row2_right_open",
+    "path": "Cabin.Window.Row2.Right.Open",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_cabin_window_row2_right_openlevel",
+    "path": "Cabin.Window.Row2.Right.OpenLevel",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_axle_row1_left_tire_pressure",
+    "path": "Chassis.Axle.Row1.Left.Tire.Pressure",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_axle_row1_left_tire_pressurelow",
+    "path": "Chassis.Axle.Row1.Left.Tire.PressureLow",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_axle_row1_right_tire_pressure",
+    "path": "Chassis.Axle.Row1.Right.Tire.Pressure",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_axle_row1_right_tire_pressurelow",
+    "path": "Chassis.Axle.Row1.Right.Tire.PressureLow",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_axle_row2_left_tire_pressure",
+    "path": "Chassis.Axle.Row2.Left.Tire.Pressure",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_axle_row2_left_tire_pressurelow",
+    "path": "Chassis.Axle.Row2.Left.Tire.PressureLow",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_axle_row2_right_tire_pressure",
+    "path": "Chassis.Axle.Row2.Right.Tire.Pressure",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_axle_row2_right_tire_pressurelow",
+    "path": "Chassis.Axle.Row2.Right.Tire.PressureLow",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_axle_tire_pressurelow",
+    "path": "Chassis.Axle.Tire.PressureLow",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_axle_tire_pressureunit",
+    "path": "Chassis.Axle.Tire.PressureUnit",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_battery_auxiliary_state",
+    "path": "Chassis.Battery.Auxiliary.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_brake_fluid_warning",
+    "path": "Chassis.Brake.Fluid.Warning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_engine_oillevel_status",
+    "path": "Chassis.Engine.OilLevel.Status",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_fuelsystem_averagefueleconomy",
+    "path": "Drivetrain.FuelSystem.AverageFuelEconomy",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_fuelsystem_dte_fuel",
+    "path": "Drivetrain.FuelSystem.DTE.Fuel",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_fuelsystem_dte_total",
+    "path": "Drivetrain.FuelSystem.DTE.Total",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_fuelsystem_dte_unit",
+    "path": "Drivetrain.FuelSystem.DTE.Unit",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_fuelsystem_fuellevel",
+    "path": "Drivetrain.FuelSystem.FuelLevel",
+    "unit": "%"
+  },
+  {
+    "key": "vehicle_drivetrain_fuelsystem_lowfuelwarning",
+    "path": "Drivetrain.FuelSystem.LowFuelWarning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_odometer",
+    "path": "Drivetrain.Odometer",
+    "unit": "km"
+  },
+  {
+    "key": "vehicle_drivetrain_remoteignition_state",
+    "path": "Drivetrain.RemoteIgnition.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_transmission_gearposition",
+    "path": "Drivetrain.Transmission.GearPosition",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_transmission_parkingposition",
+    "path": "Drivetrain.Transmission.ParkingPosition",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_electronics_autocut_batteryprewarning",
+    "path": "Electronics.AutoCut.BatteryPreWarning",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_electronics_battery_level",
+    "path": "Electronics.Battery.Level",
+    "unit": "%"
+  },
+  {
+    "key": "vehicle_electronics_fob_lowbattery",
+    "path": "Electronics.FOB.LowBattery",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_electronics_powersupply_ignition1",
+    "path": "Electronics.PowerSupply.Ignition1",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_electronics_powersupply_ignition3",
+    "path": "Electronics.PowerSupply.Ignition3",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_batterymanagement_batterycapacity_value",
+    "path": "Green.BatteryManagement.BatteryCapacity.Value",
+    "unit": "kJ"
+  },
+  {
+    "key": "vehicle_green_batterymanagement_batterypackvoltage",
+    "path": "Green.BatteryManagement.BatteryPackVoltage",
+    "unit": "V"
+  },
+  {
+    "key": "vehicle_green_batterymanagement_batteryprecondition_status",
+    "path": "Green.BatteryManagement.BatteryPreCondition.Status",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_batterymanagement_batteryremain_ratio",
+    "path": "Green.BatteryManagement.BatteryRemain.Ratio",
+    "unit": "%"
+  },
+  {
+    "key": "vehicle_green_batterymanagement_batteryremain_value",
+    "path": "Green.BatteryManagement.BatteryRemain.Value",
+    "unit": "kJ"
+  },
+  {
+    "key": "vehicle_green_batterymanagement_chillerrpm",
+    "path": "Green.BatteryManagement.ChillerRPM",
+    "unit": "rpm"
+  },
+  {
+    "key": "vehicle_green_batterymanagement_heatingstate",
+    "path": "Green.BatteryManagement.HeatingState",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_batterymanagement_soh_ratio",
+    "path": "Green.BatteryManagement.SoH.Ratio",
+    "unit": "%"
+  },
+  {
+    "key": "vehicle_green_batterymanagement_temperature_coolingwaterinlet",
+    "path": "Green.BatteryManagement.Temperature.CoolingWaterInlet",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_batterymanagement_wintermodeoperation",
+    "path": "Green.BatteryManagement.WinterModeOperation",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_chargingdoor_state",
+    "path": "Green.ChargingDoor.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_charging_remaintime",
+    "path": "Green.ChargingInformation.Charging.RemainTime",
+    "unit": "min"
+  },
+  {
+    "key": "vehicle_green_charginginformation_connectorfastening_state",
+    "path": "Green.ChargingInformation.ConnectorFastening.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_dte_targetsoc_quick",
+    "path": "Green.ChargingInformation.DTE.TargetSoC.Quick",
+    "unit": "%"
+  },
+  {
+    "key": "vehicle_green_charginginformation_dte_targetsoc_standard",
+    "path": "Green.ChargingInformation.DTE.TargetSoC.Standard",
+    "unit": "%"
+  },
+  {
+    "key": "vehicle_green_charginginformation_electriccurrentlevel_state",
+    "path": "Green.ChargingInformation.ElectricCurrentLevel.State",
+    "unit": "%"
+  },
+  {
+    "key": "vehicle_green_charginginformation_estimatedtime_iccb",
+    "path": "Green.ChargingInformation.EstimatedTime.ICCB",
+    "unit": "min"
+  },
+  {
+    "key": "vehicle_green_charginginformation_estimatedtime_quick",
+    "path": "Green.ChargingInformation.EstimatedTime.Quick",
+    "unit": "min"
+  },
+  {
+    "key": "vehicle_green_charginginformation_estimatedtime_standard",
+    "path": "Green.ChargingInformation.EstimatedTime.Standard",
+    "unit": "min"
+  },
+  {
+    "key": "vehicle_green_charginginformation_expectedtime",
+    "path": "Green.ChargingInformation.ExpectedTime",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_targetsoc_quick",
+    "path": "Green.ChargingInformation.TargetSoC.Quick",
+    "unit": "%"
+  },
+  {
+    "key": "vehicle_green_charginginformation_targetsoc_standard",
+    "path": "Green.ChargingInformation.TargetSoC.Standard",
+    "unit": "%"
+  },
+  {
+    "key": "vehicle_green_electric_smartgrid_realtimepower",
+    "path": "Green.Electric.SmartGrid.RealTimePower",
+    "unit": "kW"
+  },
+  {
+    "key": "vehicle_green_electric_smartgrid_totalpowerconsumption",
+    "path": "Green.Electric.SmartGrid.TotalPowerConsumption",
+    "unit": "Wh"
+  },
+  {
+    "key": "vehicle_green_electric_smartgrid_totalpowerregeneration",
+    "path": "Green.Electric.SmartGrid.TotalPowerRegeneration",
+    "unit": "Wh"
+  },
+  {
+    "key": "vehicle_green_electric_smartgrid_vehicletogrid_mode",
+    "path": "Green.Electric.SmartGrid.VehicleToGrid.mode",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_electric_smartgrid_vehicletoload_dischargelimitation_dte",
+    "path": "Green.Electric.SmartGrid.VehicleToLoad.DischargeLimitation.DTE",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_electric_smartgrid_vehicletoload_dischargelimitation_remaintime",
+    "path": "Green.Electric.SmartGrid.VehicleToLoad.DischargeLimitation.RemainTime",
+    "unit": "min"
+  },
+  {
+    "key": "vehicle_green_electric_smartgrid_vehicletoload_dischargelimitation_soc",
+    "path": "Green.Electric.SmartGrid.VehicleToLoad.DischargeLimitation.SoC",
+    "unit": "%"
+  },
+  {
+    "key": "vehicle_green_electric_smartgrid_vehicletoload_mode",
+    "path": "Green.Electric.SmartGrid.VehicleToLoad.Mode",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_electric_smartgrid_vehicletoload_mode",
+    "path": "Green.Electric.SmartGrid.VehicleToLoad.mode",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_powerconsumption_moment_batterycooling",
+    "path": "Green.PowerConsumption.Moment.BatteryCooling",
+    "unit": "W"
+  },
+  {
+    "key": "vehicle_green_powerconsumption_moment_batteryheater",
+    "path": "Green.PowerConsumption.Moment.BatteryHeater",
+    "unit": "W"
+  },
+  {
+    "key": "vehicle_green_powerconsumption_moment_climateairconditioning",
+    "path": "Green.PowerConsumption.Moment.ClimateAirConditioning",
+    "unit": "W"
+  },
+  {
+    "key": "vehicle_green_reservation_chargeschedule_enable",
+    "path": "Green.Reservation.ChargeSchedule.Enable",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule1_daysofweek",
+    "path": "Green.Reservation.Departure.Schedule1.DaysOfWeek",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule1_enable",
+    "path": "Green.Reservation.Departure.Schedule1.Enable",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule1_hvac_temperature_unit",
+    "path": "Green.Reservation.Departure.Schedule1.HVAC.Temperature.Unit",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule1_hvac_temperature_value",
+    "path": "Green.Reservation.Departure.Schedule1.HVAC.Temperature.Value",
+    "unit": "provider (see temperature unit point)"
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule1_time",
+    "path": "Green.Reservation.Departure.Schedule1.Time",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule2_daysofweek",
+    "path": "Green.Reservation.Departure.Schedule2.DaysOfWeek",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule2_enable",
+    "path": "Green.Reservation.Departure.Schedule2.Enable",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule2_hvac_temperature_unit",
+    "path": "Green.Reservation.Departure.Schedule2.HVAC.Temperature.Unit",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule2_hvac_temperature_value",
+    "path": "Green.Reservation.Departure.Schedule2.HVAC.Temperature.Value",
+    "unit": "provider (see temperature unit point)"
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule2_time",
+    "path": "Green.Reservation.Departure.Schedule2.Time",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivingready",
+    "path": "DrivingReady",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_remotecontrol_sleepmode",
+    "path": "RemoteControl.SleepMode",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_odometerunit",
+    "path": "Drivetrain.OdometerUnit",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_dte_total",
+    "path": "Green.ChargingInformation.DTE.Total",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_dte_unit",
+    "path": "Green.ChargingInformation.DTE.Unit",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_setting_completealarm_time",
+    "path": "Green.ChargingInformation.Setting.CompleteAlarm.Time",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_offpeaktime_mode",
+    "path": "Green.Reservation.OffPeakTime.Mode",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_offpeaktime_starthour",
+    "path": "Green.Reservation.OffPeakTime.StartHour",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_offpeaktime_startmin",
+    "path": "Green.Reservation.OffPeakTime.StartMin",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_offpeaktime_endhour",
+    "path": "Green.Reservation.OffPeakTime.EndHour",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_offpeaktime_endmin",
+    "path": "Green.Reservation.OffPeakTime.EndMin",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule1_hvac_enable",
+    "path": "Green.Reservation.Departure.Schedule1.HVAC.Enable",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule1_hvac_defrost",
+    "path": "Green.Reservation.Departure.Schedule1.HVAC.Defrost",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule2_hvac_enable",
+    "path": "Green.Reservation.Departure.Schedule2.HVAC.Enable",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_reservation_departure_schedule2_hvac_defrost",
+    "path": "Green.Reservation.Departure.Schedule2.HVAC.Defrost",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_batterymanagement_temperature_min_raw",
+    "path": "Green.BatteryManagement.Temperature.Min.Raw",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_batterymanagement_temperature_max_raw",
+    "path": "Green.BatteryManagement.Temperature.Max.Raw",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_server_option_hvactemptype",
+    "path": "Server.Option.HvacTempType",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_setting_completealarm_before10min",
+    "path": "Green.ChargingInformation.Setting.CompleteAlarm.Before10min",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_setting_completealarm_before20min",
+    "path": "Green.ChargingInformation.Setting.CompleteAlarm.Before20min",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_setting_completealarm_before30min",
+    "path": "Green.ChargingInformation.Setting.CompleteAlarm.Before30min",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_setting_completealarm_off",
+    "path": "Green.ChargingInformation.Setting.CompleteAlarm.Off",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_expectedtime_starthour",
+    "path": "Green.ChargingInformation.ExpectedTime.StartHour",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_expectedtime_startmin",
+    "path": "Green.ChargingInformation.ExpectedTime.StartMin",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_expectedtime_endhour",
+    "path": "Green.ChargingInformation.ExpectedTime.EndHour",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_charginginformation_expectedtime_endmin",
+    "path": "Green.ChargingInformation.ExpectedTime.EndMin",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_chassis_drivingmode_state",
+    "path": "Chassis.DrivingMode.State",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_green_batterymanagement_temperature_min",
+    "path": "Green.BatteryManagement.Temperature.Min",
+    "unit": "\u00b0C"
+  },
+  {
+    "key": "vehicle_green_batterymanagement_temperature_max",
+    "path": "Green.BatteryManagement.Temperature.Max",
+    "unit": "\u00b0C"
+  },
+  {
+    "key": "vehicle_offset",
+    "path": "Offset",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_fuelsystem_averagefueleconomy_accumulated",
+    "path": "Drivetrain.FuelSystem.AverageFuelEconomy.Accumulated",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_fuelsystem_averagefueleconomy_drive",
+    "path": "Drivetrain.FuelSystem.AverageFuelEconomy.Drive",
+    "unit": ""
+  },
+  {
+    "key": "vehicle_drivetrain_fuelsystem_averagefueleconomy_afterrefuel",
+    "path": "Drivetrain.FuelSystem.AverageFuelEconomy.AfterRefuel",
+    "unit": ""
+  }
+]

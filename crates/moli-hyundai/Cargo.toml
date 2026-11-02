@@ -1,0 +1,30 @@
+[package]
+name = "moli-hyundai"
+description = "Portable Hyundai Europe CCI/GSPA integration and vehicle journal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+[dependencies]
+moli-core.workspace = true
+moli-runtime.workspace = true
+moli-history.workspace = true
+moli-net.workspace = true
+moli-i18n.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+httpdate.workspace = true
+tokio.workspace = true
+ring.workspace = true
+jiff.workspace = true
+base64 = "0.22"
+num-bigint = "0.4"
+url = "2.5"
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tokio-util.workspace = true
+[lints]
+workspace = true

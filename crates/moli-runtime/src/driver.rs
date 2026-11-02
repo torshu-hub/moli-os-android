@@ -34,6 +34,8 @@ pub trait Driver: Send + Sync + 'static {
 #[derive(Debug)]
 pub struct CommandRequest {
     pub point: PointId,
+    /// Origin carried through the guard for drivers requiring a voluntary human action.
+    pub origin: moli_core::Origin,
     pub device: Arc<Device>,
     pub key: Arc<str>,
     /// Canonical value, already validated against the point spec.
@@ -170,6 +172,11 @@ impl DriverCtx {
     }
 
     /// Declares that `device` (one of ours) can produce images on demand.
+    pub fn provide_private(&self, device: &DeviceId, source: Arc<dyn crate::media::PrivateSource>) {
+        if self.owns(device) {
+            self.hub.provide_private(device, source);
+        }
+    }
     pub fn provide_snapshots(
         &self,
         device: &DeviceId,
@@ -240,6 +247,18 @@ impl DriverCtx {
             .map(|sample| sample.value)
     }
 
+    /// Observe an existing explicitly configured source without commanding it.
+    /// Units are returned with the sample so cross-source consumers can refuse
+    /// incompatible weather/energy inputs instead of guessing conversions.
+    pub fn observe(
+        &self,
+        point: &moli_core::PointId,
+    ) -> Option<(moli_core::Sample, Option<moli_core::Unit>)> {
+        let (id, key) = point.split()?;
+        let (device, _) = self.hub.describe(&id)?;
+        let spec = device.points.iter().find(|p| p.key.as_ref() == key)?;
+        Some((self.hub.state(point)?, spec.unit.clone()))
+    }
     /// Records a value for a point of one of this instance's devices.
     pub fn set_state(&self, device: &DeviceId, key: &str, value: Value) {
         if self.owns(device) {

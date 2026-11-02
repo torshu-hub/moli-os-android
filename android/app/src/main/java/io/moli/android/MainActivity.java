@@ -14,6 +14,17 @@ import org.json.JSONObject;
 /** Origin-restricted official dashboard; Android management owns the launcher. */
 public final class MainActivity extends Activity {
     WebView web;
+    private byte[] vehicleExport;
+    private static final int VEHICLE_EXPORT=2101;
+    private final class VehicleExport {
+        @JavascriptInterface public void privacy(boolean active){runOnUiThread(()->{if(loaded==null||!allowed(Uri.parse(loaded)))return;if(active)getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);});}
+        @JavascriptInterface public void save(String json){
+            if(json==null||json.length()>8*1024*1024)return;
+            runOnUiThread(()->{if(loaded==null||!allowed(Uri.parse(loaded))||web.getUrl()==null||!allowed(Uri.parse(web.getUrl()))||vehicleExport!=null)return;try{JSONObject v=new JSONObject(json);if(v.optInt("schema")!=1||!"Europe/Paris".equals(v.optString("timezone"))||v.optJSONArray("days")==null)return;vehicleExport=json.getBytes(java.nio.charset.StandardCharsets.UTF_8);Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/json").addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_TITLE,"moli-vehicle-journal.json");startActivityForResult(intent,VEHICLE_EXPORT);}catch(Exception e){vehicleExport=null;}});
+        }
+    }
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){super.onActivityResult(requestCode,resultCode,data);if(requestCode!=VEHICLE_EXPORT)return;byte[] bytes=vehicleExport;vehicleExport=null;if(resultCode!=RESULT_OK||data==null||bytes==null)return;Uri uri=data.getData();if(uri==null||!"content".equals(uri.getScheme()))return;new Thread(()->{try(java.io.OutputStream out=getContentResolver().openOutputStream(uri,"wt")){if(out==null)return;out.write(bytes);runOnUiThread(()->Toast.makeText(this,R.string.exported,Toast.LENGTH_SHORT).show());}catch(Exception e){runOnUiThread(()->Toast.makeText(this,R.string.operation_failed,Toast.LENGTH_SHORT).show());}},"vehicle-journal-export").start();}
+
     private TextView status;
     private long loadedLease=-1,request;
     private volatile String loaded;
@@ -45,6 +56,7 @@ public final class MainActivity extends Activity {
         web=new WebView(this);web.getSettings().setJavaScriptEnabled(true);web.getSettings().setDomStorageEnabled(true);
         web.getSettings().setAllowFileAccess(false);web.getSettings().setAllowContentAccess(false);web.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         CookieManager.getInstance().setAcceptThirdPartyCookies(web,false);
+        web.addJavascriptInterface(new VehicleExport(),"MoliVehicleExport");
         web.setWebChromeClient(new WebChromeClient(){@Override public boolean onConsoleMessage(ConsoleMessage message){return true;}});
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){return !allowed(r.getUrl());}
@@ -129,5 +141,5 @@ public final class MainActivity extends Activity {
     }
     @Override public void onStart(){super.onStart();WeatherBinding.start(getApplicationContext(),EngineHost.currentLease());web.onResume();handler.post(refresh);}
     @Override public void onStop(){handler.removeCallbacks(refresh);web.onPause();super.onStop();}
-    @Override public void onDestroy(){handler.removeCallbacks(refresh);web.destroy();super.onDestroy();}
+    @Override public void onDestroy(){handler.removeCallbacks(refresh);vehicleExport=null;web.removeJavascriptInterface("MoliVehicleExport");web.destroy();super.onDestroy();}
 }
