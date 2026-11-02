@@ -36,13 +36,18 @@ public final class Code22AuthTest {
                 return CompletableFuture.completedFuture(new JSONObject().put("connected",false).put("vehicles",new JSONArray()).put("options",new JSONObject()).put("diagnostic",new JSONObject().put("phase","signin_redirect").put("cause","provider_terms_required").put("http",302)));
             });
             activity.hyundaiPanel.state.snapshot=new JSONObject();activity.hyundaiPanel.render.run();dialog.set(activity.hyundaiPanel.login());
+        });
+        ins.waitForIdleSync();
+        ins.runOnMainSync(()->{
             View root=dialog.get().getWindow().getDecorView();Spinner modes=root.findViewWithTag("hyundai:mode");assertEquals(2,modes.getCount());assertEquals(0,modes.getSelectedItemPosition());
             assertTrue((dialog.get().getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_SECURE)!=0);
             assertEquals(0,checkboxes(root));modes.setSelection(1);((EditText)root.findViewWithTag("hyundai:pin")).setText("0000");
             dialog.get().getButton(AlertDialog.BUTTON_POSITIVE).performClick();
         });
         assertEquals("begin_login",submitted.get(0).getString("operation"));assertEquals("gspa",submitted.get(0).getString("api_mode"));assertTrue(submitted.get(0).getBoolean("consent"));assertEquals("0000",submitted.get(0).getString("pin"));
-        ins.runOnMainSync(()->{activity.hyundaiPanel.complete();dialog.set(activity.hyundaiPanel.passwordLogin("europe","0000"));View root=dialog.get().getWindow().getDecorView();assertEquals(0,checkboxes(root));((EditText)root.findViewWithTag("hyundai:username")).setText("user@example.com");((EditText)root.findViewWithTag("hyundai:password")).setText("synthetic-password");dialog.get().getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertEquals("",((EditText)root.findViewWithTag("hyundai:password")).getText().toString());activity.hyundaiPanel.complete();});
+        ins.runOnMainSync(()->{activity.hyundaiPanel.complete();dialog.set(activity.hyundaiPanel.passwordLogin("europe","0000")); });
+        ins.waitForIdleSync();
+        ins.runOnMainSync(()->{View root=dialog.get().getWindow().getDecorView();assertEquals(0,checkboxes(root));((EditText)root.findViewWithTag("hyundai:username")).setText("user@example.com");((EditText)root.findViewWithTag("hyundai:password")).setText("synthetic-password");dialog.get().getButton(AlertDialog.BUTTON_POSITIVE).performClick();assertEquals("",((EditText)root.findViewWithTag("hyundai:password")).getText().toString());activity.hyundaiPanel.complete();});
         JSONObject request=submitted.stream().filter(r->"login".equals(r.optString("operation"))).findFirst().get();assertEquals("europe",request.getString("api_mode"));assertTrue(request.getBoolean("consent"));
         assertTrue(activity.hyundaiPanel.state.error.contains("signin_redirect / provider_terms_required"));assertFalse(activity.hyundaiPanel.state.error.contains("synthetic-password"));
         assertTrue(HyundaiSignIn.allowed(Uri.parse("https://oneapp.hyundai.com/redirect")));assertFalse(HyundaiSignIn.allowed(Uri.parse("http://oneapp.hyundai.com/redirect")));assertFalse(HyundaiSignIn.allowed(Uri.parse("https://oneapp.hyundai.com.other.example.org/redirect")));assertFalse(HyundaiSignIn.allowed(Uri.parse("https://oneapp.hyundai.com/redirect").buildUpon().encodedAuthority("synthetic-user"+"@"+"oneapp.hyundai.com").build()));assertFalse(HyundaiSignIn.callback(Uri.parse("https://oneapp.hyundai.com/other")));

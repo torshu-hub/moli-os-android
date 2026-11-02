@@ -40,7 +40,8 @@ final class HyundaiSignIn {
             @Override public void onReceivedHttpError(WebView v,WebResourceRequest r,WebResourceResponse e){if(r.isForMainFrame())end.accept(null,"provider_page_failed");}
         });
         web.setDownloadListener((a,b,c,d,e)->end.accept(null,"redirect_not_allowed"));
-        dialog.setOnShowListener(d->{dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT);web.loadUrl(url);});
+        dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        dialog.setOnShowListener(d->{dialog.getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT);web.loadUrl(url);});
         dialog.setOnDismissListener(d->{
             web.stopLoading();web.loadUrl("about:blank");web.clearHistory();web.clearCache(true);web.clearFormData();web.destroy();clearIssuerCookies();
             if(finished.compareAndSet(false,true))completion.finish(null,null);
