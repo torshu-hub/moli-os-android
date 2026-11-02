@@ -43,7 +43,14 @@ public final class Code21HyundaiTest {
     }
     void capture(String name)throws Exception {
         if(activity==null)return;
-        ins.waitForIdleSync();Thread.sleep(300);
+        if(web!=null){
+            CountDownLatch drawn=new CountDownLatch(1);
+            main(()->web.postVisualStateCallback(SystemClock.uptimeMillis(),new WebView.VisualStateCallback(){
+                @Override public void onComplete(long requestId){web.invalidate();drawn.countDown();}
+            }));
+            assertTrue("WebView rendered the current DOM before screenshot",drawn.await(10,TimeUnit.SECONDS));
+        }
+        ins.waitForIdleSync();Thread.sleep(500);
         File dir=new File(app.getFilesDir(),"code21-captures");dir.mkdirs();
         try(FileOutputStream out=new FileOutputStream(new File(dir,name+".png"))){
             assertTrue(ins.getUiAutomation().takeScreenshot().compress(Bitmap.CompressFormat.PNG,100,out));
