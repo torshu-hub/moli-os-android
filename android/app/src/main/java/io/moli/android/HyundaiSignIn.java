@@ -14,7 +14,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Issuer pages only: credentials/terms/verification remain inside Hyundai, no JS bridge. */
 final class HyundaiSignIn {
     interface Completion {void finish(String callback,String failure);}
-    static boolean allowed(Uri u){return u!=null&&"https".equalsIgnoreCase(u.getScheme())&&(u.getPort()==-1||u.getPort()==443)&&u.getUserInfo()==null&&u.getFragment()==null&&u.toString().length()<=8192&&Arrays.asList("idpconnect-eu.hyundai.com","oneapp.hyundai.com").contains(u.getHost());}
+    static boolean allowed(Uri u){
+        if(u==null||!"https".equalsIgnoreCase(u.getScheme())||u.getUserInfo()!=null||u.getFragment()!=null||u.toString().length()>8192)return false;
+        if((u.getPort()==-1||u.getPort()==443)&&Arrays.asList("idpconnect-eu.hyundai.com","oneapp.hyundai.com").contains(u.getHost()))return true;
+        // Public OneApp authorize redirects here; do not allow arbitrary CCAPI pages/APIs.
+        return "prd.eu-ccapi.hyundai.com".equals(u.getHost())&&u.getPort()==8080&&"/web/v1/user/authorize".equals(u.getEncodedPath());
+    }
     static boolean callback(Uri u){return allowed(u)&&"oneapp.hyundai.com".equals(u.getHost())&&"/redirect".equals(u.getPath());}
     static void show(Activity activity,String url,Completion completion){
         Uri initial=Uri.parse(url);
@@ -49,11 +54,11 @@ final class HyundaiSignIn {
     }
     private static void clearIssuerCookies(){
         CookieManager cookies=CookieManager.getInstance();
-        for(String host:Arrays.asList("idpconnect-eu.hyundai.com","oneapp.hyundai.com"))for(String path:Arrays.asList("/","/auth","/auth/account","/auth/api","/web","/web/v1/user/authorization")){
+        for(String host:Arrays.asList("idpconnect-eu.hyundai.com","oneapp.hyundai.com","prd.eu-ccapi.hyundai.com:8080"))for(String path:Arrays.asList("/","/auth","/auth/account","/auth/api","/web","/web/v1","/web/v1/user","/web/v1/user/authorize","/web/v1/user/authorization")){
             String existing=cookies.getCookie("https://"+host+path);if(existing==null)continue;
             for(String cookie:existing.split(";")){String name=cookie.trim().split("=",2)[0];if(!name.matches("[A-Za-z0-9_.-]{1,80}"))continue;
                 String expiry=name+"=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; Path="+path;
-                cookies.setCookie("https://"+host+path,expiry);cookies.setCookie("https://"+host+path,expiry+"; Domain="+host);cookies.setCookie("https://"+host+path,expiry+"; Domain=.hyundai.com");
+                cookies.setCookie("https://"+host+path,expiry);cookies.setCookie("https://"+host+path,expiry+"; Domain="+Uri.parse("https://"+host).getHost());cookies.setCookie("https://"+host+path,expiry+"; Domain=.hyundai.com");
             }
         }
     }

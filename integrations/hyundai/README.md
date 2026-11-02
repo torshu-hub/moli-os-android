@@ -20,6 +20,16 @@ uses the IDP public RSA key; its password is not persisted. Safe diagnostics
 distinguish authorize/redirect, RSA/signin, CCI/CCS, device/fleet, PIN, quota and
 network/TLS phases, never remote URLs or response text. Identity requests have
 a 35-second total bound, direct login a 120-second bound, without retries.
+The public authorize chain also uses the exact legacy identity page
+`https://prd.eu-ccapi.hyundai.com:8080/web/v1/user/authorize`. This unauthenticated
+302 → 200 was reproduced on 2026-11-02 without account credentials; code22
+incorrectly rejected this page before RSA signin. Code23 admits only this
+additional HTTPS host/port/path (GET without body in the native client), with
+the identity timeout. It does not allow arbitrary CCAPI pages or API redirects.
+Every subsequent hop remains checked; cookies stay host-scoped and the OAuth
+callback is never fetched. Android applies the same exact navigation exception
+and clears this issuer's cookies on closing. No production account or vehicle
+was accessed; real sign-in remains to qualify on the owner's device.
 An authorized session is saved separately for explicit fleet-discovery recovery. The encrypted vault holds the full rotating token
 bundle and optional vehicle PIN. An ambiguous rotation is blocked rather than
 replayed; an interrupted CCS exchange resumes from the saved rotated bundle.

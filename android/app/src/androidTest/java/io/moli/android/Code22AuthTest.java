@@ -54,5 +54,12 @@ public final class Code22AuthTest {
         ins.waitForIdleSync();Thread.sleep(500);File directory=new File(app.getFilesDir(),"code22-captures");directory.mkdirs();try(FileOutputStream out=new FileOutputStream(new File(directory,"auth-diagnostic-landscape.png"))){assertTrue(ins.getUiAutomation().takeScreenshot().compress(Bitmap.CompressFormat.PNG,100,out));}
         ins.runOnMainSync(activity::finish);
     }
+    @Test public void legacy_authorization_page_has_an_exact_navigation_allowlist() {
+        String page="https://prd.eu-ccapi.hyundai.com:8080/web/v1/user/authorize";
+        assertTrue(HyundaiSignIn.allowed(Uri.parse(page+"?next_uri=synthetic")));
+        assertFalse(HyundaiSignIn.callback(Uri.parse(page+"?code=synthetic")));
+        for(String bad:Arrays.asList(page.replace("https:","http:"),page.replace(":8080", ""),page.replace(":8080", ":443"),page+"/extra",page+"#synthetic",page.replace("/authorize","/%61uthorize"),page.replace("/web/v1/user/authorize","/api/v1/spa/vehicles"),page.replace("prd.eu-ccapi.hyundai.com","prd.eu-ccapi.hyundai.com.other.example.org")))assertFalse(bad,HyundaiSignIn.allowed(Uri.parse(bad)));
+        assertFalse(HyundaiSignIn.allowed(Uri.parse(page).buildUpon().encodedAuthority("synthetic"+"@"+"prd.eu-ccapi.hyundai.com:8080").build()));
+    }
     static int checkboxes(View view){int count=view instanceof CheckBox?1:0;if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)count+=checkboxes(group.getChildAt(i));}return count;}
 }

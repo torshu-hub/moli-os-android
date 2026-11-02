@@ -431,6 +431,118 @@ async fn legitimate_oneapp_authorize_redirect_and_signin_chain_are_not_false_con
     );
     assert_eq!(req.len(), 7);
 }
+// Reproduces the public, unauthenticated OneApp 302 observed on 2026-11-02.
+#[tokio::test]
+async fn password_login_follows_exact_legacy_identity_page_without_cookie_leak() {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    let mut initial =
+        redirect("https://prd.eu-ccapi.hyundai.com:8080/web/v1/user/authorize?next_uri=synthetic")
+            .unwrap();
+    initial.headers.insert(
+        "set-cookie",
+        "idp_session=synthetic; Secure; HttpOnly".parse().unwrap(),
+    );
+    let mut page = response(200, json!({})).unwrap();
+    page.headers.insert(
+        "set-cookie",
+        "ccapi_session=synthetic; Secure; HttpOnly".parse().unwrap(),
+    );
+    let wire = Fake::new(vec![
+        Ok(initial),
+        Ok(page),
+        response(200, synthetic_cert()),
+        redirect("https://oneapp.hyundai.com/redirect?code=synthetic-code"),
+        response(200, session().cci),
+        response(
+            200,
+            json!({"accessToken":format!("x.{}.x",URL_SAFE_NO_PAD.encode(br#"{"uid":"synthetic-user"}"#)),"expiresTime":3600}),
+        ),
+    ]);
+    let mut client = Client::with_wire(wire.clone());
+    client
+        .login("user@example.com", "synthetic-password", None)
+        .await
+        .unwrap();
+    let calls = wire.requests.lock().unwrap();
+    assert_eq!(calls.len(), 6);
+    assert!(calls[1].1.get("cookie").is_none());
+    assert!(calls[1].1.get("authorization").is_none());
+    assert!(calls[1].2.is_empty());
+    for index in [2, 3] {
+        assert_eq!(calls[index].1["cookie"], "idp_session=synthetic");
+        assert!(calls[index].0.starts_with(crate::client::IDP));
+    }
+    assert!(!calls[3].2.contains("synthetic-password"));
+    assert!(
+        calls
+            .iter()
+            .all(|(url, _, _)| !url.starts_with(crate::client::REDIRECT))
+    );
+}
+
+#[tokio::test]
+async fn legacy_identity_redirect_does_not_allow_api_foreign_hosts_ports_or_loops() {
+    for target in [
+        "http://prd.eu-ccapi.hyundai.com:8080/web/v1/user/authorize",
+        "https://prd.eu-ccapi.hyundai.com/web/v1/user/authorize",
+        "https://prd.eu-ccapi.hyundai.com:443/web/v1/user/authorize",
+        "https://prd.eu-ccapi.hyundai.com:8080/api/v1/spa/vehicles",
+        "https://prd.eu-ccapi.hyundai.com:8080/web/v1/user/authorize/extra",
+        "https://prd.eu-ccapi.hyundai.com:8080/web/v1/user/%61uthorize",
+        "https://prd.eu-ccapi.hyundai.com:8080/web/v1/user/authorize#synthetic",
+        concat!(
+            "https://synthetic",
+            "@",
+            "prd.eu-ccapi.hyundai.com:8080/web/v1/user/authorize"
+        ),
+        "https://prd.eu-ccapi.hyundai.com.other.example.org:8080/web/v1/user/authorize",
+        "https://cci-api-eu.hyundai.com/web/v1/user/authorize",
+    ] {
+        let wire = Fake::new(vec![redirect(target)]);
+        let mut client = Client::with_wire(wire.clone());
+        assert_eq!(
+            client
+                .login("user@example.com", "synthetic-password", None)
+                .await
+                .unwrap_err(),
+            Error::RedirectUntrusted
+        );
+        assert_eq!(wire.requests.lock().unwrap().len(), 1);
+    }
+    let page = "https://prd.eu-ccapi.hyundai.com:8080/web/v1/user/authorize";
+    // A trusted first hop must never authorize a foreign second hop.
+    let wire = Fake::new(vec![
+        redirect(page),
+        redirect("https://other.example.org/?code=synthetic"),
+    ]);
+    let mut client = Client::with_wire(wire.clone());
+    assert_eq!(
+        client
+            .login("user@example.com", "synthetic", None)
+            .await
+            .unwrap_err(),
+        Error::RedirectUntrusted
+    );
+    assert_eq!(wire.requests.lock().unwrap().len(), 2);
+    let wire = Fake::new((0..8).map(|_| redirect(page)).collect());
+    let mut client = Client::with_wire(wire.clone());
+    assert_eq!(
+        client
+            .login("user@example.com", "synthetic", None)
+            .await
+            .unwrap_err(),
+        Error::RedirectLoop
+    );
+    assert_eq!(wire.requests.lock().unwrap().len(), 8);
+    let mut client = Client::with_wire(Fake::new(vec![]));
+    assert!(matches!(
+        client
+            .raw("POST", page, &HeaderMap::new(), "synthetic-password", true)
+            .await,
+        Err(Error::RedirectUntrusted)
+    ));
+}
+
 #[tokio::test]
 async fn safe_diagnostics_distinguish_authorize_redirect_provider_terms_and_discovery() {
     let wire = Fake::new(vec![redirect(

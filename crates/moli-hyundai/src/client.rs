@@ -86,7 +86,9 @@ impl Transport for Https {
                 return Err(Error::RedirectUntrusted);
             }
             let path = uri.path();
-            let budget = if host == "idpconnect-eu.hyundai.com" || host == "cci-api-eu.hyundai.com"
+            let budget = if host == "idpconnect-eu.hyundai.com"
+                || host == "cci-api-eu.hyundai.com"
+                || legacy_authorize_page(&uri)
             {
                 35
             } else if host == "prd.eu-ccapi.hyundai.com"
@@ -164,7 +166,9 @@ impl<T: Transport> Client<T> {
     ) -> Result<Response, Error> {
         let uri: url::Url = url.parse().map_err(|_| Error::Protocol)?;
         let host = uri.host_str().ok_or(Error::Protocol)?.to_owned();
-        if !allowed_url(&uri) {
+        if !allowed_url(&uri)
+            || (legacy_authorize_page(&uri) && (method != "GET" || !body.is_empty()))
+        {
             return Err(Error::RedirectUntrusted);
         }
         let mut req = Request::builder()
@@ -904,6 +908,17 @@ fn parse_gspa(path: &str, value: Json) -> Result<Json, Error> {
     Ok(value.get("data").cloned().unwrap_or(Json::Null))
 }
 
+// The public OneApp authorize endpoint redirects here before RSA signin.
+// This is an identity page, not permission to navigate the CCAPI host/API.
+pub(crate) fn legacy_authorize_page(url: &url::Url) -> bool {
+    url.scheme() == "https"
+        && url.host_str() == Some("prd.eu-ccapi.hyundai.com")
+        && url.port() == Some(8080)
+        && url.path() == "/web/v1/user/authorize"
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.fragment().is_none()
+}
 pub(crate) fn allowed_url(url: &url::Url) -> bool {
     url.scheme() == "https"
         && url.username().is_empty()
@@ -919,7 +934,9 @@ pub(crate) fn allowed_url(url: &url::Url) -> bool {
                 ),
                 Some(443),
             ) => true,
-            (Some("prd.eu-ccapi.hyundai.com"), Some(8080)) => url.path().starts_with("/api/"),
+            (Some("prd.eu-ccapi.hyundai.com"), Some(8080)) => {
+                url.path().starts_with("/api/") || legacy_authorize_page(url)
+            }
             _ => false,
         }
 }
@@ -933,10 +950,11 @@ fn redirect_url(base: &url::Url, headers: &HeaderMap) -> Result<url::Url, Error>
     }
     let url = base.join(location).map_err(|_| Error::RedirectUntrusted)?;
     if !allowed_url(&url)
-        || !matches!(
-            url.host_str(),
-            Some("idpconnect-eu.hyundai.com" | "oneapp.hyundai.com")
-        )
+        || !(legacy_authorize_page(&url)
+            || matches!(
+                url.host_str(),
+                Some("idpconnect-eu.hyundai.com" | "oneapp.hyundai.com")
+            ))
     {
         return Err(Error::RedirectUntrusted);
     }
