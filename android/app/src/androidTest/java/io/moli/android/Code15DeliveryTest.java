@@ -34,7 +34,7 @@ public final class Code15DeliveryTest {
     String js(String expression)throws Exception {
         AtomicReference<String> value=new AtomicReference<>();CountDownLatch ready=new CountDownLatch(1);
         main(()->web.evaluateJavascript(expression,v->{value.set(v);ready.countDown();}));
-        assertTrue("WebView callback",ready.await(5,TimeUnit.SECONDS));return value.get();
+        assertTrue("WebView callback; activity destroyed="+activity.isDestroyed(),ready.await(15,TimeUnit.SECONDS));return value.get();
     }
     void waitJs(String expression)throws Exception {
         long end=SystemClock.uptimeMillis()+20000;
@@ -65,10 +65,12 @@ public final class Code15DeliveryTest {
         String index=asset("code15-web/index.html");
         assertEquals(InstrumentationRegistry.getArguments().getString("expectedIndex"),Beta2JourneyTest.digest(index));
         String html=index.replace("<head>","<head><script>"+asset("code15-bootstrap.js")+"</script>");
+        CountDownLatch loaded=new CountDownLatch(1);
         main(()->{
             web=new WebView(activity);web.getSettings().setJavaScriptEnabled(true);web.getSettings().setDomStorageEnabled(true);
             web.getSettings().setAllowFileAccess(false);web.getSettings().setAllowContentAccess(false);
             web.setWebViewClient(new WebViewClient(){
+                @Override public void onPageFinished(WebView view,String url){if("https://moli.test/".equals(url))loaded.countDown();}
                 @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){
                     String path=request.getUrl().getPath();
                     try{
@@ -82,8 +84,16 @@ public final class Code15DeliveryTest {
             });
             activity.setContentView(web);web.requestFocus();web.loadUrl("https://moli.test/");
         });
+        // An evaluation issued across the initial document navigation can lose
+        // its callback. Wait for the actual offline document before querying it.
+        assertTrue("Offline dashboard document loaded",loaded.await(20,TimeUnit.SECONDS));
         waitJs("document.querySelector('.temporary input')?.value === '20.5'");
         js("window.field=document.querySelector('.temporary input');field.scrollIntoView({block:'center'});field.focus();true");
+        CountDownLatch focusedFrame=new CountDownLatch(1);
+        main(()->web.postVisualStateCallback(SystemClock.uptimeMillis(),new WebView.VisualStateCallback(){
+            @Override public void onComplete(long requestId){focusedFrame.countDown();}
+        }));
+        assertTrue("Focused input rendered before keyboard events",focusedFrame.await(15,TimeUnit.SECONDS));
         // The focus handler selects the existing value: a normal delete clears it.
         ins.sendKeyDownUpSync(KeyEvent.KEYCODE_DEL);
         waitJs("field.value === '' && document.querySelector('.temporary button').disabled");
