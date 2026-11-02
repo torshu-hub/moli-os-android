@@ -1378,6 +1378,17 @@ async fn vehicle_journal_and_private_views_require_human_session_and_preserve_un
         .0,
         403
     );
+    assert_eq!(
+        request(
+            &addr,
+            "POST",
+            "/api/vehicles/hyundai-test:v_test/private/navigation",
+            Some(&json!({"latitude":1.0,"longitude":2.0,"name":"synthetic","consent":true}))
+        )
+        .await
+        .0,
+        403
+    );
     let session = pin_session(&addr, "482915").await;
     let (status, body) = request_with(&addr, "GET", path, None, &session).await;
     assert_eq!(status, 200, "{body}");

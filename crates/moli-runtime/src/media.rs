@@ -89,4 +89,12 @@ pub enum SnapshotError {
 /// API surfaces must require a proven human session and send no-store responses.
 pub trait PrivateSource: std::fmt::Debug + Send + Sync + 'static {
     fn read<'a>(&'a self, field: &'a str) -> BoxFuture<'a, anyhow::Result<serde_json::Value>>;
+    /// Prepare a short-lived private input. The vehicle action still requires an ordinary Hub command.
+    fn prepare<'a>(
+        &'a self,
+        _field: &'a str,
+        _input: serde_json::Value,
+    ) -> BoxFuture<'a, anyhow::Result<serde_json::Value>> {
+        Box::pin(async { anyhow::bail!("private preparation unsupported") })
+    }
 }

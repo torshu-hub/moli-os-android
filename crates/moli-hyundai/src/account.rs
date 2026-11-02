@@ -32,23 +32,58 @@ impl Account {
     pub fn encode(&self) -> Result<String, Error> {
         serde_json::to_string(self).map_err(|_| Error::Storage)
     }
-    pub async fn login(username: &str, password: &str, pin: Option<String>) -> Result<Self, Error> {
-        if pin
-            .as_ref()
-            .is_some_and(|p| p.len() != 4 || !p.bytes().all(|b| b.is_ascii_digit()))
-        {
-            return Err(Error::Pin);
-        }
+    pub async fn password_authorization(
+        username: &str,
+        password: &str,
+        pin: Option<String>,
+        mode: crate::auth::ApiMode,
+    ) -> Result<crate::client::Session, crate::auth::LoginFailure> {
+        crate::auth::check_pin(pin.as_deref())
+            .map_err(|e| crate::auth::LoginFailure::local("pin", e))?;
         let mut client = Client::new();
-        let session = client.login(username, password, pin).await?;
-        let vehicles = crate::model::vehicles(&client.vehicles(&session).await?);
-        if vehicles.is_empty() {
-            return Err(Error::Unsupported);
+        let device = client
+            .login_identity(mode)
+            .await
+            .map_err(|e| client.failure(e))?;
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(120),
+            client.login_device(username, password, pin, device, mode),
+        )
+        .await
+        {
+            Ok(result) => result.map_err(|e| client.failure(e)),
+            Err(_) => Err(client.failure(Error::NetworkFailure(
+                moli_net::web_diagnostics::Phase::Headers,
+                true,
+            ))),
         }
-        // CCI device enrollment is part of the reference login, not a vehicle
-        // order or a new push service. It is optional except for quota handling.
-        if let Err(error @ Error::RateLimit(_)) = client.register_device(&session).await {
-            return Err(error);
+    }
+    pub async fn discover(
+        session: crate::client::Session,
+    ) -> Result<Self, crate::auth::LoginFailure> {
+        let mut client = Client::new();
+        Self::discover_with(&mut client, session).await
+    }
+    pub(crate) async fn discover_with<T: Transport>(
+        client: &mut Client<T>,
+        session: crate::client::Session,
+    ) -> Result<Self, crate::auth::LoginFailure> {
+        let data = client
+            .vehicles(&session)
+            .await
+            .map_err(|e| client.failure(e))?;
+        let vehicles = crate::model::vehicles(&data);
+        if vehicles.is_empty() {
+            return Err(crate::auth::LoginFailure::local(
+                "fleet_discovery",
+                Error::Unsupported,
+            ));
+        }
+        if session.api_mode == crate::auth::ApiMode::Gspa {
+            // Device enrollment is not a vehicle order. Do not replay on quota.
+            if let Err(error @ Error::RateLimit(_)) = client.register_device(&session).await {
+                return Err(client.failure(error));
+            }
         }
         Ok(Self {
             session,
@@ -89,6 +124,6 @@ impl Account {
         Ok(())
     }
     pub fn public(&self) -> serde_json::Value {
-        serde_json::json!({"connected":true,"phase":format!("{:?}",self.phase),"expires_at":self.session.expires,"pin_present":self.session.pin.is_some(),"vehicles":self.vehicles.iter().map(|v|serde_json::json!({"key":v.key,"name":v.name,"model":v.model,"ccs2":v.ccs2})).collect::<Vec<_>>()})
+        serde_json::json!({"api_mode":self.session.api_mode,"connected":true,"phase":format!("{:?}",self.phase),"expires_at":self.session.expires,"pin_present":self.session.pin.is_some(),"vehicles":self.vehicles.iter().map(|v|serde_json::json!({"key":v.key,"name":v.name,"model":v.model,"ccs2":v.ccs2})).collect::<Vec<_>>()})
     }
 }

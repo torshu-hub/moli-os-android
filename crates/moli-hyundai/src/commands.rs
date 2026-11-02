@@ -215,6 +215,8 @@ pub struct Command {
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct Options {
+    heating: Option<u64>,
+    navigation_token: Option<String>,
     temperature: Option<f64>,
     duration: Option<u64>,
     defrost: Option<bool>,
@@ -296,6 +298,9 @@ pub fn build(cap: &Capability, value: &Json, state: &Json) -> Result<Command, Er
         .keys()
         .any(|k| !schema.contains_key(k))
     {
+        return Err(Error::Protocol);
+    }
+    if o.heating.is_some_and(|v| v > 4) {
         return Err(Error::Protocol);
     }
     let mut prefix = "remote/vehicles";
@@ -390,8 +395,12 @@ pub fn build(cap: &Capability, value: &Json, state: &Json) -> Result<Command, Er
         "set_off_peak_charging" => {
             json!({"command":"set","reservFlag":u8::from(o.charging.ok_or(Error::Protocol)?),"offpeakPowerFlag":if o.off_peak_only.ok_or(Error::Protocol)?{1}else{2},"reservStartTime":time(o.off_peak_start.as_deref())?,"reservEndTime":time(o.off_peak_end.as_deref())?})
         }
-        "schedule_charging_and_climate" => {
+        "set_navigation" => {
+            json!({"navigation_token":o.navigation_token.filter(|t|t.len()==36&&t.bytes().all(|b|b.is_ascii_hexdigit()||b==b'-')).ok_or(Error::Protocol)?})
+        }
+        "schedule_charging_and_climate" | "schedule_climate" => {
             let temperature = temp(o.temperature)?;
+            let climate_only = cap.key == "schedule_climate";
             let mut departures = json!({});
             for (i, enabled, day, t) in [
                 (
@@ -409,7 +418,7 @@ pub fn build(cap: &Capability, value: &Json, state: &Json) -> Result<Command, Er
             ] {
                 departures[format!("reservChargeInfo{i}")] = json!({"reservChargeSet":enabled.ok_or(Error::Protocol)?,"reservInfo":{"day":days(day)?,"time":time(t)?},"reservFatcSet":{"airCtrl":u8::from(o.climate.ok_or(Error::Protocol)?),"airTemp":{"value":format!("{temperature:.1}"),"hvacTempType":1,"unit":0},"heating1":0,"defrost":o.defrost.unwrap_or(false)}});
             }
-            json!({"command":"set","reservChargeInfo":departures,"reservFlag":u8::from(o.charging.ok_or(Error::Protocol)?),"offPeakPowerInfo":{"offPeakPowerFlag":if o.off_peak_only.ok_or(Error::Protocol)?{2}else{1},"offPeakPowerTime1":{"starttime":time(o.off_peak_start.as_deref())?,"endtime":time(o.off_peak_end.as_deref())?}}})
+            json!({"command":"set","reservChargeInfo":departures,"reservFlag":u8::from(if climate_only{false}else{o.charging.ok_or(Error::Protocol)?}),"offPeakPowerInfo":{"offPeakPowerFlag":if climate_only{1}else if o.off_peak_only.ok_or(Error::Protocol)?{2}else{1},"offPeakPowerTime1":{"starttime":time(o.off_peak_start.as_deref().or(if climate_only{Some("00:00")}else{None}))?,"endtime":time(o.off_peak_end.as_deref().or(if climate_only{Some("00:00")}else{None}))?}}})
         }
         "set_charge_alarm" => {
             let preset = o.preset.as_deref().ok_or(Error::Protocol)?;

@@ -11,13 +11,20 @@ use std::{collections::BTreeMap, fmt, time::Duration};
 pub const IDP: &str = "https://idpconnect-eu.hyundai.com";
 pub const CCI: &str = "https://cci-api-eu.hyundai.com";
 pub const GSPA: &str = "https://gspa-ccs-eu.hyundai.com";
-const CLIENT: &str = "4f4953b5-02e1-4dbc-8599-87e983ee1be5";
-const REDIRECT: &str = "https://oneapp.hyundai.com/redirect";
+pub(crate) const CLIENT: &str = "4f4953b5-02e1-4dbc-8599-87e983ee1be5";
+pub(crate) const REDIRECT: &str = "https://oneapp.hyundai.com/redirect";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     Network,
     Authentication,
     Consent,
+    AuthorizeRedirect,
+    SigninRedirect,
+    RedirectUntrusted,
+    RedirectLoop,
+    InvalidCredentials,
+    Callback,
+    NetworkFailure(moli_net::web_diagnostics::Phase, bool),
     Captcha,
     Certificate,
     Protocol,
@@ -31,9 +38,17 @@ pub enum Error {
 impl Error {
     pub fn code(self) -> &'static str {
         match self {
-            Self::Network => "network",
             Self::Authentication => "authentication",
-            Self::Consent => "consent",
+            Self::Consent => "provider_terms_required",
+            Self::AuthorizeRedirect => "authorize_redirect_incomplete",
+            Self::SigninRedirect => "signin_redirect_incomplete",
+            Self::RedirectUntrusted => "redirect_not_allowed",
+            Self::RedirectLoop => "redirect_limit",
+            Self::InvalidCredentials => "credentials_rejected",
+            Self::Callback => "callback_invalid_or_expired",
+            Self::NetworkFailure(_, true) => "network_timeout",
+            Self::NetworkFailure(moli_net::web_diagnostics::Phase::Tls, false) => "tls_failure",
+            Self::Network | Self::NetworkFailure(_, false) => "network",
             Self::Captcha => "captcha_or_block",
             Self::Certificate => "certificate",
             Self::Protocol => "protocol",
@@ -66,25 +81,33 @@ impl Transport for Https {
     fn send(&self, req: Request<Full<moli_net::Body>>) -> BoxFuture<'_, Result<Response, Error>> {
         Box::pin(async move {
             let host = req.uri().host().ok_or(Error::Protocol)?.to_owned();
-            if ![
-                "idpconnect-eu.hyundai.com",
-                "cci-api-eu.hyundai.com",
-                "gspa-ccs-eu.hyundai.com",
-            ]
-            .contains(&host.as_str())
-                || req.uri().scheme_str() != Some("https")
-                || req.uri().port_u16().is_some_and(|p| p != 443)
-            {
-                return Err(Error::Protocol);
+            let uri = url::Url::parse(&req.uri().to_string()).map_err(|_| Error::Protocol)?;
+            if !allowed_url(&uri) {
+                return Err(Error::RedirectUntrusted);
             }
-            let (status, headers, body) = moli_net::web_diagnostics::https(
+            let path = uri.path();
+            let budget = if host == "idpconnect-eu.hyundai.com" || host == "cci-api-eu.hyundai.com"
+            {
+                35
+            } else if host == "prd.eu-ccapi.hyundai.com"
+                && (path == "/api/v1/spa/vehicles"
+                    || path.ends_with("/status/latest")
+                    || path.ends_with("/carstatus/latest")
+                    || path.ends_with("/drvhistory"))
+            {
+                15
+            } else {
+                3
+            };
+            let (status, headers, body) = moli_net::web_diagnostics::https_port(
                 &host,
+                uri.port_or_known_default().ok_or(Error::Protocol)?,
                 req,
-                Duration::from_secs(3),
+                Duration::from_secs(budget),
                 2 * 1024 * 1024,
             )
             .await
-            .map_err(|_| Error::Network)?;
+            .map_err(|e| Error::NetworkFailure(e.phase, e.timeout))?;
             Ok(Response {
                 status: status.as_u16(),
                 headers,
@@ -95,6 +118,8 @@ impl Transport for Https {
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Session {
+    #[serde(default)]
+    pub api_mode: crate::auth::ApiMode,
     pub device: String,
     pub cci: Json,
     pub access: String,
@@ -115,17 +140,21 @@ impl fmt::Debug for Session {
 pub(crate) struct Client<T = Https> {
     pub wire: T,
     cookies: BTreeMap<String, String>,
+    pub(crate) phase: &'static str,
+    pub(crate) last_http: Option<u16>,
 }
 impl Client<Https> {
     pub fn new() -> Self {
         Self {
             wire: Https,
             cookies: BTreeMap::new(),
+            phase: "setup",
+            last_http: None,
         }
     }
 }
 impl<T: Transport> Client<T> {
-    async fn raw(
+    pub(crate) async fn raw(
         &mut self,
         method: &str,
         url: &str,
@@ -135,17 +164,8 @@ impl<T: Transport> Client<T> {
     ) -> Result<Response, Error> {
         let uri: url::Url = url.parse().map_err(|_| Error::Protocol)?;
         let host = uri.host_str().ok_or(Error::Protocol)?.to_owned();
-        if ![
-            "idpconnect-eu.hyundai.com",
-            "cci-api-eu.hyundai.com",
-            "gspa-ccs-eu.hyundai.com",
-        ]
-        .contains(&host.as_str())
-            || uri.scheme() != "https"
-            || !uri.username().is_empty()
-            || uri.password().is_some()
-        {
-            return Err(Error::Protocol);
+        if !allowed_url(&uri) {
+            return Err(Error::RedirectUntrusted);
         }
         let mut req = Request::builder()
             .method(method)
@@ -169,7 +189,9 @@ impl<T: Transport> Client<T> {
             req.headers_mut()
                 .insert("cookie", cookie.parse().map_err(|_| Error::Protocol)?);
         }
+        self.last_http = None;
         let response = self.wire.send(req).await?;
+        self.last_http = Some(response.status);
         let cookies: Vec<_> = response
             .headers
             .get_all("set-cookie")
@@ -223,7 +245,7 @@ impl<T: Transport> Client<T> {
         Ok(response)
     }
     #[allow(clippy::needless_pass_by_value)] // Consume the sensitive response at its decoding boundary.
-    fn json(response: Response) -> Result<Json, Error> {
+    pub(crate) fn json(response: Response) -> Result<Json, Error> {
         match response.status {
             401 => return Err(Error::Authentication),
             403 => return Err(Error::Captcha),
@@ -303,7 +325,7 @@ impl<T: Transport> Client<T> {
         }
         Ok(())
     }
-    fn legacy_headers(device: &str) -> Result<HeaderMap, Error> {
+    pub(crate) fn legacy_headers(device: &str) -> Result<HeaderMap, Error> {
         let mut h = Self::headers(device)?;
         for (k, v) in [
             ("client-name", "hyundai"),
@@ -325,6 +347,8 @@ impl<T: Transport> Client<T> {
         Self {
             wire,
             cookies: BTreeMap::new(),
+            phase: "setup",
+            last_http: None,
         }
     }
     async fn auth(
@@ -340,6 +364,15 @@ impl<T: Transport> Client<T> {
             body.to_string()
         };
         let timestamp = moli_core::now_ms();
+        self.phase = if path.contains("token-exchange") {
+            "ccs_exchange"
+        } else if path.contains("token-refresh") {
+            "refresh"
+        } else if path.ends_with("pin") {
+            "pin"
+        } else {
+            "cci_exchange"
+        };
         let mut h = Self::headers(device)?;
         h.insert(
             "x-timestamp",
@@ -388,12 +421,27 @@ impl<T: Transport> Client<T> {
         Self::json(response)
     }
     #[allow(clippy::too_many_lines)] // Bounded five-step identity protocol, one ordered transaction.
+    #[cfg(test)]
     pub async fn login(
         &mut self,
         username: &str,
         password: &str,
         pin: Option<String>,
     ) -> Result<Session, Error> {
+        let device = crypto::device_id().map_err(|_| Error::Protocol)?;
+        self.login_device(username, password, pin, device, crate::auth::ApiMode::Gspa)
+            .await
+    }
+    #[allow(clippy::too_many_lines)] // Bounded identity protocol with explicit phases and safe redirects.
+    pub(crate) async fn login_device(
+        &mut self,
+        username: &str,
+        password: &str,
+        pin: Option<String>,
+        device: String,
+        mode: crate::auth::ApiMode,
+    ) -> Result<Session, Error> {
+        self.phase = "authorize";
         if username.is_empty()
             || password.is_empty()
             || username.len() > 256
@@ -401,7 +449,6 @@ impl<T: Transport> Client<T> {
         {
             return Err(Error::Authentication);
         }
-        let device = crypto::device_id().map_err(|_| Error::Protocol)?;
         let mut h = Self::headers(&device)?;
         h.insert("user-agent","Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36_CCS_APP_AOS".parse().map_err(|_|Error::Protocol)?);
         let mut url = url::Url::parse(&format!("{IDP}/auth/api/v2/user/oauth2/authorize"))
@@ -414,29 +461,32 @@ impl<T: Transport> Client<T> {
             ("state", "ccsp"),
             ("country", "fr"),
         ]);
-        for _ in 0..5 {
+        let mut reached = false;
+        for _ in 0..8 {
             let response = self.raw("GET", url.as_str(), &h, "", false).await?;
             let lower = String::from_utf8_lossy(&response.body).to_lowercase();
             if lower.contains("abusing") || lower.contains("captcha") {
                 return Err(Error::Captcha);
             }
             if (300..400).contains(&response.status) {
-                let location = response
-                    .headers
-                    .get("location")
-                    .and_then(|v| v.to_str().ok())
-                    .ok_or(Error::Protocol)?;
-                url = url.join(location).map_err(|_| Error::Protocol)?;
-                if url.host_str() != Some("idpconnect-eu.hyundai.com") {
-                    return Err(Error::Consent);
+                url = redirect_url(&url, &response.headers)?;
+                // A callback is a terminal navigation target, never fetch its code.
+                if crate::auth::is_callback(&url) {
+                    reached = true;
+                    break;
                 }
                 continue;
             }
             if response.status != 200 {
-                return Err(Error::Authentication);
+                return Err(Error::AuthorizeRedirect);
             }
+            reached = true;
             break;
         }
+        if !reached {
+            return Err(Error::RedirectLoop);
+        }
+        self.phase = "rsa_certificate";
         let cert = Self::json(
             self.raw(
                 "GET",
@@ -464,6 +514,7 @@ impl<T: Transport> Client<T> {
             ("kid", text(key, "kid")?),
             ("_csrf", ""),
         ]);
+        self.phase = "signin";
         let response = self
             .raw(
                 "POST",
@@ -480,28 +531,47 @@ impl<T: Transport> Client<T> {
                 Error::Authentication
             });
         }
-        let redirect = response
-            .headers
-            .get("location")
-            .and_then(|v| v.to_str().ok())
-            .ok_or(Error::Authentication)?;
-        let redirect = url::Url::parse(redirect)
-            .or_else(|_| url::Url::parse(IDP).and_then(|base| base.join(redirect)))
-            .map_err(|_| Error::Protocol)?;
-        let code = redirect
-            .query_pairs()
-            .find(|(k, _)| k == "code")
-            .map(|(_, v)| v.to_string())
-            .ok_or(if redirect.path().contains("authorization") {
-                Error::Consent
-            } else {
-                Error::Authentication
-            })?;
-        if !["oneapp.hyundai.com", "idpconnect-eu.hyundai.com"]
-            .contains(&redirect.host_str().unwrap_or(""))
-        {
-            return Err(Error::Protocol);
+        self.phase = "signin_redirect";
+        let base =
+            url::Url::parse(&format!("{IDP}/auth/account/signin")).map_err(|_| Error::Protocol)?;
+        let mut redirect = redirect_url(&base, &response.headers)?;
+        for _ in 0..8 {
+            if redirect.query_pairs().any(|(k, _)| k == "error") {
+                return Err(
+                    if redirect.query_pairs().any(|(k, v)| {
+                        k == "error_description"
+                            && v.trim().eq_ignore_ascii_case("invalid credentials")
+                    }) {
+                        Error::InvalidCredentials
+                    } else {
+                        Error::SigninRedirect
+                    },
+                );
+            }
+            if let Some(code) = crate::auth::code_at_callback(&redirect) {
+                return self.finish_code(device, &code, pin, mode).await;
+            }
+            if redirect.path().contains("/web/v1/user/authorization") {
+                return Err(Error::Consent);
+            }
+            if redirect.path().ends_with("/account/signin") {
+                return Err(Error::SigninRedirect);
+            }
+            let response = self.raw("GET", redirect.as_str(), &h, "", false).await?;
+            if !(300..400).contains(&response.status) {
+                return Err(Error::SigninRedirect);
+            }
+            redirect = redirect_url(&redirect, &response.headers)?;
         }
+        Err(Error::RedirectLoop)
+    }
+    pub(crate) async fn finish_code(
+        &mut self,
+        device: String,
+        code: &str,
+        pin: Option<String>,
+        mode: crate::auth::ApiMode,
+    ) -> Result<Session, Error> {
         let cci = self
             .auth(
                 &device,
@@ -514,6 +584,7 @@ impl<T: Transport> Client<T> {
             )
             .await?;
         let mut session = Session {
+            api_mode: mode,
             device,
             cci,
             access: String::new(),
@@ -549,6 +620,7 @@ impl<T: Transport> Client<T> {
                     .as_str()
                     .and_then(|t| claim(t, "sub"))
             })
+            .or_else(|| (session.api_mode == crate::auth::ApiMode::Europe).then(String::new))
             .ok_or(Error::Protocol)?;
         Ok(())
     }
@@ -596,6 +668,7 @@ impl<T: Transport> Client<T> {
         Ok(())
     }
     pub async fn register_device(&mut self, session: &Session) -> Result<(), Error> {
+        self.phase = "device_registration";
         let mut headers = Self::legacy_headers(&session.device)?;
         Self::bearer(&mut headers, session)?;
         let app_token = crate::crypto::hex(
@@ -618,6 +691,10 @@ impl<T: Transport> Client<T> {
         }
     }
     pub async fn vehicles(&mut self, session: &Session) -> Result<Json, Error> {
+        self.phase = "fleet_discovery";
+        if session.api_mode == crate::auth::ApiMode::Europe {
+            return self.legacy_vehicles(session).await;
+        }
         let mut h = Self::legacy_headers(&session.device)?;
         Self::bearer(&mut h, session)?;
         Self::json(
@@ -736,6 +813,9 @@ impl<T: Transport> Client<T> {
         pin: bool,
         ccs2: u64,
     ) -> Result<HeaderMap, Error> {
+        if session.api_mode == crate::auth::ApiMode::Europe {
+            return self.legacy_control_headers(session, pin, ccs2).await;
+        }
         self.gspa_headers(session, pin, ccs2).await
     }
     pub async fn control_post(
@@ -822,4 +902,43 @@ fn parse_gspa(path: &str, value: Json) -> Result<Json, Error> {
         });
     }
     Ok(value.get("data").cloned().unwrap_or(Json::Null))
+}
+
+pub(crate) fn allowed_url(url: &url::Url) -> bool {
+    url.scheme() == "https"
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.fragment().is_none()
+        && match (url.host_str(), url.port_or_known_default()) {
+            (
+                Some(
+                    "idpconnect-eu.hyundai.com"
+                    | "oneapp.hyundai.com"
+                    | "cci-api-eu.hyundai.com"
+                    | "gspa-ccs-eu.hyundai.com",
+                ),
+                Some(443),
+            ) => true,
+            (Some("prd.eu-ccapi.hyundai.com"), Some(8080)) => url.path().starts_with("/api/"),
+            _ => false,
+        }
+}
+fn redirect_url(base: &url::Url, headers: &HeaderMap) -> Result<url::Url, Error> {
+    let location = headers
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(Error::Protocol)?;
+    if location.len() > 8192 {
+        return Err(Error::RedirectUntrusted);
+    }
+    let url = base.join(location).map_err(|_| Error::RedirectUntrusted)?;
+    if !allowed_url(&url)
+        || !matches!(
+            url.host_str(),
+            Some("idpconnect-eu.hyundai.com" | "oneapp.hyundai.com")
+        )
+    {
+        return Err(Error::RedirectUntrusted);
+    }
+    Ok(url)
 }

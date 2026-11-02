@@ -96,3 +96,30 @@ pub(crate) async fn private(
         ),
     }
 }
+
+/// Stage private navigation coordinates in RAM; the subsequent Hub order carries only a one-use token.
+pub(crate) async fn prepare_private(
+    State(hub): State<Hub>,
+    Extension(humans): Extension<Arc<Sessions>>,
+    caller: Caller,
+    Path((id, field)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(input): Json<serde_json::Value>,
+) -> Response {
+    if !allowed(&hub, &id, &humans, &caller, &headers) {
+        return error(StatusCode::FORBIDDEN, "A human session is required");
+    }
+    if field != "navigation" {
+        return error(StatusCode::NOT_FOUND, "Unknown private input");
+    }
+    match hub
+        .private_prepare(&DeviceId::from(id), &field, input)
+        .await
+    {
+        Ok(value) => ([(CACHE_CONTROL, "no-store")], Json(value)).into_response(),
+        Err(_) => error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Private destination unavailable or invalid",
+        ),
+    }
+}

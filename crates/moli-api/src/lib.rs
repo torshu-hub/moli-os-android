@@ -330,7 +330,10 @@ pub fn router(hub: Hub, shutdown: CancellationToken, options: &Options) -> Route
         .route("/api/history", get(rest::history))
         .route("/api/vehicles/{id}/journal", get(vehicles::journal))
         .route("/api/vehicles/{id}/finance", post(vehicles::finance))
-        .route("/api/vehicles/{id}/private/{field}", get(vehicles::private))
+        .route(
+            "/api/vehicles/{id}/private/{field}",
+            get(vehicles::private).post(vehicles::prepare_private),
+        )
         .route("/api/bench", get(rest::bench))
         .route("/api/home", get(rest::home))
         .merge(house_routes(&humans, options))

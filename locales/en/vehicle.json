@@ -298,5 +298,15 @@
   "vehicle.reading.ev_second_departure_climate_temperature": "Second departure climate temperature",
   "vehicle.reading.fuel_driving_range": "Fuel Driving Range",
   "vehicle.reading.ev_target_range_charge_AC": "ev target range charge AC",
-  "vehicle.reading.ev_target_range_charge_DC": "ev target range charge DC"
+  "vehicle.reading.ev_target_range_charge_DC": "ev target range charge DC",
+  "vehicle.schedule_climate": "Schedule departures and climate",
+  "vehicle.heating": "Associated heating (Hyundai code 0–4)",
+  "vehicle.legacy_split_schedule_required": "This API separates charge and climate: use their dedicated controls. No delayed second order is sent.",
+  "vehicle.legacy_use_combined_schedule": "On this protocol, set off-peak hours in the full charge and departure schedule.",
+  "vehicle.legacy_reference_not_implemented": "Function absent from this Europe API in the current reference.",
+  "vehicle.legacy_svm_unavailable": "Stored SVM images are not exposed by the legacy Europe API.",
+  "vehicle.navigation_privacy": "The destination is sent only to Hyundai after confirmation. Coordinates and name stay in memory for delivery, without history or export.",
+  "vehicle.latitude": "Latitude",
+  "vehicle.longitude": "Longitude",
+  "vehicle.destination_name": "Destination name (optional)"
 }

@@ -1,14 +1,16 @@
 //! Native Hyundai Europe CCI/GSPA. Passive cloud reads; voluntary human controls.
 pub mod account;
+pub mod auth;
 mod client;
 mod commands;
 mod crypto;
+mod legacy;
 mod model;
 mod private;
 #[cfg(test)]
 mod tests;
 use client::Client;
-pub use client::Error;
+pub use client::{Error, Session};
 use moli_core::{Access, Device, DeviceId, Kind, Origin, PointSpec, Semantic, Unit, Value, now_ms};
 use moli_history::{
     Store,
@@ -110,6 +112,7 @@ impl account::Vault for Vault<'_> {
     }
 }
 struct Record {
+    api_mode: auth::ApiMode,
     vehicle: model::Vehicle,
     snapshot: model::Snapshot,
     private: Arc<private::Private>,
@@ -276,16 +279,7 @@ impl Hyundai {
             }
             let provider = model::validate_id(vehicle.id.as_deref().ok_or(Error::Protocol)?)?;
             let id = ctx.device_id(&vehicle.key);
-            let payload = client
-                .gspa(
-                    &mut account.session,
-                    "GET",
-                    &format!("status/vehicles/{provider}/stored-status"),
-                    &Json::Null,
-                    false,
-                    vehicle.ccs2,
-                )
-                .await?;
+            let payload = client.cached_status(&mut account.session, &vehicle).await?;
             let mut snapshot =
                 model::Snapshot::parse(&payload, now_ms(), self.config.max_age_seconds * 1000);
             snapshot
@@ -293,13 +287,11 @@ impl Hyundai {
                 .insert("snapshot".into(), snapshot.summary());
             // Driving lifetime totals carry Wh in this protocol. Never infer from SOC.
             match client
-                .gspa(
+                .auxiliary(
                     &mut account.session,
-                    "GET",
+                    &vehicle,
+                    "driving_info",
                     &format!("driving-info/vehicles/{provider}"),
-                    &Json::Null,
-                    false,
-                    vehicle.ccs2,
                 )
                 .await
             {
@@ -336,14 +328,7 @@ impl Hyundai {
                     ),
                 ] {
                     match client
-                        .gspa(
-                            &mut account.session,
-                            "GET",
-                            &path,
-                            &Json::Null,
-                            false,
-                            vehicle.ccs2,
-                        )
+                        .auxiliary(&mut account.session, &vehicle, key, &path)
                         .await
                     {
                         Ok(data) => {
@@ -386,6 +371,7 @@ impl Hyundai {
                 &account.session,
                 &vehicle,
                 self.config.location_enabled,
+                self.config.commands_enabled,
             );
             let unsupported = records
                 .get(&id)
@@ -394,7 +380,11 @@ impl Hyundai {
                 "read_capabilities".into(),
                 model::coverage(&snapshot.values),
             );
+            snapshot
+                .values
+                .insert("api_mode".into(), json!(account.session.api_mode));
             let record = Record {
+                api_mode: account.session.api_mode,
                 vehicle,
                 snapshot,
                 private,
@@ -454,7 +444,8 @@ impl Hyundai {
         Ok(())
     }
     fn publish(&self, ctx: &DriverCtx, id: &DeviceId, r: &Record, pin: bool) {
-        let caps = commands::capabilities(
+        let caps = capabilities(
+            r.api_mode,
             &r.vehicle,
             &r.snapshot.state,
             self.config.commands_enabled,
@@ -556,7 +547,8 @@ impl Hyundai {
         {
             return Err(Error::Expired);
         }
-        let cap = commands::capabilities(
+        let cap = capabilities(
+            account.session.api_mode,
             &record.vehicle,
             &record.snapshot.state,
             true,
@@ -613,15 +605,37 @@ impl Hyundai {
         {
             return Err(Error::Expired);
         }
-        let result = client
-            .control_post(
-                &format!("{}/{provider}/{}", order.prefix, order.endpoint),
-                &headers,
-                &order.body,
-            )
-            .await;
+        let result = if account.session.api_mode == auth::ApiMode::Europe {
+            let mut order = legacy::order(
+                &record.vehicle,
+                &cap,
+                &cmd.value.to_json(),
+                &record.snapshot.state,
+                &account.session.device,
+            )?;
+            if cap.key == "set_navigation" {
+                order.body = record.private.take_navigation(
+                    order.body["navigation_token"]
+                        .as_str()
+                        .ok_or(Error::Protocol)?,
+                    &account.session.device,
+                )?;
+            }
+            client
+                .legacy_request(order.method, &order.path, &headers, &order.body)
+                .await
+        } else {
+            client
+                .control_post(
+                    &format!("{}/{provider}/{}", order.prefix, order.endpoint),
+                    &headers,
+                    &order.body,
+                )
+                .await
+        };
         match result {
-            Ok(_) => {
+            Ok(ref reply) => {
+                record.private.acknowledge(reply);
                 ctx.set_state(&cmd.device.id,"command_status",Value::from_json(&json!({"action":cap.key,"at":now_ms(),"state":"cloud_acknowledged","physical_result":"not_confirmed"})));
                 ctx.diagnostic("hyundai_command_ack", cap.key, 0);
                 Ok(())
@@ -641,6 +655,19 @@ impl Hyundai {
                 Err(error)
             }
         }
+    }
+}
+fn capabilities(
+    mode: auth::ApiMode,
+    vehicle: &model::Vehicle,
+    state: &Json,
+    write: bool,
+    pin: bool,
+) -> Vec<commands::Capability> {
+    if mode == auth::ApiMode::Europe {
+        legacy::capabilities(vehicle, state, write, pin)
+    } else {
+        commands::capabilities(vehicle, state, write, pin)
     }
 }
 fn spec(key: &str, value: Option<&Json>, write: bool) -> PointSpec {

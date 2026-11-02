@@ -1514,6 +1514,22 @@ impl Hub {
             .await
             .map_err(|_| anyhow::anyhow!("private source timeout"))?
     }
+    pub async fn private_prepare(
+        &self,
+        device: &DeviceId,
+        field: &str,
+        input: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        let source = self
+            .read()
+            .private_sources
+            .get(device)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("private source unavailable"))?;
+        tokio::time::timeout(Duration::from_secs(8), source.prepare(field, input))
+            .await
+            .map_err(|_| anyhow::anyhow!("private source timeout"))?
+    }
     pub(crate) fn provide_snapshots(
         &self,
         device: &DeviceId,

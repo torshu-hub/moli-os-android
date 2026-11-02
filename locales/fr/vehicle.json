@@ -298,5 +298,15 @@
   "vehicle.reading.ev_second_departure_climate_temperature": "Température de climatisation du second départ",
   "vehicle.reading.fuel_driving_range": "Autonomie carburant",
   "vehicle.reading.ev_target_range_charge_AC": "ev target range charge AC",
-  "vehicle.reading.ev_target_range_charge_DC": "ev target range charge DC"
+  "vehicle.reading.ev_target_range_charge_DC": "ev target range charge DC",
+  "vehicle.schedule_climate": "Programmer les départs et la climatisation",
+  "vehicle.heating": "Chauffage associé (code Hyundai 0–4)",
+  "vehicle.legacy_split_schedule_required": "Cette API sépare recharge et climatisation : utilisez les deux commandes dédiées. Aucun second ordre différé ne sera envoyé.",
+  "vehicle.legacy_use_combined_schedule": "Sur ce protocole, réglez les heures creuses dans la programmation complète recharge et départ.",
+  "vehicle.legacy_reference_not_implemented": "Fonction absente de cette API Europe dans la référence actuelle.",
+  "vehicle.legacy_svm_unavailable": "Les images SVM ne sont pas exposées par l’API Europe historique.",
+  "vehicle.navigation_privacy": "La destination est envoyée uniquement à Hyundai après votre validation. Coordonnées et nom restent en mémoire le temps de l’envoi, sans historique ni export.",
+  "vehicle.latitude": "Latitude",
+  "vehicle.longitude": "Longitude",
+  "vehicle.destination_name": "Nom de destination (facultatif)"
 }

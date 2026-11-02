@@ -69,6 +69,7 @@ pub fn vehicles(value: &Json) -> Vec<Vehicle> {
                     .get("vehicleModelName")
                     .or_else(|| v.get("modelName"))
                     .and_then(Json::as_str)
+                    .or_else(|| v.get("vehicleName").and_then(Json::as_str))
                     .unwrap_or("Hyundai EU")
                     .chars()
                     .take(80)
@@ -76,6 +77,7 @@ pub fn vehicles(value: &Json) -> Vec<Vehicle> {
                 ccs2: {
                     let reported = v
                         .get("ccs2ProtocolSupport")
+                        .or_else(|| v.get("ccuCCS2ProtocolSupport"))
                         .or_else(|| v.get("ccu_ccs2_protocol_support"))
                         .and_then(Json::as_u64)
                         .unwrap_or(0);
@@ -316,6 +318,13 @@ impl Snapshot {
             );
         }
         aliases_into(state, &mut values);
+        if payload.get("legacy_charging").is_some() {
+            values.insert("charging".into(), payload["legacy_charging"].clone());
+            values.insert(
+                "ev_battery_is_plugged_in".into(),
+                payload["legacy_plugged"].clone(),
+            );
+        }
         for key in ["vehicle_at", "cloud_at", "received_at", "quality"] {
             let v = match key {
                 "vehicle_at" => json!(vehicle_at),
@@ -606,7 +615,7 @@ pub fn coverage(values: &BTreeMap<String, Json>) -> Json {
                         !v.is_null() && v.get("available") != Some(&Json::Bool(false))
                     })
                 });
-                let reason = if bare == "ev_battery_is_plugged_in" {
+                let reason = if bare == "ev_battery_is_plugged_in" && !available {
                     "connector_lock_is_not_plug_sensor"
                 } else if points.is_empty() {
                     "not_exposed_by_eu_reference"

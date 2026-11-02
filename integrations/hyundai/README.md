@@ -1,6 +1,7 @@
 # Hyundai Europe CCI / myHyundai
 
-Native portable Rust driver, private Android account setup, ordinary Moli Hub
+Native portable Rust driver with both Home Assistant Europe transports (legacy
+CCAPI region 1, CCI/GSPA region 9), private Android account setup, ordinary Moli Hub
 points and guarded human commands, vehicle card and persistent Ioniq 5 journal.
 No Python runtime, HA server, separate telemetry database or GPS history.
 
@@ -10,8 +11,16 @@ The EU protocol is ported from `hyundai_kia_connect_api` v4.45.0,
 Public cipher parameters and affine signing vectors are included with notices;
 all account, status, journal and Android test fixtures are synthetic.
 
-CCI/OneApp login encrypts the password with the IDP's public RSA key; the
-password is not persisted. The encrypted vault holds the full rotating token
+Both transports share CCI/OneApp authorization. The recommended private Hyundai
+page supports provider terms/verification when requested, captures only the exact
+HTTPS callback with a random state, and consumes the encrypted pending ticket
+before code exchange. No generic EU OTP endpoint is invented: the pinned EU
+classes inherit unsupported OTP methods. The direct password alternative
+uses the IDP public RSA key; its password is not persisted. Safe diagnostics
+distinguish authorize/redirect, RSA/signin, CCI/CCS, device/fleet, PIN, quota and
+network/TLS phases, never remote URLs or response text. Identity requests have
+a 35-second total bound, direct login a 120-second bound, without retries.
+An authorized session is saved separately for explicit fleet-discovery recovery. The encrypted vault holds the full rotating token
 bundle and optional vehicle PIN. An ambiguous rotation is blocked rather than
 replayed; an interrupted CCS exchange resumes from the saved rotated bundle.
 No password login retry loop. Only explicit fingerprint gate failures permit
@@ -33,9 +42,24 @@ The Hub guard applies and the driver additionally refuses every non-Ui origin,
 including Automation/System. PIN verification happens before the final deadline
 check. Never retry a remote POST or claim a physical outcome from its cloud ACK.
 A person may explicitly query the cloud's latest action status.
+There are no automatic mode fallbacks, password retries, OTP resends or real
+vehicle calls during CI. Account setup exposes a real API choice and opens the
+vehicle/manual-control options after successful discovery, without a redundant
+read-only login checkbox. Commands and GPS still default off.
 
-Pre-CCS2 remote controls, navigation destination and new SVM capture are not
-implemented by this reference EU transport and are visibly unavailable. Stored
+GSPA pre-CCS2 remote controls, navigation destination and new SVM capture are
+not implemented by its reference transport and are visibly unavailable. Legacy
+CCAPI uses certificate-verified TLS on the exact provider host/port 8080, with
+its own app identity/stamp, registration, fleet/cache/history, PIN and typed
+control routes. Pre-CCS2 lock/climate/charge and charge limits are implemented through
+those distinct routes. Its normalized legacy fields preserve unknowns and
+source-specific units/timezone; CCS2 uses the shared vehicle status schema.
+Legacy navigation stages a private destination in RAM and sends only a one-use
+token through the ordinary guarded Hub command; coordinates never enter
+Hub state/history/export. Legacy CCS2 charge and departure-climate settings
+are separate explicit actions, respecting the five-second Hub deadline rather
+than queuing an unobserved second write. Features absent from the legacy
+reference (SVM, charge alarms, battery conditioning) are unavailable there. Stored
 SVM uses the newest media set, strips JPEG metadata, and renders the five views
 with optional calibrated fisheye dewarp. GPS is opt-in, volatile and human-only;
 private previews are not part of Hub persistence/history/exports. Android

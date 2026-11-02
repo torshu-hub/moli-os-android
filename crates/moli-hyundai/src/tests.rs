@@ -53,6 +53,7 @@ fn response(status: u16, body: Json) -> Result<Response, Error> {
 }
 fn session() -> Session {
     Session {
+        api_mode: crate::auth::ApiMode::default(),
         device: "00000000-0000-0000-0000-000000000000".into(),
         cci: json!({"accessToken":"synthetic-access","refreshToken":"synthetic-refresh","nonCcsToken":"synthetic-non-ccs","nonCcsRefreshToken":"synthetic-non-refresh","exchangeableAccessToken":"synthetic-exchange","exchangeableRefreshToken":"synthetic-exchange-refresh","idToken":"synthetic-id"}),
         access: "synthetic-ccs".into(),
@@ -269,6 +270,7 @@ impl moli_runtime::Driver for CommandGate {
                 3_600_000,
             );
             let record = crate::Record {
+                api_mode: crate::auth::ApiMode::Gspa,
                 vehicle,
                 snapshot,
                 private: Arc::default(),
@@ -378,4 +380,307 @@ fn synthetic_vehicle_exposes_eu_commands_with_reference_dtos() {
     assert_eq!(s.values["ev_range_km"], 300.0);
     assert_eq!(s.values["ev_battery_capacity"], 277_200);
     assert_eq!(s.values["front_left_door_is_locked"], true);
+}
+
+#[allow(clippy::unnecessary_wraps)] // Same fallible queue interface as synthetic responses.
+fn redirect(target: &str) -> Result<Response, Error> {
+    let mut r = response(302, Json::Null).unwrap();
+    r.headers.insert("location", target.parse().unwrap());
+    Ok(r)
+}
+fn synthetic_cert() -> Json {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    json!({"retValue":{"n":URL_SAFE_NO_PAD.encode([255_u8;256]),"e":"AQAB","kid":"synthetic"}})
+}
+#[tokio::test]
+async fn legitimate_oneapp_authorize_redirect_and_signin_chain_are_not_false_consent() {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    let mut initial = redirect("https://oneapp.hyundai.com/login").unwrap();
+    initial.headers.insert(
+        "set-cookie",
+        "idp_session=synthetic; Secure; HttpOnly".parse().unwrap(),
+    );
+    let wire = Fake::new(vec![
+        Ok(initial),
+        response(200, json!({})),
+        response(200, synthetic_cert()),
+        redirect("/auth/complete"),
+        redirect("https://oneapp.hyundai.com/redirect?code=synthetic-code"),
+        response(200, session().cci),
+        response(
+            200,
+            json!({"accessToken":format!("x.{}.x",URL_SAFE_NO_PAD.encode(br#"{"uid":"synthetic-user"}"#)),"expiresTime":3600}),
+        ),
+    ]);
+    let mut client = Client::with_wire(wire.clone());
+    client
+        .login("user@example.com", "synthetic-password", None)
+        .await
+        .unwrap();
+    let req = wire.requests.lock().unwrap();
+    assert!(req[1].1.get("cookie").is_none());
+    assert!(
+        req[2].1["cookie"]
+            .to_str()
+            .unwrap()
+            .contains("idp_session=synthetic")
+    );
+    assert!(
+        req.iter()
+            .all(|(url, _, _)| !url.starts_with("https://oneapp.hyundai.com/redirect"))
+    );
+    assert_eq!(req.len(), 7);
+}
+#[tokio::test]
+async fn safe_diagnostics_distinguish_authorize_redirect_provider_terms_and_discovery() {
+    let wire = Fake::new(vec![redirect(
+        "https://other.example.org/?code=synthetic-secret",
+    )]);
+    let mut c = Client::with_wire(wire.clone());
+    let e = c
+        .login("user@example.com", "synthetic", None)
+        .await
+        .unwrap_err();
+    let d = c.failure(e);
+    assert_eq!(d.diagnostic.phase, "authorize");
+    assert_eq!(d.diagnostic.cause, "redirect_not_allowed");
+    assert_eq!(d.diagnostic.http, Some(302));
+    assert!(!format!("{d:?}").contains("synthetic-secret"));
+    assert_eq!(wire.requests.lock().unwrap().len(), 1);
+    let mut c = Client::with_wire(Fake::new(vec![
+        response(200, json!({})),
+        response(200, synthetic_cert()),
+        redirect("/web/v1/user/authorization?session=synthetic-private"),
+    ]));
+    let e = c
+        .login("user@example.com", "synthetic", None)
+        .await
+        .unwrap_err();
+    let d = c.failure(e);
+    assert_eq!(d.diagnostic.phase, "signin_redirect");
+    assert_eq!(d.diagnostic.cause, "provider_terms_required");
+    assert!(
+        !serde_json::to_string(&d.diagnostic)
+            .unwrap()
+            .contains("synthetic-private")
+    );
+    let mut c = Client::with_wire(Fake::new(vec![response(503, Json::Null)]));
+    let e = c.vehicles(&session()).await.unwrap_err();
+    assert_eq!(c.failure(e).diagnostic.phase, "fleet_discovery");
+}
+#[tokio::test]
+async fn legacy_mode_uses_ccapi_registration_fleet_cache_and_passive_history_query() {
+    let wire = Fake::new(vec![
+        response(
+            200,
+            json!({"retCode":"S","resMsg":{"deviceId":"synthetic-device"}}),
+        ),
+        response(
+            200,
+            json!({"retCode":"S","resMsg":{"vehicles":[{"vehicleId":"synthetic-car","nickname":"Ioniq test","vehicleName":"Ioniq 5","ccuCCS2ProtocolSupport":0}]}}),
+        ),
+        response(
+            200,
+            json!({"retCode":"S","resMsg":{"vehicleStatusInfo":{"vehicleStatus":{"time":"20261102120000","battery":{"batSoc":80},"doorLock":true,"evStatus":{"batteryStatus":50,"batteryCharge":false,"batteryPlugin":2,"chargePortDoorOpenStatus":2}},"odometer":{"value":1000,"unit":1}}}}),
+        ),
+        response(
+            200,
+            json!({"retCode":"S","resMsg":{"drivingInfoDetail":[{"drivingDate":"20261101","totalPwrCsp":16000,"calculativeOdo":100}]}}),
+        ),
+    ]);
+    let mut c = Client::with_wire(wire.clone());
+    let mode = crate::auth::ApiMode::Europe;
+    let device = c.login_identity(mode).await.unwrap();
+    let mut s = session();
+    s.api_mode = mode;
+    s.device = device;
+    let fleet = c.vehicles(&s).await.unwrap();
+    let v = model::vehicles(&fleet);
+    assert_eq!(v.len(), 1);
+    assert_eq!(v[0].ccs2, 0);
+    let cached = c.cached_status(&mut s, &v[0]).await.unwrap();
+    let snapshot = model::Snapshot::parse(
+        &cached,
+        model::timestamp(&json!("20261102110000")).unwrap(),
+        3_600_000,
+    );
+    assert_eq!(snapshot.values["soc"], 50.0);
+    assert_eq!(snapshot.values["is_locked"], true);
+    assert_eq!(snapshot.values["charging"], false);
+    assert_eq!(snapshot.values["ev_battery_is_plugged_in"], true);
+    assert_eq!(snapshot.quality, "cached_recent");
+    let days = c
+        .auxiliary(&mut s, &v[0], "driving_history", "ignored-gspa-route")
+        .await
+        .unwrap();
+    assert_eq!(days["drivingInfoDetail"][0]["totalPwrCsp"], 16000);
+    let req = wire.requests.lock().unwrap();
+    assert!(
+        req.iter()
+            .all(|(u, _, _)| u.starts_with(crate::legacy::BASE))
+    );
+    assert!(req[2].0.ends_with("/status/latest"));
+    assert_eq!(
+        serde_json::from_str::<Json>(&req[3].2).unwrap(),
+        json!({"periodTarget":0})
+    );
+    assert!(
+        req.iter()
+            .all(|(u, _, _)| !u.contains("/control/") && !u.ends_with("/status"))
+    );
+    assert_eq!(
+        req[1].1["ccsp-application-id"],
+        "014d2225-8495-4735-812d-2616334fd15d"
+    );
+}
+#[test]
+fn legacy_commands_translate_real_endpoints_and_do_not_enable_unimplemented_gspa_features() {
+    let v = model::Vehicle {
+        key: "v_synthetic".into(),
+        id: Some("synthetic-car".into()),
+        name: "synthetic".into(),
+        model: "Ioniq".into(),
+        ccs2: 0,
+    };
+    let state = json!({"Cabin":{"Door":{},"HVAC":{},"Window":{}},"Green":{"ChargingInformation":{},"ChargingDoor":{"State":2}},"Electronics":{"Battery":{"Level":80}}});
+    let caps = crate::legacy::capabilities(&v, &state, true, true);
+    let lock = caps.iter().find(|c| c.key == "lock").unwrap();
+    assert!(lock.available);
+    assert!(!lock.pin);
+    let order = crate::legacy::order(&v, lock, &json!({}), &state, "synthetic-device").unwrap();
+    assert_eq!(
+        order.path,
+        "/api/v1/spa/vehicles/synthetic-car/control/door"
+    );
+    assert_eq!(
+        order.body,
+        json!({"action":"lock","deviceId":"synthetic-device"})
+    );
+    assert!(
+        !caps
+            .iter()
+            .find(|c| c.key == "capture_svm_image")
+            .unwrap()
+            .available
+    );
+    assert!(
+        !caps
+            .iter()
+            .find(|c| c.key == "set_charging_current")
+            .unwrap()
+            .available
+    );
+    let force = caps.iter().find(|c| c.key == "force_refresh").unwrap();
+    let order = crate::legacy::order(&v, force, &json!({}), &state, "synthetic").unwrap();
+    assert_eq!(order.method, "GET");
+    assert!(order.path.ends_with("/status"));
+    let climate = caps.iter().find(|c| c.key == "start_climate").unwrap();
+    let order = crate::legacy::order(
+        &v,
+        climate,
+        &json!({"temperature":21,"duration":5,"defrost":true,"heating":3}),
+        &state,
+        "synthetic",
+    )
+    .unwrap();
+    assert_eq!(order.body["tempCode"], "0EH");
+    assert_eq!(order.body["options"]["heating1"], 3);
+}
+#[tokio::test]
+async fn private_navigation_staging_returns_only_a_one_use_token_and_never_hub_coordinates() {
+    use moli_runtime::media::PrivateSource;
+    let private = crate::private::Private::default();
+    let mut s = session();
+    s.api_mode = crate::auth::ApiMode::Europe;
+    let v = model::Vehicle {
+        key: "v_synthetic".into(),
+        id: Some("synthetic-car".into()),
+        name: "synthetic".into(),
+        model: "Ioniq".into(),
+        ccs2: 0,
+    };
+    private.update(&json!({}), &s, &v, false, true);
+    assert!(
+        private
+            .prepare(
+                "navigation",
+                json!({"latitude":1.0,"longitude":2.0,"name":"synthetic","consent":false})
+            )
+            .await
+            .is_err()
+    );
+    let staged = private
+        .prepare(
+            "navigation",
+            json!({"latitude":1.0,"longitude":2.0,"name":"synthetic","consent":true}),
+        )
+        .await
+        .unwrap();
+    assert!(staged.get("latitude").is_none() && staged.get("poiInfoList").is_none());
+    let token = staged["navigation_token"].as_str().unwrap();
+    let body = private.take_navigation(token, "synthetic-device").unwrap();
+    assert_eq!(body["poiInfoList"][0]["coord"]["lat"], 1.0);
+    assert_eq!(body["deviceID"], "synthetic-device");
+    assert!(private.take_navigation(token, "synthetic-device").is_err());
+    assert!(!format!("{private:?}").contains("synthetic-car"));
+}
+
+#[tokio::test]
+async fn browser_authorization_to_legacy_fleet_is_end_to_end_without_credentials_or_wakeup() {
+    let wire = Fake::new(vec![
+        response(
+            200,
+            json!({"retCode":"S","resMsg":{"deviceId":"synthetic-device"}}),
+        ),
+        response(200, session().cci),
+        response(
+            200,
+            json!({"accessToken":"synthetic-opaque-ccs","expiresTime":3600}),
+        ),
+        response(
+            200,
+            json!({"retCode":"S","resMsg":{"vehicles":[{"vehicleId":"synthetic-car","nickname":"Ioniq test","vehicleName":"Ioniq 5","ccuCCS2ProtocolSupport":0}]}}),
+        ),
+    ]);
+    let mut client = Client::with_wire(wire.clone());
+    let ticket = crate::auth::PendingLogin::begin_with(
+        &mut client,
+        crate::auth::ApiMode::Europe,
+        Some("0000".into()),
+    )
+    .await
+    .unwrap();
+    let url = url::Url::parse(ticket.public()["authorization_url"].as_str().unwrap()).unwrap();
+    let state = url
+        .query_pairs()
+        .find(|(k, _)| k == "state")
+        .unwrap()
+        .1
+        .into_owned();
+    let session = ticket
+        .finish_with(
+            &mut client,
+            &format!("https://oneapp.hyundai.com/redirect?code=synthetic-code&state={state}"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(session.api_mode, crate::auth::ApiMode::Europe);
+    let account = Account::discover_with(&mut client, session).await.unwrap();
+    assert_eq!(account.vehicles.len(), 1);
+    assert_eq!(account.public()["api_mode"], "europe");
+    assert!(
+        !account
+            .public()
+            .to_string()
+            .contains("synthetic-opaque-ccs")
+    );
+    let requests = wire.requests.lock().unwrap();
+    assert_eq!(requests.len(), 4);
+    assert!(
+        requests
+            .iter()
+            .all(|(url, _, body)| !url.contains("/control/")
+                && !url.ends_with("/status")
+                && !body.contains("password"))
+    );
 }
