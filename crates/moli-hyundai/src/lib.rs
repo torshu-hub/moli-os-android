@@ -13,8 +13,8 @@ use client::Client;
 pub use client::{Error, Session};
 use moli_core::{Access, Device, DeviceId, Kind, Origin, PointSpec, Semantic, Unit, Value, now_ms};
 use moli_history::{
-    Store,
-    vehicle::{DrivingDay, VehicleObservation, Weather},
+    journal::Journal,
+    vehicle::{DrivingDay, VehicleObservation},
 };
 use moli_runtime::{BoxFuture, CommandRequest, Driver, DriverCtx};
 use serde::{Deserialize, Serialize};
@@ -121,6 +121,7 @@ struct Record {
 enum LoopEvent {
     Command(Option<CommandRequest>),
     Poll,
+    Expire,
 }
 impl Driver for Hyundai {
     fn kind(&self) -> &'static str {
@@ -129,7 +130,7 @@ impl Driver for Hyundai {
     #[allow(clippy::too_many_lines)] // Single serialized account/command scheduler; no background control task.
     fn run<'a>(&'a self, ctx: &'a mut DriverCtx) -> BoxFuture<'a, anyhow::Result<()>> {
         Box::pin(async move {
-            let store = Store::open(&self.path)?;
+            let mut journal = Journal::new(self.path.clone());
             let mut client = Client::new();
             let mut records = BTreeMap::new();
             let mut account = ctx
@@ -145,8 +146,36 @@ impl Driver for Hyundai {
                 ctx.set_state(&id, "quality", Value::from("unconfirmed"));
             }
             loop {
-                let event = tokio::select! {cmd=ctx.next_command()=>LoopEvent::Command(cmd),()=tokio::time::sleep_until(next)=>LoopEvent::Poll};
+                let expiry = records
+                    .values()
+                    .filter(|r: &&Record| r.snapshot.quality == "cached_recent")
+                    .filter_map(|r| r.snapshot.vehicle_at)
+                    .map(|at| {
+                        at.saturating_add(self.config.max_age_seconds * 1000)
+                            .saturating_add(1)
+                    })
+                    .min();
+                let expire_at = Instant::now()
+                    + Duration::from_millis(
+                        expiry.map_or(86_400_000, |at| at.saturating_sub(now_ms())),
+                    );
+                let event = tokio::select! {cmd=ctx.next_command()=>LoopEvent::Command(cmd),()=tokio::time::sleep_until(next)=>LoopEvent::Poll,()=tokio::time::sleep_until(expire_at)=>LoopEvent::Expire};
                 match event {
+                    LoopEvent::Expire => {
+                        for (id, record) in &mut records {
+                            if record
+                                .snapshot
+                                .expire(now_ms(), self.config.max_age_seconds * 1000)
+                            {
+                                ctx.set_state(id, "quality", Value::from(record.snapshot.quality));
+                                ctx.set_state(
+                                    id,
+                                    "snapshot",
+                                    Value::from_json(&record.snapshot.summary()),
+                                );
+                            }
+                        }
+                    }
                     LoopEvent::Command(None) => return Ok(()),
                     LoopEvent::Command(Some(cmd)) => {
                         if cmd.key.as_ref() == "refresh_cached" {
@@ -181,26 +210,35 @@ impl Driver for Hyundai {
                         }));
                     }
                     LoopEvent::Poll => {
-                        if let Some(weather) = self.config.weather_point.as_ref().and_then(|p| {
-                            weather(ctx, p, now_ms(), self.config.max_age_seconds * 1000)
-                        }) {
-                            for id in ctx.devices() {
-                                if self.config.vehicles.is_empty()
-                                    || self
-                                        .config
-                                        .vehicles
-                                        .iter()
-                                        .any(|key| ctx.device_id(key) == id)
-                                {
-                                    store.vehicle_weather(id.as_str(), &weather)?;
-                                }
+                        for id in ctx.devices() {
+                            if !self.config.vehicles.is_empty()
+                                && !self
+                                    .config
+                                    .vehicles
+                                    .iter()
+                                    .any(|key| ctx.device_id(key) == id)
+                            {
+                                continue;
                             }
+                            journal.weather(
+                                ctx,
+                                &id,
+                                self.config.weather_point.as_deref(),
+                                self.config.max_age_seconds * 1000,
+                            );
                         }
 
                         let extra_due = Instant::now() >= extras;
                         let result = if let Some(account) = &mut account {
-                            self.collect(ctx, &store, &mut client, account, &mut records, extra_due)
-                                .await
+                            self.collect(
+                                ctx,
+                                &mut journal,
+                                &mut client,
+                                account,
+                                &mut records,
+                                extra_due,
+                            )
+                            .await
                         } else {
                             Err(Error::Authentication)
                         };
@@ -259,7 +297,7 @@ impl Hyundai {
     async fn collect(
         &self,
         ctx: &DriverCtx,
-        store: &Store,
+        journal: &mut Journal,
         client: &mut Client,
         account: &mut account::Account,
         records: &mut BTreeMap<DeviceId, Record>,
@@ -304,7 +342,7 @@ impl Hyundai {
                 Err(e) => {
                     snapshot.values.insert(
                         "driving_info".into(),
-                        json!({"available":false,"reason":e.code()}),
+                        json!({"available":false,"reason":e.code(),"received_at":now_ms()}),
                     );
                 }
             }
@@ -334,9 +372,7 @@ impl Hyundai {
                         Ok(data) => {
                             if key == "driving_history" {
                                 for row in driving_days(&data, now_ms()) {
-                                    store
-                                        .vehicle_day(id.as_str(), &row)
-                                        .map_err(|_| Error::Storage)?;
+                                    journal.day(ctx, &id, &row);
                                 }
                             }
                             let safe = safe_details(key, &data);
@@ -344,9 +380,10 @@ impl Hyundai {
                         }
                         Err(e @ (Error::RateLimit(_) | Error::Authentication)) => return Err(e),
                         Err(e) => {
-                            snapshot
-                                .values
-                                .insert(key.into(), json!({"available":false,"reason":e.code()}));
+                            snapshot.values.insert(
+                                key.into(),
+                                json!({"available":false,"reason":e.code(),"received_at":now_ms()}),
+                            );
                         }
                     }
                 }
@@ -376,13 +413,11 @@ impl Hyundai {
             let unsupported = records
                 .get(&id)
                 .map_or_else(BTreeMap::new, |r| r.unsupported.clone());
-            snapshot.values.insert(
-                "read_capabilities".into(),
-                model::coverage(&snapshot.values),
-            );
             snapshot
                 .values
                 .insert("api_mode".into(), json!(account.session.api_mode));
+            // Auxiliary calls have their own receipt timestamps and can outlast freshness.
+            snapshot.expire(now_ms(), self.config.max_age_seconds * 1000);
             let record = Record {
                 api_mode: account.session.api_mode,
                 vehicle,
@@ -394,37 +429,35 @@ impl Hyundai {
             if record.snapshot.quality == "cached_recent"
                 && let Some(at) = record.snapshot.vehicle_at
             {
-                let weather = self.config.weather_point.as_ref().and_then(|point| {
-                    weather(ctx, point, now_ms(), self.config.max_age_seconds * 1000)
-                });
                 let get = |k: &str| record.snapshot.values.get(k).and_then(model::number);
-                let row =
-                    VehicleObservation {
-                        at,
-                        received_at: record.snapshot.received_at,
-                        soc: get("soc"),
-                        odometer_km: get("odometer"),
-                        charging: record
-                            .snapshot
-                            .values
-                            .get("charging")
-                            .and_then(Json::as_bool),
-                        consumed_wh: record
-                            .snapshot
-                            .values
-                            .get("driving_info")
-                            .and_then(|v| model::number(&v["totalPwrCsp"])),
-                        weather,
-                        grid: self.config.dedicated_ev_meter.as_ref().and_then(|p| {
-                            grid(ctx, p, now_ms(), self.config.max_age_seconds * 1000)
-                        }),
-                        max_gap_ms: self.config.max_age_seconds * 1000,
-                    };
+                let row = VehicleObservation {
+                    at,
+                    received_at: record.snapshot.received_at,
+                    soc: get("soc"),
+                    odometer_km: get("odometer"),
+                    charging: record
+                        .snapshot
+                        .values
+                        .get("charging")
+                        .and_then(Json::as_bool),
+                    consumed_wh: record
+                        .snapshot
+                        .values
+                        .get("driving_info")
+                        .and_then(|v| model::number(&v["totalPwrCsp"])),
+                    weather: None,
+                    grid: None,
+                    max_gap_ms: self.config.max_age_seconds * 1000,
+                };
                 // Counter deltas are bounded and resets become unknown. Their
                 // boundaries remain observed/incomplete, never exact metered trips.
-                store
-                    .vehicle_observe(id.as_str(), row)
-                    .map_err(|_| Error::Storage)?;
+                journal.observe(
+                    ctx,
+                    &id,
+                    row,
+                    self.config.weather_point.as_deref(),
+                    self.config.dedicated_ev_meter.as_deref(),
+                );
             }
             records.insert(id, record);
         }
@@ -670,7 +703,7 @@ fn capabilities(
         commands::capabilities(vehicle, state, write, pin)
     }
 }
-fn spec(key: &str, value: Option<&Json>, write: bool) -> PointSpec {
+fn spec(key: &str, _value: Option<&Json>, write: bool) -> PointSpec {
     let unit = match key {
         "soc" | "soh" | "battery_12v" => Some(Unit::Percent),
         "odometer" | "ev_range_km" => Unit::parse("km"),
@@ -699,16 +732,16 @@ fn spec(key: &str, value: Option<&Json>, write: bool) -> PointSpec {
         },
         kind: if write {
             Kind::Text
-        } else if value.is_some_and(Json::is_boolean) {
-            Kind::Binary
-        } else if value.is_some_and(Json::is_number) {
-            Kind::Numeric {
-                min: None,
-                max: None,
-                step: None,
-            }
         } else {
-            Kind::Text
+            match model::point_kind(key) {
+                model::PointKind::Binary => Kind::Binary,
+                model::PointKind::Numeric => Kind::Numeric {
+                    min: None,
+                    max: None,
+                    step: None,
+                },
+                model::PointKind::Text => Kind::Text,
+            }
         },
         unit,
         access: Access {
@@ -812,28 +845,6 @@ fn safe_details(key: &str, data: &Json) -> Json {
         }
     }
     out
-}
-fn weather(ctx: &DriverCtx, point: &str, now: u64, age: u64) -> Option<Weather> {
-    let (sample, unit) = ctx.observe(&moli_core::PointId::from(point))?;
-    if unit != Some(Unit::Celsius) || sample.ts > now || now.saturating_sub(sample.ts) > age {
-        return None;
-    }
-    Some(Weather {
-        point: point.into(),
-        at: sample.ts,
-        celsius: sample.value.as_f64()?,
-    })
-}
-fn grid(ctx: &DriverCtx, point: &str, now: u64, age: u64) -> Option<moli_history::vehicle::Grid> {
-    let (sample, unit) = ctx.observe(&moli_core::PointId::from(point))?;
-    if unit != Some(Unit::KiloWattHour) || sample.ts > now || now.saturating_sub(sample.ts) > age {
-        return None;
-    }
-    Some(moli_history::vehicle::Grid {
-        point: point.into(),
-        at: sample.ts,
-        kwh: sample.value.as_f64()?,
-    })
 }
 
 fn technical(data: &Json) -> Json {

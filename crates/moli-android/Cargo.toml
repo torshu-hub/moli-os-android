@@ -10,21 +10,11 @@ rust-version = "1.95"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-moli-hyundai.workspace = true
-moli-core.workspace = true
+moli-setup = { path = "../moli-setup" }
 moli-os = { path = "../moli-os" }
 moli-runtime.workspace = true
-moli-netatmo = { workspace = true, features = ["personal-oauth"] }
-moli-profile.workspace = true
-moli-solarman.workspace = true
-moli-ipp.workspace = true
-moli-sonos.workspace = true
-moli-moonraker.workspace = true
 jni = "0.21.1"
-toml_edit = "0.25"
 serde_json.workspace = true
-toml.workspace = true
-tokio.workspace = true
 
 [lints.clippy]
 all = "warn"

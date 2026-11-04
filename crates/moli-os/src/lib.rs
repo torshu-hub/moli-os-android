@@ -937,6 +937,17 @@ fn start_history(
     cancel: &CancellationToken,
 ) -> anyhow::Result<Option<(moli_history::History, tokio::task::JoinHandle<()>)>> {
     if config.server.history_days == 0 {
+        if config.drivers.iter().any(|driver| driver.kind == "hyundai") {
+            let Ok(store) = moli_history::Store::open(&config.server.data_dir.join("history.db"))
+            else {
+                tracing::warn!("Vehicle journal unavailable; raw history remains disabled");
+                return Ok(None);
+            };
+            return Ok(Some((
+                moli_history::History::from_store(Arc::new(store)),
+                tokio::spawn(async {}),
+            )));
+        }
         return Ok(None);
     }
     let options = moli_history::Options {
@@ -1246,6 +1257,33 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn vehicle_journal_remains_readable_without_raw_history() {
+        let dir =
+            std::env::temp_dir().join(format!("moli-journal-disabled-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut config: Config = toml::from_str("").unwrap();
+        config.server.data_dir = dir.clone();
+        config.server.history_days = 0;
+        config.drivers.push(driver("hyundai"));
+        let hub = Hub::new(HubOptions::default()).unwrap();
+        let (history, task) = start_history(&config, &hub, &CancellationToken::new())
+            .unwrap()
+            .unwrap();
+        task.await.unwrap();
+        assert!(
+            history
+                .vehicle_report(
+                    "hyundai:v_test".into(),
+                    "2026-11-01".into(),
+                    "2026-11-02".into()
+                )
+                .await
+                .is_ok()
+        );
+        drop(history);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn kinds_are_what_build_driver_builds() {
         let data = std::env::temp_dir();

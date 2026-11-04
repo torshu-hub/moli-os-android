@@ -1,8 +1,8 @@
 //! JNI boundary; all business code remains in the official engine.
-mod configuration;
-mod hyundai;
-mod meross;
-mod netatmo;
+use moli_setup::configuration;
+use moli_setup::hyundai;
+use moli_setup::meross;
+use moli_setup::netatmo;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};

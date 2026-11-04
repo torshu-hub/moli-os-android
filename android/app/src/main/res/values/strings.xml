@@ -327,4 +327,5 @@
     <string name="hyundai_discover">Reprendre la découverte des véhicules</string>
     <string name="hyundai_commands_on">Commandes manuelles activées : leur disponibilité dépend du véhicule et de l’API. Aucun automatisme.</string>
     <string name="hyundai_commands_off">Les commandes manuelles peuvent être activées dans « Véhicules, commandes et synchronisation ».</string>
+    <string name="hyundai_journal_settings">Associations du carnet</string>
 </resources>

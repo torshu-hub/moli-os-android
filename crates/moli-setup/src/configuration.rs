@@ -5,11 +5,11 @@ use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 
 include!(concat!(env!("OUT_DIR"), "/catalogue.rs"));
 
-pub(crate) fn form(text: &str) -> Result<Value, &'static str> {
+pub fn form(text: &str) -> Result<Value, &'static str> {
     form_for(text, "open-meteo")
 }
 
-pub(crate) fn catalogue(text: &str) -> Result<Value, &'static str> {
+pub fn catalogue(text: &str) -> Result<Value, &'static str> {
     let config: toml::Value = toml::from_str(text).map_err(|_| "configuration")?;
     let document = toml_edit::Document::parse(text).map_err(|_| "configuration")?;
     let packages: Result<Vec<_>, &'static str> = PACKAGES
@@ -284,7 +284,7 @@ fn package_for(config: &toml::Value, package: &str) -> Result<Value, &'static st
     )
 }
 
-pub(crate) fn prepare(input: &Value) -> Result<String, &'static str> {
+pub fn prepare(input: &Value) -> Result<String, &'static str> {
     let text = input["text"].as_str().ok_or("input")?;
     let id = input["id"].as_str().ok_or("input")?;
     let package_id = input
@@ -404,7 +404,7 @@ fn update_fields(driver: &mut Table, input: &Value, fields: &[Value]) -> Result<
 }
 
 /// Activation changes only the selected canonical driver's `enabled` field.
-pub(crate) fn toggle(input: &Value) -> Result<String, &'static str> {
+pub fn toggle(input: &Value) -> Result<String, &'static str> {
     let text = input["text"].as_str().ok_or("input")?;
     let id = input["id"].as_str().ok_or("input")?;
     let enabled = input["enabled"].as_bool().ok_or("input")?;
@@ -424,7 +424,7 @@ pub(crate) fn toggle(input: &Value) -> Result<String, &'static str> {
 
 /// Resolve membership through the same canonical catalogue as the UI, then
 /// return one candidate for one validation and `ConfigurationTransaction` commit.
-pub(crate) fn toggle_package(input: &Value) -> Result<String, &'static str> {
+pub fn toggle_package(input: &Value) -> Result<String, &'static str> {
     let text = input["text"].as_str().ok_or("input")?;
     let profile = input["profile"].as_str().ok_or("input")?;
     let enabled = input["enabled"].as_bool().ok_or("input")?;

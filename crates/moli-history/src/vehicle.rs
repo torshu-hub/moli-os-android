@@ -591,6 +591,50 @@ mod tests {
         .unwrap()
     }
     #[test]
+    fn unchanged_observations_keep_new_boundaries_and_reopen_without_duplication() {
+        let (store, dir) = store();
+        let start = at("2026-11-01");
+        let mut row = VehicleObservation {
+            at: start,
+            received_at: start,
+            soc: Some(50.0),
+            odometer_km: Some(1000.0),
+            charging: Some(false),
+            consumed_wh: Some(10.0),
+            weather: None,
+            grid: None,
+            max_gap_ms: 3_600_000,
+        };
+        store
+            .vehicle_observe("hyundai:v_test", row.clone())
+            .unwrap();
+        row.at += 900_000;
+        row.received_at = row.at;
+        store
+            .vehicle_observe("hyundai:v_test", row.clone())
+            .unwrap();
+        drop(store);
+        let store = Store::open(&dir.join("history.db")).unwrap();
+        store
+            .vehicle_observe("hyundai:v_test", row.clone())
+            .unwrap();
+        let payload: String = store
+            .writer
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT payload FROM vehicle_last WHERE vehicle=?1",
+                ["hyundai:v_test"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let progress: Progress = decode(&payload).unwrap();
+        assert_eq!(progress.last.at, row.at);
+        assert_eq!(progress.last.received_at, row.received_at);
+        drop(store);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
     fn daily_archive_is_idempotent_survives_raw_prune_and_distinguishes_zero_from_absence() {
         let (store, dir) = store();
         let row = DrivingDay {
