@@ -1,13 +1,14 @@
 # Hyundai Europe CCI / myHyundai
 
-Native portable Rust driver with both Home Assistant Europe transports (legacy
-CCAPI region 1, CCI/GSPA region 9), private Android account setup, ordinary Moli Hub
+Native portable Rust driver with both Hyundai Europe transports (legacy
+CCAPI region 1, CCI/GSPA region 9), portable private account setup, ordinary Moli Hub
 points and guarded human commands, vehicle card and persistent Ioniq 5 journal.
 No Python runtime, HA server, separate telemetry database or GPS history.
 
 The EU protocol is ported from `hyundai_kia_connect_api` v4.45.0,
-`43343489d6183ba0ba2be03c3fc4eacd0ac2d536` (MIT); functional coverage compares
-`kia_uvo` v3.22.0, `d56b2bc41c9ecc810297ad16af12e9febdded66f` (MIT).
+`43343489d6183ba0ba2be03c3fc4eacd0ac2d536` (MIT). Earlier functional comparison
+used `kia_uvo` v3.22.0, `d56b2bc41c9ecc810297ad16af12e9febdded66f` (MIT);
+code24 removes that comparison from production. Protocol tables and notices remain.
 Public cipher parameters and affine signing vectors are included with notices;
 all account, status, journal and Android test fixtures are synthetic.
 
@@ -86,8 +87,9 @@ day boundaries/timezone remain to qualify, while observations/weather use Paris.
 Whole-home Linky and ordinary Meross sockets are never assumed to measure EV
 charging. No Raspberry Pi database has been imported.
 
-The dependent draft PR contains the HA-to-EU-to-Moli coverage matrix and delivery
-proofs. Real account compatibility, vehicle-specific capability rejection,
+Historical delivery proofs remain in the dependent draft PRs. Code24 contracts,
+portable operator and compatibility limits are documented in
+[the architecture note](../../docs/components/android-code24.md). Real account compatibility, vehicle-specific capability rejection,
 renewal over time and physical command results require voluntary qualification
 on the owner's S5e. Protocol fixtures and CI do not establish real-car parity.
 

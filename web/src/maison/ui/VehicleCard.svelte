@@ -8,7 +8,6 @@
   const d = $derived(device(id));
   const read = (key) => value(id, key);
   function object(v, fallback = null) { try { return typeof v === 'string' ? JSON.parse(v) : v ?? fallback; } catch { return fallback; } }
-  const readCaps = $derived(object(read('read_capabilities'), []));
   const caps = $derived(object(read('capabilities'), []));
   const ready = $derived(d?.online !== false && read('quality') === 'cached_recent' && typeof read('vehicle_at') === 'number' && home.now - read('vehicle_at') <= (read('max_age_seconds') ?? 3600) * 1000);
   let opened = $state(false), tab = $state('readings'), action = $state(null), form = $state({}), confirmed = $state(false), busy = $state(false), error = $state(''), report = $state(null), privateView = $state(null), destination = $state({});
@@ -47,11 +46,11 @@
     {#if error}<p role="alert" class="warning">{error}</p>{/if}
     {#if tab === 'readings'}
       <dl class="summary">{#each [['soc','%'],['soh','%'],['battery_12v','%'],['odometer','km'],['charging_power','kW'],['charging',''],['ev_range_km','km'],['air_temperature_c','°C'],['outside_temperature_c','°C'],['is_locked','']] as [key,unit]}<div><dt>{label(key)}</dt><dd>{fmt(read(key),unit)}</dd></div>{/each}</dl>
-      <p>{label('vehicle_at')}: {time(read('vehicle_at'))}<br/>{label('cloud_at')}: {time(read('cloud_at'))}<br/>{label('received_at')}: {time(read('received_at'))}</p>
+
       <button disabled={busy || read('location_enabled') !== true} onclick={() => showPrivate('gps')}>{label('gps')}</button><button disabled={busy || read('api_mode') === 'europe'} onclick={() => showPrivate('svm')}>{label('svm')}</button>{#if read('api_mode') === 'europe'}<p class="muted">{label('legacy_svm_unavailable')}</p>{/if}
       {#if privateView}<div class="private">{#if privateView.base64}<VehicleSvm view={privateView} />{:else}<p>{label('gps')}: {fmt(privateView.latitude)} / {fmt(privateView.longitude)} · {time(privateView.location_at)}</p>{/if}<p>{label('private')}</p><button onclick={() => privateView = null}>{t('commun.fermer')}</button></div>{/if}
-      <details><summary>{label('read_coverage')}</summary>{#each readCaps as cap}<p>{cap.ha} · {label(cap.reason)}{#if cap.points.length} · {cap.points.join(', ')}{/if}</p>{/each}</details>
-      <details><summary>{label('all_readings')}</summary><dl>{#each d?.points.filter((p) => p.access.read && !['capabilities','read_capabilities'].includes(p.key)) ?? [] as p (p.key)}<div><dt>{p.label}</dt><dd>{fmt(read(p.key), p.unit || '')}</dd></div>{/each}</dl></details>
+      <details><summary>{label('technical_details')}</summary><p>{label('vehicle_at')}: {time(read('vehicle_at'))}<br/>{label('cloud_at')}: {time(read('cloud_at'))}<br/>{label('received_at')}: {time(read('received_at'))}</p><p>{fmt(read('quality'))} · {fmt(read('api_mode'))}</p>{#if read('error')}<p role="alert">{fmt(read('error'))}</p>{/if}</details>
+      <details><summary>{label('all_readings')}</summary><dl>{#each d?.points.filter((p) => p.access.read && !['capabilities','snapshot','error','quality','api_mode','vehicle_at','cloud_at','received_at','max_age_seconds','location_enabled','command_status'].includes(p.key)) ?? [] as p (p.key)}<div><dt>{p.label}</dt><dd>{fmt(read(p.key), p.unit || '')}</dd></div>{/each}</dl></details>
     {:else if tab === 'commands'}
       <p>{label('command_help')}</p>
       <div class="controls">{#each caps.filter((c) => c.available) as cap}<button disabled={busy || (!ready && cap.key !== 'refresh_cached')} onclick={() => choose(cap)}>{label(cap.key)}</button>{/each}</div>

@@ -92,11 +92,77 @@ pub fn vehicles(value: &Json) -> Vec<Vehicle> {
         })
         .collect()
 }
+/// Provider schema, independent of whether the current sample has a value.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PointKind {
+    Numeric,
+    Binary,
+    Text,
+}
+impl PointKind {
+    fn normalize(self, raw: &Json) -> Json {
+        match self {
+            Self::Numeric if raw.is_number() => raw.clone(),
+            Self::Numeric => number(raw)
+                .or_else(|| raw.as_bool().map(|v| f64::from(u8::from(v))))
+                .map_or(Json::Null, |n| json!(n)),
+            Self::Binary => json!(wire_flag(raw, false)),
+            Self::Text => {
+                if raw.is_null() {
+                    Json::Null
+                } else if let Some(s) = raw.as_str() {
+                    json!(s)
+                } else if raw.is_number() || raw.is_boolean() {
+                    json!(raw.to_string())
+                } else {
+                    Json::Null
+                }
+            }
+        }
+    }
+}
+pub fn point_kind(key: &str) -> PointKind {
+    if let Some(a) = aliases().iter().find(|a| a.key == key) {
+        return a.kind;
+    }
+    if let Some(f) = fields().iter().find(|f| f.key == key) {
+        return f.kind;
+    }
+    match key {
+        "charging"
+        | "driving_ready"
+        | "is_locked"
+        | "location_enabled"
+        | "ev_battery_is_plugged_in" => PointKind::Binary,
+        "soc"
+        | "soh"
+        | "battery_12v"
+        | "odometer"
+        | "charging_power"
+        | "total_consumed_wh"
+        | "total_regenerated_wh"
+        | "air_temperature_c"
+        | "outside_temperature_c"
+        | "ev_range_km"
+        | "vehicle_at"
+        | "cloud_at"
+        | "received_at"
+        | "max_age_seconds"
+        | "tire_front_left"
+        | "tire_front_right"
+        | "tire_rear_left"
+        | "tire_rear_right" => PointKind::Numeric,
+        _ => PointKind::Text,
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Field {
     pub key: String,
     pub path: String,
     pub unit: String,
+    pub kind: PointKind,
 }
 pub fn fields() -> &'static Vec<Field> {
     static F: OnceLock<Vec<Field>> = OnceLock::new();
@@ -167,6 +233,22 @@ pub struct Snapshot {
     pub state: Json,
 }
 impl Snapshot {
+    /// Expiration is independent of cloud polling and never changes acquisition times.
+    pub fn expire(&mut self, now: u64, max_age: u64) -> bool {
+        if self.quality == "cached_recent"
+            && self
+                .vehicle_at
+                .is_some_and(|at| now.saturating_sub(at) > max_age)
+        {
+            self.quality = "stale";
+            self.values.insert("quality".into(), json!(self.quality));
+            self.values.insert("snapshot".into(), self.summary());
+            true
+        } else {
+            false
+        }
+    }
+
     #[allow(clippy::too_many_lines, clippy::float_cmp)] // One schema boundary; 0/1 are exact wire enums.
     pub fn parse(payload: &Json, now: u64, max_age: u64) -> Self {
         let raw = payload.get("state").unwrap_or(payload);
@@ -199,7 +281,7 @@ impl Snapshot {
                 raw.clone()
             };
             if !value.is_null() || !values.contains_key(&f.key) {
-                values.insert(f.key.clone(), value);
+                values.insert(f.key.clone(), f.kind.normalize(&value));
             }
         }
         for (key, path) in [
@@ -398,14 +480,6 @@ mod tests {
         assert!(s.values["ev_charge_port_door_is_open"].is_null());
         assert_eq!(s.values["ev_first_departure_climate_temperature"], 20.0);
         assert_eq!(s.values["ev_target_range_charge_AC"], 160.9344);
-        let coverage = coverage(&s.values);
-        let defrost = coverage
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|v| v["ha"] == "defrost_is_on")
-            .unwrap();
-        assert_eq!(defrost["available"], true);
     }
     #[test]
     fn missing_and_sentinel_values_never_become_zero() {
@@ -416,6 +490,7 @@ mod tests {
         );
         assert!(s.values["soc"].is_null());
         assert!(s.values["soh"].is_null());
+        assert!(s.values["ev_battery_soh_percentage"].is_null());
         assert!(s.values["battery_12v"].is_null());
         assert_eq!(s.quality, "unknown");
         assert!(!s.summary().to_string().contains("Latitude"));
@@ -441,6 +516,7 @@ pub struct Alias {
     pub path: String,
     pub conversion: String,
     pub unit: String,
+    pub kind: PointKind,
 }
 pub fn aliases() -> &'static Vec<Alias> {
     static ALIASES: OnceLock<Vec<Alias>> = OnceLock::new();
@@ -448,8 +524,40 @@ pub fn aliases() -> &'static Vec<Alias> {
         serde_json::from_str(include_str!("../data/aliases.json")).expect("embedded EU aliases")
     })
 }
+fn canonical_alias(path: &str) -> Option<&'static str> {
+    match path {
+        "Green.BatteryManagement.BatteryRemain.Ratio" => Some("soc"),
+        "Green.BatteryManagement.SoH.Ratio" => Some("soh"),
+        "Electronics.Battery.Level" => Some("battery_12v"),
+        "Drivetrain.Odometer" => Some("odometer"),
+        "Green.Electric.SmartGrid.RealTimePower" => Some("charging_power"),
+        "Green.Electric.SmartGrid.TotalPowerConsumption" => Some("total_consumed_wh"),
+        "Green.Electric.SmartGrid.TotalPowerRegeneration" => Some("total_regenerated_wh"),
+        "Cabin.HVAC.Row1.Driver.Temperature.Value" => Some("air_temperature_c"),
+        "Cabin.HVAC.OutsideTemperature.Value" => Some("outside_temperature_c"),
+        "Drivetrain.FuelSystem.DTE.Total" => Some("ev_range_km"),
+        "Chassis.Axle.Row1.Left.Tire.Pressure" => Some("tire_front_left"),
+        "Chassis.Axle.Row1.Right.Tire.Pressure" => Some("tire_front_right"),
+        "Chassis.Axle.Row2.Left.Tire.Pressure" => Some("tire_rear_left"),
+        "Chassis.Axle.Row2.Right.Tire.Pressure" => Some("tire_rear_right"),
+        "DrivingReady" => Some("driving_ready"),
+        _ => None,
+    }
+}
+#[allow(clippy::too_many_lines)] // Closed provider conversion table; compatibility aliases share canonical values.
 fn aliases_into(state: &Json, values: &mut BTreeMap<String, Json>) {
     for a in aliases() {
+        let canonical = canonical_alias(&a.path);
+        if let Some(value) = canonical.and_then(|key| values.get(key)).cloned() {
+            if let Some(unit) = canonical
+                .and_then(|key| values.get(&format!("{key}_unit")))
+                .cloned()
+            {
+                values.insert(format!("{}_unit", a.key), unit);
+            }
+            values.insert(a.key.clone(), a.kind.normalize(&value));
+            continue;
+        }
         let raw = at(state, &a.path);
         let value = match a.conversion.as_str() {
             "percent" => percent(raw, a.key.contains("soh")),
@@ -470,19 +578,6 @@ fn aliases_into(state: &Json, values: &mut BTreeMap<String, Json>) {
                 })
                 .filter(|n| *n >= 0.0)
                 .map_or(Json::Null, |n| json!(n)),
-            "pressure" => {
-                let (scale, unit) = match at(state, "Chassis.Axle.Tire.PressureUnit").as_u64() {
-                    Some(0) => (Some(1.0), Some("psi")),
-                    Some(1) => (Some(5.0), Some("kPa")),
-                    Some(2) => (Some(0.1), Some("bar")),
-                    _ => (None, None),
-                };
-                values.insert(format!("{}_unit", a.key), json!(unit));
-                number(raw)
-                    .filter(|n| *n > 0.0 && *n < 255.0)
-                    .zip(scale)
-                    .map_or(Json::Null, |(n, s)| json!(n * s))
-            }
             "window" => {
                 let flag = wire_flag(raw, false);
                 if number(at(state, &a.path.replace(".Open", ".OpenLevel")))
@@ -545,7 +640,7 @@ fn aliases_into(state: &Json, values: &mut BTreeMap<String, Json>) {
                 }
             }
         };
-        values.insert(a.key.clone(), value);
+        values.insert(a.key.clone(), a.kind.normalize(&value));
     }
 }
 
@@ -564,70 +659,6 @@ fn clock(hour: &Json, minute: &Json) -> Json {
         .zip(minute.as_u64())
         .filter(|(h, m)| *h < 24 && *m < 60)
         .map_or(Json::Null, |(h, m)| json!(format!("{h:02}:{m:02}")))
-}
-
-pub fn coverage(values: &BTreeMap<String, Json>) -> Json {
-    let inventory: Vec<Json> =
-        serde_json::from_str(include_str!("../data/ha-entity-reference.json"))
-            .expect("public HA inventory");
-    let reference: Json = serde_json::from_str(include_str!("../data/eu-field-reference.json"))
-        .expect("public EU field map");
-    json!(
-        inventory
-            .iter()
-            .filter(|e| matches!(
-                e["platform"].as_str(),
-                Some("sensor" | "binary_sensor" | "number")
-            ))
-            .map(|e| {
-                let key = e["key"].as_str().unwrap_or("");
-                let bare = key.trim_start_matches('_');
-                let special = match bare {
-                    "total_driving_range" | "ev_driving_range" => "ev_range_km",
-                    "last_updated_at" => "vehicle_at",
-                    "last_scanned_at" => "received_at",
-                    "ev_battery_soh_percentage" => "soh",
-                    "ev_battery_is_charging" => "charging",
-                    "front_left_seat_heater_on" => "front_left_seat_status",
-                    "front_right_seat_heater_on" => "front_right_seat_status",
-                    "rear_left_seat_heater_on" => "rear_left_seat_status",
-                    "rear_right_seat_heater_on" => "rear_right_seat_status",
-                    "ev_charge_complete_alarm" => "ev_charge_complete_alarm_off",
-                    "dtc_count" | "dtc_descriptions" => "diagnostics",
-                    "power_consumption_30d" => "driving_history",
-                    _ => bare,
-                };
-                let points = if values.contains_key(special) {
-                    vec![special.to_owned()]
-                } else {
-                    reference[bare]["paths"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(Json::as_str)
-                        .filter(|p| !p.starts_with("Location."))
-                        .map(|p| format!("vehicle_{}", p.to_lowercase().replace('.', "_")))
-                        .filter(|p| values.contains_key(p))
-                        .collect::<Vec<_>>()
-                };
-                let available = points.iter().any(|p| {
-                    values.get(p).is_some_and(|v| {
-                        !v.is_null() && v.get("available") != Some(&Json::Bool(false))
-                    })
-                });
-                let reason = if bare == "ev_battery_is_plugged_in" && !available {
-                    "connector_lock_is_not_plug_sensor"
-                } else if points.is_empty() {
-                    "not_exposed_by_eu_reference"
-                } else if !available {
-                    "not_reported_by_vehicle"
-                } else {
-                    "cached_protocol_data"
-                };
-                json!({"ha":key,"points":points,"available":available,"reason":reason})
-            })
-            .collect::<Vec<_>>()
-    )
 }
 
 fn seat(raw: &Json) -> Json {

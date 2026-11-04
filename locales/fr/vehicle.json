@@ -273,11 +273,6 @@
   "vehicle.reading.ev_v2x_status": "État V2X",
   "vehicle.reading.total_power_consumed": "Consommation d'énergie sur 90 jours",
   "vehicle.reading.total_power_regenerated": "Énergie régénérée sur 90 jours",
-  "vehicle.read_coverage": "Couverture des mesures Home Assistant",
-  "vehicle.connector_lock_is_not_plug_sensor": "Le verrou de connecteur ne prouve pas la présence du câble",
-  "vehicle.not_exposed_by_eu_reference": "Non exposé par la référence européenne actuelle",
-  "vehicle.not_reported_by_vehicle": "Donnée non rapportée par le véhicule",
-  "vehicle.cached_protocol_data": "Donnée du cache, protocole pris en charge",
   "vehicle.estimated_cost": "Coût estimé des km",
   "vehicle.estimated_per100": "Estimation €/100 km",
   "vehicle.sources": "Sources et postes auxiliaires",
@@ -308,5 +303,6 @@
   "vehicle.navigation_privacy": "La destination est envoyée uniquement à Hyundai après votre validation. Coordonnées et nom restent en mémoire le temps de l’envoi, sans historique ni export.",
   "vehicle.latitude": "Latitude",
   "vehicle.longitude": "Longitude",
-  "vehicle.destination_name": "Nom de destination (facultatif)"
+  "vehicle.destination_name": "Nom de destination (facultatif)",
+  "vehicle.technical_details": "Détails techniques"
 }

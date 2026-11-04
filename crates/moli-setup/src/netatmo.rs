@@ -1,5 +1,4 @@
-//! Personal native adapter. All I/O is serialized by `EngineHost` with the engine
-//! stopped. Only private provisioning/complete actions accept sensitive input.
+//! Portable personal account setup. The host serializes I/O and stops its engine for writes.
 type Result<T> = std::result::Result<T, &'static str>;
 fn now() -> u64 {
     moli_core::now_ms()
@@ -374,7 +373,7 @@ async fn save_grant(data: &Path, instance: &str, key: &MasterKey, entry: &mut En
     forget(data, instance, key, ROTATION_SECRET).await?;
     entry.session.stored().map_err(Error::code)
 }
-pub(crate) fn run(input: &Value) -> Result<Value> {
+pub fn run(input: &Value) -> Result<Value> {
     let data = Path::new(input["data"].as_str().ok_or("input")?);
     let key = MasterKey::new(input["master"].as_str().ok_or("input")?.into());
     let instance = input["instance"].as_str().unwrap_or("netatmo-energy");

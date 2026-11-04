@@ -1279,20 +1279,10 @@ name = "moli-android"
 version = "0.1.0"
 dependencies = [
  "jni",
- "moli-core",
- "moli-hyundai",
- "moli-ipp",
- "moli-moonraker",
- "moli-netatmo",
  "moli-os",
- "moli-profile",
  "moli-runtime",
- "moli-solarman",
- "moli-sonos",
+ "moli-setup",
  "serde_json",
- "tokio",
- "toml",
- "toml_edit",
 ]
 
 [[package]]
@@ -1896,6 +1886,25 @@ dependencies = [
  "toml",
  "tracing",
  "unicode-normalization",
+]
+
+[[package]]
+name = "moli-setup"
+version = "0.1.0"
+dependencies = [
+ "moli-core",
+ "moli-hyundai",
+ "moli-ipp",
+ "moli-moonraker",
+ "moli-netatmo",
+ "moli-profile",
+ "moli-runtime",
+ "moli-solarman",
+ "moli-sonos",
+ "serde_json",
+ "tokio",
+ "toml",
+ "toml_edit",
 ]
 
 [[package]]

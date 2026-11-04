@@ -1,5 +1,4 @@
-//! Android provisioning adapter over the portable Meross protocol and Moli vault.
-//! No Android equipment inventory, scheduler or command transport.
+//! Portable provisioning over the existing Meross protocol and Moli vault.
 use moli_profile::meross_cloud::{self as cloud, Client, Credentials};
 use moli_runtime::{MasterKey, forget_secret, read_secret, set_secret};
 use serde_json::{Value, json};
@@ -15,7 +14,7 @@ fn credentials(path: &Path, master: &MasterKey) -> Result<Credentials> {
     serde_json::from_str(&saved).map_err(|_| "storage")
 }
 
-pub(crate) fn run(input: &Value) -> Result<Value> {
+pub fn run(input: &Value) -> Result<Value> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

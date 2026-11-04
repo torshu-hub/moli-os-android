@@ -327,4 +327,5 @@
     <string name="hyundai_discover">Resume vehicle discovery</string>
     <string name="hyundai_commands_on">Manual controls enabled: availability depends on the vehicle and API. No automations.</string>
     <string name="hyundai_commands_off">Manual controls can be enabled in Vehicles, controls and synchronization.</string>
+    <string name="hyundai_journal_settings">Journal associations</string>
 </resources>

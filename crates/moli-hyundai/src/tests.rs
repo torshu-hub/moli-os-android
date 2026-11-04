@@ -620,6 +620,10 @@ async fn legacy_mode_uses_ccapi_registration_fleet_cache_and_passive_history_que
     assert_eq!(snapshot.values["is_locked"], true);
     assert_eq!(snapshot.values["charging"], false);
     assert_eq!(snapshot.values["ev_battery_is_plugged_in"], true);
+    assert_eq!(
+        crate::model::point_kind("ev_battery_is_plugged_in"),
+        crate::model::PointKind::Binary
+    );
     assert_eq!(snapshot.quality, "cached_recent");
     let days = c
         .auxiliary(&mut s, &v[0], "driving_history", "ignored-gspa-route")
@@ -795,4 +799,72 @@ async fn browser_authorization_to_legacy_fleet_is_end_to_end_without_credentials
                 && !url.ends_with("/status")
                 && !body.contains("password"))
     );
+}
+
+#[test]
+fn schema_is_stable_and_aliases_share_unknowns_and_values() {
+    use crate::model::{PointKind, Snapshot};
+    for value in [Json::Null, json!(0), json!(97), json!(255), Json::Null] {
+        let s = Snapshot::parse(
+            &json!({"Green":{"BatteryManagement":{"SoH":{"Ratio":value}}}}),
+            1000,
+            1000,
+        );
+        assert_eq!(s.values["soh"], s.values["ev_battery_soh_percentage"]);
+        for (key, sample) in &s.values {
+            let absent = crate::spec(key, Some(&Json::Null), false);
+            let present = crate::spec(key, Some(sample), false);
+            assert_eq!(absent.kind, present.kind, "{key}");
+            if !sample.is_null() {
+                match crate::model::point_kind(key) {
+                    PointKind::Numeric => assert!(sample.is_number(), "{key}"),
+                    PointKind::Binary => assert!(sample.is_boolean(), "{key}"),
+                    PointKind::Text => assert!(sample.is_string(), "{key}"),
+                }
+            }
+        }
+    }
+}
+#[test]
+fn expiry_does_not_refresh_provider_or_receipt_time() {
+    let mut s = crate::model::Snapshot::parse(
+        &json!({"Date":1_800_000_000_000_u64}),
+        1_800_000_000_100,
+        1000,
+    );
+    assert!(!s.expire(1_800_000_001_000, 1000));
+    assert!(s.expire(1_800_000_001_001, 1000));
+    assert_eq!(s.quality, "stale");
+    assert_eq!(s.values["snapshot"]["quality"], "stale");
+    assert_eq!(s.received_at, 1_800_000_000_100);
+    assert_eq!(s.vehicle_at, Some(1_800_000_000_000));
+    assert!(!s.expire(1_800_000_001_002, 1000));
+}
+
+#[test]
+fn pressure_and_temperature_aliases_reuse_canonical_values_and_explicit_units() {
+    for unit in [Json::Null, json!(0), json!(1), json!(2), json!(255)] {
+        let s = model::Snapshot::parse(
+            &json!({"Chassis":{"Axle":{"Tire":{"PressureUnit":unit},"Row1":{"Left":{"Tire":{"Pressure":32}}}}},"Cabin":{"HVAC":{"Row1":{"Driver":{"Temperature":{"Value":68,"Unit":1}}}}}}),
+            1000,
+            1000,
+        );
+        for alias in model::aliases()
+            .iter()
+            .filter(|a| a.path == "Chassis.Axle.Row1.Left.Tire.Pressure")
+        {
+            assert_eq!(s.values[&alias.key], s.values["tire_front_left"]);
+            assert_eq!(
+                s.values[&format!("{}_unit", alias.key)],
+                s.values["tire_front_left_unit"]
+            );
+        }
+        for alias in model::aliases()
+            .iter()
+            .filter(|a| a.path == "Cabin.HVAC.Row1.Driver.Temperature.Value")
+        {
+            assert_eq!(s.values[&alias.key], s.values["air_temperature_c"]);
+            assert_eq!(s.values[&alias.key], json!(20.0));
+        }
+    }
 }

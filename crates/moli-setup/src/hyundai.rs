@@ -109,7 +109,7 @@ fn prepare(raw: &str, id: &str, config: &Config, enable: bool) -> Result<String>
     Ok(doc.to_string())
 }
 #[allow(clippy::too_many_lines)] // Serialized native setup dispatch keeps the vault transaction together.
-pub(crate) fn run(input: &Value) -> Result<Value> {
+pub fn run(input: &Value) -> Result<Value> {
     let data = Path::new(input["data"].as_str().ok_or("input")?);
     let key = MasterKey::new(input["master"].as_str().ok_or("input")?.into());
     let id = input["instance"].as_str().unwrap_or("hyundai-eu");
